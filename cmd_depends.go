@@ -3,45 +3,39 @@ package main
 import (
 	"fmt"
 	"os"
-
-	"terminal-todo/store"
+	"terminal-todo/dag"
 )
 
 func cmdDepends(args []string) {
-	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Error: task ID required\n")
-		os.Exit(1)
-	}
-
-	var id uint64
-	if _, err := fmt.Sscanf(args[0], "%d", &id); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: invalid task ID: %s\n", args[0])
+	ids := parseIDs(args)
+	if len(ids) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: task ID required")
 		os.Exit(1)
 	}
 
 	s := loadStore()
-	task, ok := s.GetTask(id)
+	task, ok := s.GetTask(ids[0])
 	if !ok {
-		fmt.Fprintf(os.Stderr, "Error: task %d not found\n", id)
+		fmt.Fprintf(os.Stderr, "Error: task %d not found\n", ids[0])
 		os.Exit(1)
 	}
 
 	if len(task.Depends) == 0 {
-		fmt.Printf("Task %d has no dependencies\n", id)
+		fmt.Printf("Task %d has no dependencies.\n", ids[0])
 		return
 	}
 
-	fmt.Printf("Task %d depends on:\n", id)
-	for _, depID := range task.Depends {
-		dep, ok := s.GetTask(depID)
-		if ok {
-			status := "[ ]"
-			if dep.Status == store.StatusCompleted {
-				status = "[x]"
+	fmt.Printf("Task %d depends on:\n", ids[0])
+	for _, dep := range task.Depends {
+		depID, local := dag.ParseLocalID(dep)
+		if local {
+			if dt, ok := s.GetTask(depID); ok {
+				fmt.Printf("  - %d: %s\n", depID, dt.Title)
+			} else {
+				fmt.Printf("  - %d: [not found locally]\n", depID)
 			}
-			fmt.Printf("  %d: %s %s\n", depID, status, dep.Title)
 		} else {
-			fmt.Printf("  %d: (not found)\n", depID)
+			fmt.Printf("  - %s\n", dep)
 		}
 	}
 }

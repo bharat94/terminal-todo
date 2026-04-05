@@ -3,7 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-
+	"sort"
+	"strings"
 	"terminal-todo/dag"
 	"terminal-todo/store"
 )
@@ -11,29 +12,36 @@ import (
 func cmdNext(args []string) {
 	s := loadStore()
 	d := dag.NewDAG()
-	dagTasks := convertToDAGTasks(s.Tasks)
-	d.BuildFromTasks(dagTasks)
+	d.BuildFromTasks(s.Tasks)
 
-	ready := d.GetReadyTasks(dagTasks)
-	blocked := d.GetBlockedTasks(dagTasks)
+	ready := d.GetReadyTasks(s.Tasks)
+
+	// Filter by capabilities if requested
+	var caps []string
+	for i, arg := range args {
+		if arg == "--capabilities" && i+1 < len(args) {
+			caps = strings.Split(args[i+1], ",")
+		}
+	}
+
+	if len(caps) > 0 {
+		var filtered []*store.Task
+		for _, t := range ready {
+			if matchesCapabilities(t.Capabilities, caps) {
+				filtered = append(filtered, t)
+			}
+		}
+		ready = filtered
+	}
+
+	// Sort by priority (descending)
+	sort.Slice(ready, func(i, j int) bool {
+		return ready[i].Priority > ready[j].Priority
+	})
 
 	if hasFlag(args, "--json") {
-		type jsonTask struct {
-			ID        uint64  `json:"id"`
-			Title     string  `json:"title"`
-			BlockedBy []uint64 `json:"blocked_by,omitempty"`
-		}
-		var readyJSON []jsonTask
-		for _, t := range ready {
-			blocking := blocked[t.ID]
-			readyJSON = append(readyJSON, jsonTask{
-				ID:        t.ID,
-				Title:     t.Title,
-				BlockedBy: blocking,
-			})
-		}
-		data, _ := json.Marshal(map[string]interface{}{"ready": readyJSON})
-		fmt.Println(string(data))
+		output, _ := json.MarshalIndent(map[string]interface{}{"ready": ready}, "", "  ")
+		fmt.Println(string(output))
 		return
 	}
 
@@ -44,35 +52,22 @@ func cmdNext(args []string) {
 
 	fmt.Println("Ready to work:")
 	for _, t := range ready {
-		blocking := blocked[t.ID]
-		if len(blocking) > 0 {
-			var depTitles []string
-			for _, depID := range blocking {
-				if dep, ok := s.GetTask(depID); ok {
-					depTitles = append(depTitles, fmt.Sprintf("%d [%s]", depID, formatStatus(dep.Status)))
-				}
-			}
-			fmt.Printf("  - ID %d: %s (blocked by: %s)\n", t.ID, t.Title, joinStrings(depTitles))
-		} else {
-			fmt.Printf("  - ID %d: %s (no dependencies)\n", t.ID, t.Title)
-		}
+		fmt.Printf("- %d: %s (Priority: %.2f)\n", t.ID, t.Title, t.Priority)
 	}
 }
 
-func formatStatus(status store.TaskStatus) string {
-	if status == store.StatusCompleted {
-		return "x"
+func matchesCapabilities(taskCaps, agentCaps []string) bool {
+	if len(taskCaps) == 0 {
+		return true
 	}
-	return " "
-}
-
-func joinStrings(strs []string) string {
-	result := ""
-	for i, s := range strs {
-		if i > 0 {
-			result += ", "
+	capMap := make(map[string]bool)
+	for _, c := range agentCaps {
+		capMap[c] = true
+	}
+	for _, c := range taskCaps {
+		if capMap[c] {
+			return true
 		}
-		result += s
 	}
-	return result
+	return false
 }

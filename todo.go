@@ -78,6 +78,12 @@ func main() {
 		cmdExport(args)
 	case "prune":
 		cmdPrune(args)
+	case "claim":
+		cmdClaim(args)
+	case "release":
+		cmdRelease(args)
+	case "decompose":
+		cmdDecompose(args)
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -103,6 +109,9 @@ Commands:
   dependents <id>     Show tasks that depend on this
   next                Show tasks ready to work
   next --json         Show ready tasks in JSON format
+  claim <id> --as <n> Secure an exclusive execution lease
+  release <id>        Yield a lease back to the pool
+  decompose <id> --into <json> Split a task into sub-tasks
   export              Export tasks to JSON
   export --markdown  Export tasks to Markdown
   prune               Remove all completed tasks
@@ -111,6 +120,8 @@ Commands:
 Examples:
   todo add "Implement auth"
   todo add "Fix bug" --after 1
+  todo claim 1 --as agent-alpha
+  todo decompose 1 --into '{"subtasks":[{"title":"Sub1"}]}'
   todo done 1
   todo status --json
 `)
@@ -135,12 +146,22 @@ func saveStore(s *store.TaskStore) {
 func parseIDs(args []string) []uint64 {
 	var ids []uint64
 	for _, arg := range args {
-		if arg == "--json" || arg == "--pretty" || arg == "--markdown" {
+		if strings.HasPrefix(arg, "-") {
 			continue
 		}
 		var id uint64
 		if _, err := fmt.Sscanf(arg, "%d", &id); err == nil {
 			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func extractAfterIDs(args []string) []string {
+	var ids []string
+	for i, arg := range args {
+		if arg == "--after" && i+1 < len(args) {
+			ids = append(ids, args[i+1])
 		}
 	}
 	return ids
@@ -157,18 +178,20 @@ func hasFlag(args []string, flag string) bool {
 
 func extractTitle(args []string) string {
 	var titleParts []string
-	inTitle := false
+	skipNext := false
 	for _, arg := range args {
-		if arg == "--after" || strings.HasPrefix(arg, "--") {
-			inTitle = false
+		if skipNext {
+			skipNext = false
 			continue
 		}
-		if !inTitle && !strings.HasPrefix(arg, "-") {
-			inTitle = true
+		if arg == "--after" || arg == "--as" || arg == "--ttl" || arg == "--capabilities" || arg == "--into" {
+			skipNext = true
+			continue
 		}
-		if inTitle {
-			titleParts = append(titleParts, arg)
+		if strings.HasPrefix(arg, "--") {
+			continue
 		}
+		titleParts = append(titleParts, arg)
 	}
 	return strings.Join(titleParts, " ")
 }

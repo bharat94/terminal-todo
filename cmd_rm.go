@@ -6,23 +6,19 @@ import (
 )
 
 func cmdRm(args []string) {
-	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Error: task ID required\n")
-		os.Exit(1)
-	}
-
-	var id uint64
-	if _, err := fmt.Sscanf(args[0], "%d", &id); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: invalid task ID: %s\n", args[0])
+	ids := parseIDs(args)
+	if len(ids) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: task ID required")
 		os.Exit(1)
 	}
 
 	s := loadStore()
-	if !s.RemoveTask(id) {
-		fmt.Fprintf(os.Stderr, "Error: task %d not found\n", id)
-		os.Exit(1)
+	for _, id := range ids {
+		if s.RemoveTask(id) {
+			fmt.Printf("Removed task %d\n", id)
+		} else {
+			fmt.Fprintf(os.Stderr, "Error: task %d not found\n", id)
+		}
 	}
 	saveStore(s)
-
-	fmt.Printf("Removed task %d\n", id)
 }

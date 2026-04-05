@@ -1,6 +1,11 @@
 package dag
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+	"terminal-todo/store"
+)
 
 type DAG struct {
 	adjacency map[uint64][]uint64
@@ -16,23 +21,46 @@ func (d *DAG) AddEdge(from, to uint64) {
 	d.adjacency[from] = append(d.adjacency[from], to)
 }
 
-func (d *DAG) BuildFromTasks(tasks map[uint64]*Task) {
+func (d *DAG) BuildFromTasks(tasks map[uint64]*store.Task) {
 	d.adjacency = make(map[uint64][]uint64)
 	for _, task := range tasks {
-		for _, dep := range task.Depends {
-			d.adjacency[dep] = append(d.adjacency[dep], task.ID)
+		for _, depURI := range task.Depends {
+			id, local := ParseLocalID(depURI)
+			if local {
+				d.adjacency[id] = append(d.adjacency[id], task.ID)
+			}
 		}
 	}
 }
 
-func (d *DAG) DetectCycle(newDeps []uint64, newTaskID uint64) error {
+// ParseLocalID returns the ID and true if it's a local URI (todo://local/1)
+func ParseLocalID(uri string) (uint64, bool) {
+	if strings.HasPrefix(uri, "todo://local/") {
+		idStr := strings.TrimPrefix(uri, "todo://local/")
+		id, err := strconv.ParseUint(idStr, 10, 64)
+		if err == nil {
+			return id, true
+		}
+	}
+	// Also support plain integer strings as local for backward compatibility/simplicity
+	id, err := strconv.ParseUint(uri, 10, 64)
+	if err == nil {
+		return id, true
+	}
+	return 0, false
+}
+
+func (d *DAG) DetectCycle(newDeps []string, newTaskID uint64) error {
 	adj := make(map[uint64][]uint64)
 	for from, tos := range d.adjacency {
 		adj[from] = append([]uint64{}, tos...)
 	}
 
-	for _, dep := range newDeps {
-		adj[dep] = append(adj[dep], newTaskID)
+	for _, depURI := range newDeps {
+		depID, local := ParseLocalID(depURI)
+		if local {
+			adj[depID] = append(adj[depID], newTaskID)
+		}
 	}
 
 	visited := make(map[uint64]bool)
@@ -72,25 +100,25 @@ func (d *DAG) DetectCycle(newDeps []uint64, newTaskID uint64) error {
 	return nil
 }
 
-type Task struct {
-	ID      uint64
-	Title   string
-	Depends []uint64
-	Status  uint8
-}
-
-func (d *DAG) GetReadyTasks(tasks map[uint64]*Task) []*Task {
-	var ready []*Task
+func (d *DAG) GetReadyTasks(tasks map[uint64]*store.Task) []*store.Task {
+	var ready []*store.Task
 
 	for _, task := range tasks {
-		if task.Status == 2 {
+		if task.Status == store.StatusCompleted {
 			continue
 		}
 
 		allDepsDone := true
-		for _, dep := range task.Depends {
-			depTask, ok := tasks[dep]
-			if !ok || depTask.Status != 2 {
+		for _, depURI := range task.Depends {
+			depID, local := ParseLocalID(depURI)
+			if local {
+				depTask, ok := tasks[depID]
+				if !ok || depTask.Status != store.StatusCompleted {
+					allDepsDone = false
+					break
+				}
+			} else {
+				// Cross-repo dependency: For now, assume not done if we can't resolve it
 				allDepsDone = false
 				break
 			}
@@ -104,19 +132,24 @@ func (d *DAG) GetReadyTasks(tasks map[uint64]*Task) []*Task {
 	return ready
 }
 
-func (d *DAG) GetBlockedTasks(tasks map[uint64]*Task) map[uint64][]uint64 {
-	blocked := make(map[uint64][]uint64)
+func (d *DAG) GetBlockedTasks(tasks map[uint64]*store.Task) map[uint64][]string {
+	blocked := make(map[uint64][]string)
 
 	for _, task := range tasks {
-		if task.Status == 2 {
+		if task.Status == store.StatusCompleted {
 			continue
 		}
 
-		for _, dep := range task.Depends {
-			depTask, ok := tasks[dep]
-			if !ok || depTask.Status != 2 {
-				blocked[task.ID] = append(blocked[task.ID], dep)
-				break
+		for _, depURI := range task.Depends {
+			depID, local := ParseLocalID(depURI)
+			if local {
+				depTask, ok := tasks[depID]
+				if !ok || depTask.Status != store.StatusCompleted {
+					blocked[task.ID] = append(blocked[task.ID], depURI)
+				}
+			} else {
+				// Cross-repo dependency is always considered blocking for now
+				blocked[task.ID] = append(blocked[task.ID], depURI)
 			}
 		}
 	}

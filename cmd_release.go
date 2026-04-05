@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"os"
 	"terminal-todo/store"
-	"time"
 )
 
-func cmdDone(args []string) {
+func cmdRelease(args []string) {
 	ids := parseIDs(args)
 	if len(ids) == 0 {
 		fmt.Fprintln(os.Stderr, "Error: task ID required")
@@ -21,9 +20,14 @@ func cmdDone(args []string) {
 			fmt.Fprintf(os.Stderr, "Error: task %d not found\n", id)
 			continue
 		}
-		task.Status = store.StatusCompleted
-		task.Completed = uint64(time.Now().UnixMilli())
-		fmt.Printf("Marked task %d as done\n", id)
+		if task.Status != store.StatusInProgress {
+			fmt.Fprintf(os.Stderr, "Error: task %d is not in progress\n", id)
+			continue
+		}
+		task.Status = store.StatusPending
+		task.Owner = ""
+		task.LeaseExpires = 0
+		fmt.Printf("Released task %d\n", id)
 	}
 	saveStore(s)
 }

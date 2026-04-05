@@ -3,50 +3,37 @@ package main
 import (
 	"fmt"
 	"os"
-
-	"terminal-todo/store"
+	"terminal-todo/dag"
 )
 
 func cmdDependents(args []string) {
-	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "Error: task ID required\n")
+	ids := parseIDs(args)
+	if len(ids) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: task ID required")
 		os.Exit(1)
 	}
 
-	var id uint64
-	if _, err := fmt.Sscanf(args[0], "%d", &id); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: invalid task ID: %s\n", args[0])
-		os.Exit(1)
-	}
-
+	targetID := ids[0]
 	s := loadStore()
-	if _, ok := s.GetTask(id); !ok {
-		fmt.Fprintf(os.Stderr, "Error: task %d not found\n", id)
+	if _, ok := s.GetTask(targetID); !ok {
+		fmt.Fprintf(os.Stderr, "Error: task %d not found\n", targetID)
 		os.Exit(1)
 	}
 
-	var dependents []uint64
-	for _, t := range s.GetAllTasks() {
+	fmt.Printf("Tasks that depend on %d:\n", targetID)
+	found := false
+	for _, t := range s.Tasks {
 		for _, dep := range t.Depends {
-			if dep == id {
-				dependents = append(dependents, t.ID)
+			id, local := dag.ParseLocalID(dep)
+			if local && id == targetID {
+				fmt.Printf("  - %d: %s\n", t.ID, t.Title)
+				found = true
 				break
 			}
 		}
 	}
 
-	if len(dependents) == 0 {
-		fmt.Printf("No tasks depend on task %d\n", id)
-		return
-	}
-
-	fmt.Printf("Tasks that depend on %d:\n", id)
-	for _, depID := range dependents {
-		task, _ := s.GetTask(depID)
-		status := "[ ]"
-		if task.Status == store.StatusCompleted {
-			status = "[x]"
-		}
-		fmt.Printf("  %d: %s %s\n", depID, status, task.Title)
+	if !found {
+		fmt.Println("  None.")
 	}
 }
