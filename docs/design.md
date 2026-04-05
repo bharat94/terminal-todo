@@ -1,310 +1,113 @@
-# Design
+# Design: Distributed Task Orchestration System
 
-## Storage
+## Storage Layer
 
 ### Location
 
-`<project>/.terminal-todo/tasks.bin`
+Local State: `<project>/.terminal-todo/tasks.bin`
+Global Config: `~/.config/terminal-todo/config.json`
 
-### Format: Binary (MessagePack)
+### Format: Enhanced Binary (MessagePack)
 
-Primary storage is binary (MessagePack) for minimal disk footprint.
+We use an extensible MessagePack schema to support production-grade metadata without sacrificing performance.
 
-**Schema:**
+**Agentic Task Schema:**
 ```go
 type Task struct {
-    ID        uint64    // Auto-increment integer
-    Title     string    // Task title/description
-    Status    uint8     // 0=pending, 1=in_progress, 2=completed
-    Depends   []uint64 // Task IDs this task depends on
-    Created   uint64    // Unix timestamp milliseconds
-    Completed uint64    // Unix timestamp milliseconds (0 if not complete)
+    ID           uint64            `msgpack:"id"`
+    Title        string            `msgpack:"title"`
+    Status       uint8             // 0=Pending, 1=In-Progress, 2=Completed, 3=Blocked
+    Depends      []TaskURI         `msgpack:"depends"`     // Support for cross-repo URI
+    Created      uint64            `msgpack:"created"`     // Unix ms
+    Completed    uint64            `msgpack:"completed"`   // Unix ms
+    
+    // Agentic Metadata
+    Capabilities []string          `msgpack:"caps"`        // e.g., ["go", "refactor"]
+    Owner        string            `msgpack:"owner"`       // Agent ID or UUID
+    LeaseExpires uint64            `msgpack:"lease_exp"`   // Expiration for ownership
+    Priority     float32           `msgpack:"priority"`    // Task utility for allocation
+    Lineage      string            `msgpack:"lineage"`     // Parent Goal ID
+    Extra        map[string]string `msgpack:"extra"`       // Extensible KV for agents
 }
-```
 
-**File Structure:**
-```
-tasks.bin: [Task count (varint)] [Task 1] [Task 2] ... [Task N]
-```
-
-- All tasks serialized with MessagePack
-- Single file for simplicity
-
-### Optional JSON Export
-
-```bash
-todo export                    # Export to tasks.json (minified)
-todo export --pretty          # Export to tasks.json (formatted)
+type TaskURI string // Format: todo://[repo-id]/[task-id]
 ```
 
 ---
 
-## CLI Commands
+## Distributed Coordination Protocol
 
-### Initialization
+### Task URI & Cross-Repo Referencing
 
-```bash
-todo init
-```
+To coordinate across repositories, `terminal-todo` uses a URI-based scheme:
+- `todo://local/101` -> Task 101 in the current repository.
+- `todo://infra-repo/50` -> Task 50 in a known repository named `infra-repo`.
 
-Creates `.terminal-todo/` directory and `tasks.bin` (empty).
+**Resolution Strategy:**
+Agents resolve `infra-repo` by looking up a global registry in `~/.config/terminal-todo/repositories.json`.
 
-### Task Management
+### Inference-Time Ownership (Lease Management)
 
-| Command | Description |
-|---------|-------------|
-| `todo add "<title>"` | Add task with no dependencies |
-| `todo add "<title>" --after <id>` | Add task depending on another |
-| `todo add "<title>" --after <id> --after <id2>` | Add task with multiple deps |
-| `todo done <id>` | Mark task complete |
-| `todo rm <id>` | Remove task |
-| `todo cat <id>` | Show task details |
+To prevent race conditions, agents must acquire a **Lease** before working on a task:
+1. **Request:** `todo claim <id> --as <agent-name> --ttl 30m`
+2. **Success:** `terminal-todo` updates `Owner` and `LeaseExpires`.
+3. **Heartbeat:** Long-running agents must periodically refresh the lease.
+4. **Failure/Timeout:** If the lease expires, the task returns to `Pending`.
 
-### Dependency Queries
+### Submodular Allocation (Distributed Greedy)
 
-| Command | Description |
-|---------|-------------|
-| `todo depends <id>` | Show what this task depends on |
-| `todo dependents <id>` | Show tasks that depend on this |
-| `todo next` | Show tasks ready to work (all deps satisfied) |
-
-### Status & Info
-
-| Command | Description |
-|---------|-------------|
-| `todo status` | Show all tasks with status |
-| `todo status --json` | JSON output for scripting |
-| `todo export` | Export to JSON |
-| `todo export --markdown` | Export to Markdown |
-
-### Maintenance
-
-| Command | Description |
-|---------|-------------|
-| `todo prune` | Remove all completed tasks |
+When an agent is idle:
+1. It queries `todo next --ready --capabilities go`.
+2. It receives a list of tasks it is capable of performing, sorted by `Priority`.
+3. It claims the top task.
 
 ---
 
-## Output Formats
+## CLI Infrastructure (The "Orchestration Interface")
 
-### `todo status`
+The CLI is designed for **deterministic agent interaction**.
 
-```
-ID    STATUS       TITLE              DEPENDS
-1     [x]          Research auth      -
-2     [ ]          Fix auth bug       1
-3     [ ]          Write tests        2
-```
+### Orchestration Commands
 
-### `todo next`
+| Command | Args | Description |
+|---------|------|-------------|
+| `todo claim` | `<id> --as <name>` | Secure an exclusive execution lease |
+| `todo release` | `<id>` | Yield a lease back to the pool |
+| `todo decompose` | `<id> --into "<json>"` | Split a task into sub-tasks (DAG injection) |
+| `todo link` | `<repo-alias> <path>` | Register a remote repo for cross-repo deps |
+| `todo sync` | | (Future) Propagate task state to peers |
 
-```
-Ready to work:
-- ID 1: Research auth (no dependencies)
-- ID 2: Fix auth bug (depends on: 1 [x])
-```
+### Advanced Queries for Agents
 
-### `todo status --json`
-
-```json
-{
-  "tasks": [
-    {"id":1,"title":"Research auth","status":"completed","depends":[]},
-    {"id":2,"title":"Fix auth bug","status":"pending","depends":[1]},
-    {"id":3,"title":"Write tests","status":"pending","depends":[2]}
-  ]
-}
-```
-
-### `todo next --json`
-
-```json
-{
-  "ready": [
-    {"id":1,"title":"Research auth"},
-    {"id":2,"title":"Fix auth bug","blocked_by":[1]}
-  ]
-}
-```
-
-### `todo export --markdown`
-
-```markdown
-# Project Tasks
-
-## Completed
-- [x] ID 1: Research auth
-
-## Pending
-- [ ] ID 2: Fix auth bug (blocked by: 1 - Research auth)
-- [ ] ID 3: Write tests (blocked by: 2 - Fix auth bug)
-```
+- `todo next --ready --capabilities [caps]` -> Returns JSON of actionable tasks matching agent skills.
+- `todo lineage <goal-id>` -> Shows the progress of a specific high-level objective.
 
 ---
 
-## DAG Logic
+## Orchestration Flow
 
-### Cycle Detection
-
-On `add --after`:
-1. Build adjacency list from existing tasks + new dependency
-2. Run DFS to detect cycles
-3. Reject if cycle detected with error:
-   ```
-   Error: adding dependency would create cycle: 1 -> 2 -> 3 -> 1
-   ```
-
-### Dependency Resolution
-
-When task is marked done:
-1. Find all tasks that depend on this task
-2. For each dependent, check if ALL its dependencies are now complete
-3. If yes, it's "ready" (shown in `next`)
-
-### Blocked vs Ready
-
-- **Ready:** All dependencies are completed
-- **Blocked:** At least one dependency is not completed
-- **Independent:** No dependencies
+1. **Manager Initiation:** A "Manager" agent initializes the project objective and decomposes it into primary tasks (`todo add ...`).
+2. **Worker Discovery:** Worker agents query `todo next` and filter by their specific capabilities.
+3. **Execution Lease:** Workers `claim` tasks. Other agents now see the task as `In-Progress`.
+4. **Dynamic Re-Planning:** If a worker discovers a blocker, it uses `todo decompose` to inject new sub-tasks into the DAG or updates `Extra` metadata with findings.
+5. **Completion:** On `todo done`, the DAG automatically unblocks dependent tasks.
 
 ---
 
-## Configuration
+## Error Handling & Reliability
 
-### Project Config (Optional)
+### State Consistency
+- **Atomic Writes:** Uses file-level locking during binary updates to prevent corruption from concurrent agent CLI calls.
+- **Cycle Detection:** Recursive DFS validation on every `add` or `link`.
 
-Location: `.terminal-todo/config.json`
-
-```json
-{
-  "version": "1.0",
-  "created": 1700000000000
-}
-```
-
-Auto-created on `init`. Version for future migrations.
-
-### Git Integration
-
-Add to `.gitignore`:
-
-```
-.terminal-todo/
-```
+### Distributed Edge Cases
+- **Stale Leases:** Automatically detected on `todo next` or `todo status` calls.
+- **Disconnected Repos:** Cross-repo dependencies are marked as "Unknown/Stale" if the target repo is inaccessible.
 
 ---
 
-## Agent Integration Examples
+## Reference Implementation Details
 
-### Claude Code
-
-```bash
-# In a hook or script
-NEXT=$(todo next --json)
-TASK_ID=$(echo "$NEXT" | jq -r '.ready[0].id')
-todo done $TASK_ID
-```
-
-### Cursor
-
-Same pattern — invoke CLI from cursor prompts/hooks.
-
-### Shell Wrapper
-
-```bash
-# ~/.bashrc or ~/.zshrc
-alias tnext='todo next'
-alias tadd='todo add'
-alias tdone='todo done'
-alias tstatus='todo status'
-```
-
----
-
-## Error Handling
-
-| Error | Cause | Resolution |
-|-------|-------|------------|
-| `Error: not in a project` | No `.terminal-todo/` found | Run `todo init` first |
-| `Error: task not found` | Invalid task ID | Check `todo status` |
-| `Error: cycle detected` | Dependency would loop | Re-add with different deps |
-| `Error: dependency not found` | `--after` references missing ID | Check task IDs |
-
----
-
-## Implementation Phases
-
-### Phase 1: Core Storage & Basic Commands
-
-- [ ] MessagePack binary storage
-- [ ] `todo init`
-- [ ] `todo add` (basic, no deps yet)
-- [ ] `todo done` (basic)
-- [ ] `todo status`
-- [ ] `todo cat`
-
-### Phase 2: Dependencies & DAG
-
-- [ ] `todo add --after`
-- [ ] Cycle detection (DFS)
-- [ ] `todo depends`
-- [ ] `todo dependents`
-- [ ] `todo next` (ready tasks)
-- [ ] Blocked status in output
-
-### Phase 3: Export & Maintenance
-
-- [ ] `todo export --json`
-- [ ] `todo export --markdown`
-- [ ] `todo rm`
-- [ ] `todo prune`
-
-### Phase 4: Polish
-
-- [ ] JSON output flags for all queries
-- [ ] Error messages with suggestions
-- [ ] Tests (unit + integration)
-- [ ] Help text for all commands
-
----
-
-## Tech Stack
-
-- **Language:** Go 1.21+
-- **Serialization:** msgpack (github.com/vmihailenco/msgpack/v2)
-- **CLI:** urfav/cli or standard flag
-- **No external dependencies** except msgpack
-
----
-
-## File Structure (Final)
-
-```
-.terminal-todo/
-├── tasks.bin    # Binary task storage (MessagePack)
-└── config.json # Project config (optional)
-```
-
-```
-terminal-todo/
-├── main.go
-├── cmd/
-│   ├── init.go
-│   ├── add.go
-│   ├── done.go
-│   ├── status.go
-│   ├── next.go
-│   ├── cat.go
-│   ├── rm.go
-│   ├── depends.go
-│   ├── export.go
-│   └── prune.go
-├── store/
-│   ├── store.go      # Binary read/write
-│   └── task.go       # Task struct
-├── dag/
-│   └── dag.go        # Cycle detection, resolution
-├── ui/
-│   └── output.go    # Formatted output
-└── go.mod
-```
+- **Concurrency:** Go's `flock` or equivalent for file-level mutual exclusion.
+- **Serialization:** `msgpack` with custom type resolvers for `TaskURI`.
+- **Validation:** JSON Schema validation for the `Extra` metadata field to ensure agent interoperability.

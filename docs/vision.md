@@ -1,82 +1,62 @@
-# Vision
+# Vision: Distributed Multi-Agent Task Orchestration (DMATO)
 
 ## Core Vision
 
-A standalone CLI that manages a DAG of tasks with dependencies, persisted to disk for cross-session and cross-agent sharing. It provides a shared project memory layer that any AI agent can interact with via command line.
+`terminal-todo` is not just a todo list; it is a **Distributed Multi-Agent Task Orchestration (DMATO)** layer. It provides a decentralized, DAG-based shared memory for autonomous agents to coordinate, decompose, and execute complex objectives across heterogeneous environments and repositories. 
+
+In the era of distributed inference, where multiple specialized agents (LLMs, SLMs, and traditional scripts) collaborate in real-time, `terminal-todo` acts as the **source of truth for progress, ownership, and state**.
 
 ## Key Principles
 
-1. **Binary-first storage** — Compact, smallest on-disk footprint
-2. **Optional JSON export** — Human-readable format on demand
-3. **Project-scoped** — Lives in `.terminal-todo/` in project root
-4. **DAG semantics** — Tasks have explicit dependencies with cycle detection
-5. **Agent-first** — Every interaction is CLI-invokable with JSON output
-6. **Minimalist** — No fluff, just task tracking with dependencies
+1. **Decentralized Coordination** — No central server; task state is shared via the filesystem (and eventually peer-to-peer protocols), enabling cross-repo and cross-machine collaboration.
+2. **Inference-Time Shared State** — Agents can observe and update the global task graph during their inference cycles, allowing for dynamic re-planning and emergent coordination.
+3. **Agentic Task Autonomy** — Every task is an autonomous unit with its own metadata, retry logic, and ownership, adhering to a global DAG structure.
+4. **Submodular Optimization** — Task allocation uses distributed greedy algorithms to ensure conflict-free execution with minimal computational overhead.
+5. **Universal Cognition Interface** — A standardized CLI and binary protocol that allows any agentic system to leverage shared coordination knowledge.
 
-## Design Decisions
+## High-Level Architecture
 
-### Why Binary Storage?
+### The "Agentic Task" Model
+Beyond simple titles, tasks are rich objects containing:
+- **Capabilities Required:** Semantic tags describing the skills needed (e.g., `golang`, `k8s-deploy`).
+- **Owner/Lease:** Identifiers for the agent currently executing the task to prevent duplicate work.
+- **Priority & Utility:** Dynamic values used for submodular task allocation.
+- **Lineage:** Proof of decomposition from a higher-level objective.
 
-- Smallest disk footprint
-- Fast read/write for CLI operations
-- Forces agents through CLI (consistent interface)
-- Optional JSON export for debugging/inspection
+### Distributed DAG Semantics
+- **Cross-Repo Dependencies:** A task in Repo A can depend on a task in Repo B via URI-based referencing (`todo://repo-b/task-42`).
+- **Dynamic Re-graphing:** Agents can inject, prune, or split tasks as the objective evolves during execution.
 
-### Why Project-Scoped?
+## The Problem It Solves
 
-- Each project has independent task state
-- Git-ignorable (add `.terminal-todo/` to `.gitignore`)
-- No global state pollution
+### 1. The Context Reset Barrier
+Agents often lose track of long-running objectives across session boundaries. `terminal-todo` provides **Permanent Objective Memory**.
 
-### Why DAG over Flat List?
+### 2. Multi-Agent Race Conditions
+In a shared environment, multiple agents might attempt the same task. `terminal-todo` provides **Lease-based Concurrency Control**.
 
-- Captures natural task relationships (subtasks, prerequisites)
-- Shows "blocked" vs "ready-to-work" states
-- Enables parallel execution planning
-- More accurately reflects how agents break down work
-
-## What It Is NOT
-
-- Not a full project management tool (no time tracking, no extensive tagging)
-- Not a human-only tool (designed for AI agent CLI usage)
-- Not tied to one AI platform (works with any CLI-capable agent)
-- Not a replacement for planning-with-files (complementary)
+### 3. Decomposition Blindness
+Complex goals require breaking down into atomic, dependent steps. `terminal-todo` enforces **DAG-based Structural Planning**.
 
 ## Success Criteria
 
-- Any AI agent can read/write via CLI invocation
-- Survives context resets (persisted to project directory)
-- Supports: add, depends, done, status, next, rm, cat, export, prune
-- Binary storage compact (<1KB typical project)
-- Cycle detection on dependency add
-- JSON output flag for all read commands
+- **Autonomous Handoff:** Agent A completes Task 1, and Agent B automatically picks up Task 2 based on capability match.
+- **Global Visibility:** A "manager" agent can visualize the entire multi-repo progress by aggregating local DAGs.
+- **Resilience:** The task graph survives agent crashes, context window expirations, and network partitions.
 
-## Integration Points
+## Roadmap: Toward Distributed Inference
 
-### With AI Agents
+| Phase | Goal | Key Innovation |
+|-------|------|----------------|
+| **Current** | Local DAG | MessagePack storage, cycle detection, basic CLI. |
+| **Orchestration** | Agentic Metadata | Ownership leases, capability tags, priority scoring. |
+| **Distributed** | Cross-Repo Linking | URI-based dependencies, multi-root aggregation. |
+| **Autonomous** | Dynamic Planning | Agents re-architecting the DAG in-flight. |
+| **Production** | Global Sync | Gossip-based synchronization or shared ledger backends. |
 
-```bash
-# Get next ready task
-NEXT=$(todo next --json)
+## References & Inspiration
 
-# Add task with dependency
-todo add "implement auth" --after 1
-
-# Mark complete
-todo done 2
-```
-
-### With planning-with-files
-
-- terminal-todo tracks **tasks and dependencies** (the "what" and "in what order")
-- planning-with-files tracks **plan, findings, progress** (the "how" and "learnings")
-- Use both in parallel: terminal-todo for task queue, planning-with-files for execution details
-
-## Roadmap
-
-| Phase | Scope |
-|-------|-------|
-| 1 | Binary storage, init, add, done, status |
-| 2 | Dependencies, cycle detection, next, prune |
-| 3 | Export (JSON/Markdown), config, dependents |
-| 4 | Tests, edge cases, polish |
+- **DeMAC (2025):** Dynamic DAGs for multi-agent feedback loops.
+- **Flint Engine:** Task-as-an-agent distributed execution.
+- **DGBA Algorithm:** Distributed Greedy Bundles for conflict-free allocation.
+- **MDI-LLM:** Model-distributed inference architectures.
