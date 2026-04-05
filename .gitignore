@@ -1,0 +1,9 @@
+# Binaries
+todo
+todo_test
+
+# Test artifacts
+*.test
+
+# OS
+.DS_Store
