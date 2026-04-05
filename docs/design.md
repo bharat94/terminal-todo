@@ -94,6 +94,22 @@ The CLI is designed for **deterministic agent interaction**.
 
 ---
 
+## Concurrency & Resilience
+
+To support high-frequency interaction from multiple agents, `terminal-todo` implements a multi-layered safety architecture. See [Concurrency, Locking, and Race Conditions](concurrency-and-locking.md) for full details.
+
+### Multi-Reader Single-Writer Locking
+The system uses advisory file locking to allow concurrent read operations while ensuring write operations are strictly serialized. This prevents binary corruption when multiple agents query `todo next` while another agent is `claiming` a task.
+
+### Atomic State Transitions
+Task updates follow a Compare-And-Swap (CAS) pattern. A `claim` or `done` operation will only succeed if the underlying state matches the agent's expectation at the moment of the write lock.
+
+### Fault Tolerance
+- **Atomic Rename:** New state is written to a temporary file and renamed, ensuring a valid `tasks.bin` always exists even during power failures.
+- **Lease Timeout:** Long-running agents must maintain "heartbeat" leases. If an agent crashes, its claimed tasks are automatically reclaimed by the pool after the TTL expires.
+
+---
+
 ## Error Handling & Reliability
 
 ### State Consistency
