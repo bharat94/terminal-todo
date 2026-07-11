@@ -82,6 +82,32 @@ func TestCLI_AddRejectsInvalidPriority(t *testing.T) {
 	assert.Contains(t, string(out), "--priority must be between 0 and 1")
 }
 
+func TestCLI_RejectsUnknownOptions(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	cmd := exec.Command(todo, "add", "Task", "--prioritty", "0.9")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.Error(t, err)
+	assert.Contains(t, string(out), "unknown option --prioritty for add")
+}
+
+func TestCLI_RejectsMalformedIDs(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	cmd := exec.Command(todo, "add", "Task")
+	cmd.Dir = tmpDir
+	assert.NoError(t, cmd.Run())
+
+	cmd = exec.Command(todo, "done", "1junk")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.Error(t, err)
+	assert.Contains(t, string(out), "task ID required")
+}
+
 func TestCLI_AddWithDependency(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)

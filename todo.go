@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"terminal-todo/store"
@@ -54,6 +55,10 @@ func main() {
 
 	command := os.Args[1]
 	args := os.Args[2:]
+	if err := validateCommandArgs(command, args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 
 	switch command {
 	case "init":
@@ -158,12 +163,54 @@ func parseIDs(args []string) []uint64 {
 		if strings.HasPrefix(arg, "-") {
 			continue
 		}
-		var id uint64
-		if _, err := fmt.Sscanf(arg, "%d", &id); err == nil {
+		if id, err := strconv.ParseUint(arg, 10, 64); err == nil && id > 0 {
 			ids = append(ids, id)
 		}
 	}
 	return ids
+}
+
+func validateCommandArgs(command string, args []string) error {
+	valueFlags := map[string]map[string]bool{
+		"add":       {"--after": true, "--priority": true, "--caps": true},
+		"claim":     {"--as": true, "--ttl": true},
+		"decompose": {"--into": true},
+		"next":      {"--capabilities": true},
+	}
+	booleanFlags := map[string]map[string]bool{
+		"cat":    {"--json": true},
+		"status": {"--json": true},
+		"next":   {"--json": true, "--ready": true},
+		"export": {"--markdown": true},
+	}
+	knownCommands := map[string]bool{
+		"init": true, "add": true, "done": true, "status": true,
+		"cat": true, "rm": true, "depends": true, "dependents": true,
+		"next": true, "export": true, "prune": true, "claim": true,
+		"release": true, "decompose": true,
+	}
+	if !knownCommands[command] {
+		return nil
+	}
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "-") {
+			continue
+		}
+		if valueFlags[command][arg] {
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return fmt.Errorf("%s requires a value", arg)
+			}
+			i++
+			continue
+		}
+		if booleanFlags[command][arg] {
+			continue
+		}
+		return fmt.Errorf("unknown option %s for %s", arg, command)
+	}
+	return nil
 }
 
 func extractAfterIDs(args []string) []string {
