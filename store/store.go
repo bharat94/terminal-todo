@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
+
+	"terminal-todo/lock"
 
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -45,16 +46,58 @@ type Task struct {
 	Extra        map[string]string `msgpack:"extra" json:"extra"`
 }
 
+const CurrentSchemaVersion uint32 = 1
+
 type TaskStore struct {
-	Tasks        map[uint64]*Task `msgpack:"tasks"`
-	NextID       uint64           `msgpack:"next_id"`
-	LastModified uint64           `msgpack:"last_modified"`
+	SchemaVersion uint32           `msgpack:"schema_version"`
+	Tasks         map[uint64]*Task `msgpack:"tasks"`
+	NextID        uint64           `msgpack:"next_id"`
+	LastModified  uint64           `msgpack:"last_modified"`
+}
+
+type migrationFunc func(*TaskStore) error
+
+var migrations = map[uint32]migrationFunc{
+	// Migration 0→1: no-op. Fields Tags, RetryCount, LastError, Log
+	// default to zero values when an old store without them is loaded.
+	0: func(s *TaskStore) error {
+		if s.Tasks == nil {
+			s.Tasks = make(map[uint64]*Task)
+		}
+		for _, t := range s.Tasks {
+			if t.Tags == nil {
+				t.Tags = []string{}
+			}
+			if t.Log == nil {
+				t.Log = []LogEntry{}
+			}
+			if t.Extra == nil {
+				t.Extra = map[string]string{}
+			}
+		}
+		s.SchemaVersion = 1
+		return nil
+	},
+}
+
+func runMigrations(s *TaskStore) error {
+	for v := s.SchemaVersion; v < CurrentSchemaVersion; v++ {
+		migrate, ok := migrations[v]
+		if !ok {
+			return fmt.Errorf("no migration path from schema version %d to %d", v, v+1)
+		}
+		if err := migrate(s); err != nil {
+			return fmt.Errorf("migration %d→%d failed: %w", v, v+1, err)
+		}
+	}
+	return nil
 }
 
 func NewTaskStore() *TaskStore {
 	return &TaskStore{
-		Tasks:  make(map[uint64]*Task),
-		NextID: 1,
+		SchemaVersion: CurrentSchemaVersion,
+		Tasks:         make(map[uint64]*Task),
+		NextID:        1,
 	}
 }
 
@@ -133,35 +176,47 @@ func (s *TaskStore) Save(path string) error {
 		return err
 	}
 
-	lock, err := lockFile(path, syscall.LOCK_EX)
+	lk, err := lock.Open(path)
 	if err != nil {
 		return err
 	}
-	defer unlockFile(lock)
+	defer lk.Close()
+	if err := lk.Acquire(lock.Write); err != nil {
+		return err
+	}
+	defer lk.Release()
 	return writeStore(path, s)
 }
 
 func Load(path string) (*TaskStore, error) {
-	lock, err := lockFile(path, syscall.LOCK_SH)
+	lk, err := lock.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer unlockFile(lock)
+	defer lk.Close()
+	if err := lk.Acquire(lock.Read); err != nil {
+		return nil, err
+	}
+	defer lk.Release()
 	return loadUnlocked(path)
 }
 
 // Update serializes a complete read-modify-write operation. The callback runs
-// while holding a lock on a stable sidecar file, so replacing tasks.bin cannot
-// invalidate the lock and concurrent processes cannot overwrite newer state.
+// while holding a lock so replacing tasks.bin cannot invalidate the lock and
+// concurrent processes cannot overwrite newer state.
 func Update(path string, mutate func(*TaskStore) error) (*TaskStore, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return nil, err
 	}
-	lock, err := lockFile(path, syscall.LOCK_EX)
+	lk, err := lock.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer unlockFile(lock)
+	defer lk.Close()
+	if err := lk.Acquire(lock.Write); err != nil {
+		return nil, err
+	}
+	defer lk.Release()
 
 	s, err := loadUnlocked(path)
 	if err != nil {
@@ -174,23 +229,6 @@ func Update(path string, mutate func(*TaskStore) error) (*TaskStore, error) {
 		return nil, err
 	}
 	return s, nil
-}
-
-func lockFile(path string, mode int) (*os.File, error) {
-	lock, err := os.OpenFile(path+".lock", os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		return nil, err
-	}
-	if err := syscall.Flock(int(lock.Fd()), mode); err != nil {
-		lock.Close()
-		return nil, fmt.Errorf("failed to lock store: %w", err)
-	}
-	return lock, nil
-}
-
-func unlockFile(lock *os.File) {
-	_ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
-	_ = lock.Close()
 }
 
 func loadUnlocked(path string) (*TaskStore, error) {
@@ -210,10 +248,18 @@ func loadUnlocked(path string) (*TaskStore, error) {
 	if store.Tasks == nil {
 		store.Tasks = make(map[uint64]*Task)
 	}
+	if store.SchemaVersion < CurrentSchemaVersion {
+		if err := runMigrations(&store); err != nil {
+			return nil, err
+		}
+	} else if store.SchemaVersion > CurrentSchemaVersion {
+		return nil, fmt.Errorf("store schema version %d is newer than this binary (max %d); upgrade todo", store.SchemaVersion, CurrentSchemaVersion)
+	}
 	return &store, nil
 }
 
 func writeStore(path string, s *TaskStore) error {
+	s.SchemaVersion = CurrentSchemaVersion
 	s.LastModified = uint64(time.Now().UnixMilli())
 	data, err := msgpack.Marshal(s)
 	if err != nil {

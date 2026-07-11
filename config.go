@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
+
+	"terminal-todo/lock"
 )
 
 type ProjectConfig struct {
@@ -76,15 +77,15 @@ func saveConfig(cfg *ProjectConfig) error {
 }
 
 func updateConfig(mutate func(*ProjectConfig) error) error {
-	lock, err := os.OpenFile(configPath()+".lock", os.O_RDWR|os.O_CREATE, 0644)
+	lk, err := lock.Open(configPath())
 	if err != nil {
 		return err
 	}
-	defer lock.Close()
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
-		return fmt.Errorf("failed to lock config: %w", err)
+	defer lk.Close()
+	if err := lk.Acquire(lock.Write); err != nil {
+		return err
 	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	defer lk.Release()
 
 	cfg, err := loadConfig()
 	if err != nil {

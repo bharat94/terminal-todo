@@ -10,7 +10,10 @@ import (
 	"terminal-todo/store"
 )
 
-var projectRoot string
+var (
+	projectRoot string
+	version     = "dev"
+)
 
 func findProjectRoot() (string, error) {
 	dir, err := os.Getwd()
@@ -46,8 +49,7 @@ func main() {
 		if os.Args[1] == "init" {
 			projectRoot, _ = os.Getwd()
 		} else {
-			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-			os.Exit(1)
+			fail(ErrNotInitialized, "%s", err)
 		}
 	} else {
 		projectRoot = root
@@ -56,8 +58,7 @@ func main() {
 	command := os.Args[1]
 	args := os.Args[2:]
 	if err := validateCommandArgs(command, args); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		fail(ErrInvalidArgs, "%v", err)
 	}
 
 	switch command {
@@ -101,20 +102,27 @@ func main() {
 		cmdLog(args)
 	case "search":
 		cmdSearch(args)
+	case "backup":
+		cmdBackup(args)
+	case "restore":
+		cmdRestore(args)
+	case "doctor":
+		cmdDoctor(args)
 	case "config":
 		cmdConfig(args)
 	case "link":
 		cmdLink(args)
+	case "--version", "-v":
+		fmt.Printf("todo v%s\n", version)
 	case "help", "--help", "-h":
 		printUsage()
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
-		printUsage()
-		os.Exit(1)
+		fail(ErrInvalidArgs, "unknown command: %s", command)
 	}
 }
 
 func printUsage() {
+	fmt.Printf("todo v%s - Distributed Multi-Agent Task Orchestration\n\n", version)
 	fmt.Print(`Usage: todo <command> [options]
 
 Commands:
@@ -141,6 +149,9 @@ Commands:
   unblock <id>        Unblock a task
   config [key=value]  View or set project configuration
   search <query>      Search tasks by title or tag
+  backup [--output <path>] Snapshot the task store
+  restore <path>     Restore tasks from a backup
+  doctor [--fix]      Diagnose project health and repair issues
   link <alias> <path> Register a repository for remote dependencies
   export              Export tasks to JSON
   export --markdown  Export tasks to Markdown
@@ -160,24 +171,21 @@ Examples:
 func loadStore() *store.TaskStore {
 	s, err := store.Load(tasksBinPath())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading store: %v\n", err)
-		os.Exit(1)
+		fail(ErrStoreCorrupted, "loading store: %v", err)
 	}
 	return s
 }
 
 func saveStore(s *store.TaskStore) {
 	if err := s.Save(tasksBinPath()); err != nil {
-		fmt.Fprintf(os.Stderr, "Error saving store: %v\n", err)
-		os.Exit(1)
+		fail(ErrStoreCorrupted, "saving store: %v", err)
 	}
 }
 
 func updateStore(mutate func(*store.TaskStore) error) *store.TaskStore {
 	s, err := store.Update(tasksBinPath(), mutate)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		fail(ErrStoreCorrupted, "%v", err)
 	}
 	return s
 }
@@ -209,6 +217,7 @@ func parseIDs(args []string) []uint64 {
 func validateCommandArgs(command string, args []string) error {
 	valueFlags := map[string]map[string]bool{
 		"add":       {"--after": true, "--priority": true, "--caps": true, "--tag": true},
+		"backup":    {"--output": true},
 		"block":     {"--reason": true, "--as": true},
 		"claim":     {"--as": true, "--ttl": true},
 		"decompose": {"--into": true},
@@ -233,7 +242,7 @@ func validateCommandArgs(command string, args []string) error {
 		"cat": true, "rm": true, "depends": true, "dependents": true,
 		"next": true, "export": true, "prune": true, "claim": true,
 		"release": true, "decompose": true, "lineage": true, "update": true,
-		"config": true, "link": true, "block": true, "unblock": true, "log": true, "search": true,
+		"config": true, "link": true, "block": true, "unblock": true, "log": true, "search": true, "doctor": true, "backup": true, "restore": true,
 	}
 	if !knownCommands[command] {
 		return nil

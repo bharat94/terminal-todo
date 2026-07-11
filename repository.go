@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 
 	"terminal-todo/dag"
+	"terminal-todo/lock"
 	"terminal-todo/store"
 )
 
@@ -72,15 +72,15 @@ func saveRepositoryRegistry(registry *repositoryRegistry) error {
 }
 
 func updateRepositoryRegistry(mutate func(*repositoryRegistry) error) error {
-	lock, err := os.OpenFile(registryPath()+".lock", os.O_RDWR|os.O_CREATE, 0644)
+	lk, err := lock.Open(registryPath())
 	if err != nil {
 		return err
 	}
-	defer lock.Close()
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
-		return fmt.Errorf("failed to lock repository registry: %w", err)
+	defer lk.Close()
+	if err := lk.Acquire(lock.Write); err != nil {
+		return err
 	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	defer lk.Release()
 
 	registry, err := loadRepositoryRegistry()
 	if err != nil {

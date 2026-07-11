@@ -7,3 +7,6 @@ todo_test
 
 # OS
 .DS_Store
+
+# Project-local task store (user-specific mutable state)
+.terminal-todo/
