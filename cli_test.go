@@ -365,6 +365,36 @@ func TestCLI_Dependents(t *testing.T) {
 	assert.Contains(t, string(out), "Task 2")
 }
 
+func TestCLI_LineageReportsRecursiveProgress(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	commands := [][]string{
+		{"add", "Ship objective"},
+		{"decompose", "1", "--into", `{"subtasks":[{"title":"Build"},{"title":"Test"}]}`},
+		{"decompose", "2", "--into", `{"subtasks":[{"title":"Implement core"}]}`},
+		{"done", "4"},
+		{"done", "2"},
+	}
+	for _, args := range commands {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, string(out))
+	}
+
+	cmd := exec.Command(todo, "lineage", "1", "--json")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"schema_version": "1"`)
+	assert.Contains(t, string(out), `"title": "Ship objective"`)
+	assert.Contains(t, string(out), `"title": "Implement core"`)
+	assert.Contains(t, string(out), `"total": 4`)
+	assert.Contains(t, string(out), `"completed": 2`)
+	assert.Contains(t, string(out), `"percent_complete": 50`)
+}
+
 func TestCLI_ExportJSON(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)

@@ -89,3 +89,10 @@ To ensure exclusive execution in distributed inference:
 - **Atomic Decomposition:** Always decompose large tasks before starting execution.
 - **Semantic Tagging:** Use standard capability tags (e.g., `lang:go`, `tool:docker`) to help the allocator.
 - **Context Sharing:** Use the `extra` field to pass findings (e.g., "Found bug in line 42") to the next agent in the DAG.
+
+## 6. Objective Progress (`todo lineage`)
+
+Managers query `todo lineage <id> --json` to receive the root task, every
+recursive descendant in deterministic traversal order, and aggregate counts for
+pending, in-progress, completed, and blocked work. The response uses the same
+versioned task representation as `status` and `cat`.

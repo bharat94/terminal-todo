@@ -80,6 +80,7 @@ If you are an AI agent, `todo` is your coordination layer.
 | `todo add "..."` | Adds a task (`--priority 0..1`, `--caps go,testing`). |
 | `todo status` | Shows your task list. |
 | `todo next` | Shows tasks that are ready to be worked on. |
+| `todo lineage <id>` | Shows recursive decomposition and progress. |
 | `todo done <id>` | Marks a task as finished. |
 | `todo rm <id>` | Removes a task entirely. |
 | `todo prune` | Cleans up and removes all finished tasks. |
