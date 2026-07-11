@@ -15,18 +15,15 @@ func cmdInit(args []string) {
 		fmt.Println("Already initialized .terminal-todo/ in", projectRoot)
 		return
 	} else if !os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "Error checking existing store: %v\n", err)
-		os.Exit(1)
+		fail(ErrStoreCorrupted, "checking existing store: %v", err)
 	}
 	if err := os.MkdirAll(ttDir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating directory: %v\n", err)
-		os.Exit(1)
+		fail(ErrStoreCorrupted, "creating directory: %v", err)
 	}
 
 	s := store.NewTaskStore()
 	if err := s.Save(storePath); err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating tasks.bin: %v\n", err)
-		os.Exit(1)
+		fail(ErrStoreCorrupted, "creating tasks.bin: %v", err)
 	}
 
 	fmt.Println("Initialized .terminal-todo/ in", projectRoot)

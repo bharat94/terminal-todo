@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -34,8 +33,7 @@ func watchTask(id uint64, interval time.Duration) {
 		s := loadStore()
 		task, ok := s.GetTask(id)
 		if !ok {
-			fmt.Fprintf(os.Stderr, "Task %d not found\n", id)
-			os.Exit(1)
+			fail(ErrTaskNotFound, "Task %d not found", id)
 		}
 
 		statusStr := statusName(task.Status)

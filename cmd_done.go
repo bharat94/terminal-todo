@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"terminal-todo/dag"
 	"terminal-todo/store"
 	"time"
@@ -11,8 +10,7 @@ import (
 func cmdDone(args []string) {
 	ids := parseIDs(args)
 	if len(ids) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: task ID required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "task ID required")
 	}
 	owner := optionValue(args, "--as")
 	preflight := loadStore()

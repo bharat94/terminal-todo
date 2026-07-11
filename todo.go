@@ -122,6 +122,8 @@ func main() {
 		cmdConfig(args)
 	case "link":
 		cmdLink(args)
+	case "unlink":
+		cmdUnlink(args)
 	case "--version", "-v":
 		fmt.Printf("todo v%s\n", version)
 	case "help", "--help", "-h":
@@ -135,44 +137,46 @@ func printUsage() {
 	fmt.Printf("todo v%s - Distributed Multi-Agent Task Orchestration\n\n", version)
 	fmt.Print(`Usage: todo <command> [options]
 
-Commands:
+Task Management:
   init                Initialize .terminal-todo/ in current directory
-  add "<title>"       Add a new task (--priority 0..1, --caps go,testing)
-  add "<title>" --after <id> Add task with dependency
+  add "<title>"       Add a new task (--priority, --caps, --tag, --after)
   done <id>           Mark complete (--as owner for claimed tasks)
-  status              Show all tasks
-  status --json       Show all tasks in JSON format
-  status --all        Aggregate local and linked projects
-  status --as <owner> Filter tasks by owner
-  status --tag <tag>  Filter tasks by tag
+  status              Show all tasks (--json, --all, --as, --tag)
   cat <id>            Show task details
   rm <id>             Remove a task
+  update <id>         Update metadata (--set, --title, --priority, --caps)
+  log <id>            Append to task audit trail (--msg, --as)
+  next                Show tasks ready to work (--json, --capabilities)
+  search <query>      Search tasks by title or tag
+
+Agent Operations:
+  claim <id> --as <n> Secure an exclusive execution lease (--ttl)
+  release <id> --as <n> Yield an owned lease back to the pool (--error)
+  my --as <owner>     Show tasks claimed by you
+  block <id>          Mark a task as blocked (--reason, --as)
+  unblock <id>        Unblock a task (--as)
+
+DAG & Dependency:
   depends <id>        Show what this task depends on
   dependents <id>     Show tasks that depend on this
-  next                Show tasks ready to work
-  next --json         Show ready tasks in JSON format
-  claim <id> --as <n> Secure an exclusive execution lease
-  release <id> --as <n> Yield an owned lease back to the pool
-  decompose <id> --into <json> Split a task into sub-tasks
-  lineage <id>        Show an objective's recursive decomposition
-  update <id>         Update metadata/context (--set key=value)
-  log <id> --msg <text> --as <n> Append to task audit trail
-  block <id> --reason <text> Mark a task as blocked
-  unblock <id>        Unblock a task
-  my --as <owner>     Show tasks claimed by you
-  watch [<id>]        Live-refresh task dashboard or single task
-  events [<since>]    Show the event log
+  decompose <id>      Split a task into sub-tasks (--into, --as)
+  lineage <id>        Show recursive decomposition tree (--json)
+  what-if <id>        Simulate completing/blocking a task
   graph [--dot]       Visualize the DAG topology (DOT/JSON/text)
-  what-if <id>        Simulate completing a task to see impact
+
+Reactivity:
+  watch [<id>]        Live-refresh task dashboard (--poll)
+  events [<since>]    Show the event log (--json)
+
+Project:
   config [key=value]  View or set project configuration
-  search <query>      Search tasks by title or tag
-  backup [--output <path>] Snapshot the task store
-  restore <path>     Restore tasks from a backup
-  doctor [--fix]      Diagnose project health and repair issues
-  link <alias> <path> Register a repository for remote dependencies
-  export              Export tasks to JSON
-  export --markdown  Export tasks to Markdown
+  export              Export tasks (--markdown)
   prune               Remove all completed tasks
+  backup [--output]   Snapshot the task store
+  restore <path>      Restore tasks from a backup
+  doctor [--fix]      Diagnose project health and repair issues
+  link <alias> <path> Register a linked repository
+  unlink <alias>      Remove a linked repository alias
   help                Show this help
 
 Examples:
@@ -215,6 +219,7 @@ func parseIDs(args []string) []uint64 {
 		"--into": true, "--title": true, "--set": true,
 		"--reason": true, "--msg": true, "--tag": true,
 		"--add-dep": true, "--remove-dep": true,
+		"--error": true, "--poll": true, "--output": true,
 	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -250,19 +255,24 @@ func validateCommandArgs(command string, args []string) error {
 		"my":        {"--as": true},
 	}
 	booleanFlags := map[string]map[string]bool{
-		"cat":     {"--json": true},
-		"status":  {"--json": true, "--all": true},
-		"next":    {"--json": true, "--ready": true},
-		"lineage": {"--json": true},
-		"update":  {"--json": true},
-		"export":  {"--markdown": true},
+		"cat":      {"--json": true},
+		"status":   {"--json": true, "--all": true},
+		"next":     {"--json": true, "--ready": true},
+		"lineage":  {"--json": true},
+		"update":   {"--json": true},
+		"export":   {"--markdown": true},
+		"graph":    {"--dot": true, "--json": true},
+		"events":   {"--json": true},
+		"doctor":   {"--fix": true},
+		"what-if":  {"--done": true, "--claim": true, "--block": true},
+		"whatif":   {"--done": true, "--claim": true, "--block": true},
 	}
 	knownCommands := map[string]bool{
 		"init": true, "add": true, "done": true, "status": true,
 		"cat": true, "rm": true, "depends": true, "dependents": true,
 		"next": true, "export": true, "prune": true, "claim": true,
 		"release": true, "decompose": true, "lineage": true, "update": true,
-		"config": true, "link": true, "block": true, "unblock": true,
+		"config": true, "link": true, "unlink": true, "block": true, "unblock": true,
 		"log": true, "search": true, "doctor": true, "backup": true,
 		"restore": true, "what-if": true, "whatif": true, "events": true,
 		"watch": true, "my": true, "graph": true,
@@ -327,7 +337,7 @@ func extractTitle(args []string) string {
 			skipNext = false
 			continue
 		}
-		if arg == "--after" || arg == "--as" || arg == "--ttl" || arg == "--capabilities" || arg == "--caps" || arg == "--priority" || arg == "--into" || arg == "--reason" || arg == "--msg" || arg == "--tag" || arg == "--add-dep" || arg == "--remove-dep" {
+		if arg == "--after" || arg == "--as" || arg == "--ttl" || arg == "--capabilities" || arg == "--caps" || arg == "--priority" || arg == "--into" || arg == "--reason" || arg == "--msg" || arg == "--tag" || arg == "--add-dep" || arg == "--remove-dep" || arg == "--set" || arg == "--output" || arg == "--error" || arg == "--poll" {
 			skipNext = true
 			continue
 		}

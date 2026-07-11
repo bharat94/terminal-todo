@@ -2,21 +2,18 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"terminal-todo/store"
 )
 
 func cmdLog(args []string) {
 	ids := parseIDs(args)
 	if len(ids) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: task ID required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "task ID required")
 	}
 
 	message := optionValue(args, "--msg")
 	if message == "" {
-		fmt.Fprintln(os.Stderr, "Error: --msg <text> is required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "--msg <text> is required")
 	}
 
 	owner := optionValue(args, "--as")

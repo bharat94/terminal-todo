@@ -10,33 +10,27 @@ import (
 
 func cmdLink(args []string) {
 	if len(args) != 2 {
-		fmt.Fprintln(os.Stderr, "Error: usage: todo link <alias> <project-path>")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "usage: todo link <alias> <project-path>")
 	}
 	alias := args[0]
 	if alias == "local" {
-		fmt.Fprintln(os.Stderr, "Error: repository alias local is reserved")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "repository alias local is reserved")
 	}
 	if _, _, err := dag.ParseTaskURI(fmt.Sprintf("todo://%s/1", alias)); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		fail(ErrInvalidArgs, "%v", err)
 	}
 
 	target, err := filepath.Abs(args[1])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error resolving repository path: %v\n", err)
-		os.Exit(1)
+		fail(ErrInvalidArgs, "resolving repository path: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(target, ".terminal-todo", "tasks.bin")); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s is not an initialized todo project\n", target)
-		os.Exit(1)
+		fail(ErrNotInitialized, "%s is not an initialized todo project", target)
 	}
 	currentInfo, currentErr := os.Stat(projectRoot)
 	targetInfo, targetErr := os.Stat(target)
 	if currentErr == nil && targetErr == nil && os.SameFile(currentInfo, targetInfo) {
-		fmt.Fprintln(os.Stderr, "Error: cannot link a project to itself")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "cannot link a project to itself")
 	}
 	storedPath := target
 	if relative, err := filepath.Rel(projectRoot, target); err == nil {
@@ -47,8 +41,7 @@ func cmdLink(args []string) {
 		registry.Repositories[alias] = storedPath
 		return nil
 	}); err != nil {
-		fmt.Fprintf(os.Stderr, "Error saving repository registry: %v\n", err)
-		os.Exit(1)
+		fail(ErrStoreCorrupted, "saving repository registry: %v", err)
 	}
 	fmt.Printf("Linked %s to %s\n", alias, storedPath)
 }

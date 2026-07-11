@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 
 	"terminal-todo/store"
 )
@@ -10,14 +9,12 @@ import (
 func cmdBlock(args []string) {
 	ids := parseIDs(args)
 	if len(ids) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: task ID required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "task ID required")
 	}
 
 	reason := optionValue(args, "--reason")
 	if reason == "" {
-		fmt.Fprintln(os.Stderr, "Error: --reason <text> is required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "--reason <text> is required")
 	}
 
 	owner := optionValue(args, "--as")

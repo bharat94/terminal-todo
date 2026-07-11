@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"terminal-todo/dag"
 	"terminal-todo/store"
 	"time"
@@ -11,8 +10,7 @@ import (
 func cmdClaim(args []string) {
 	ids := parseIDs(args)
 	if len(ids) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: task ID required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "task ID required")
 	}
 
 	var owner string
@@ -25,16 +23,14 @@ func cmdClaim(args []string) {
 		if arg == "--ttl" && i+1 < len(args) {
 			t, err := time.ParseDuration(args[i+1])
 			if err != nil || t <= 0 {
-				fmt.Fprintln(os.Stderr, "Error: --ttl must be a positive duration")
-				os.Exit(1)
+				fail(ErrInvalidArgs, "--ttl must be a positive duration")
 			}
 			ttl = t
 		}
 	}
 
 	if owner == "" {
-		fmt.Fprintln(os.Stderr, "Error: --as <owner> is required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "--as <owner> is required")
 	}
 
 	id := ids[0]

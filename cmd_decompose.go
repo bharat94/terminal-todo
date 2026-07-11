@@ -3,8 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
+	"terminal-todo/dag"
 	"terminal-todo/store"
 )
 
@@ -18,8 +18,7 @@ type DecomposePayload struct {
 func cmdDecompose(args []string) {
 	ids := parseIDs(args)
 	if len(ids) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: task ID required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "task ID required")
 	}
 
 	var payloadStr string
@@ -31,27 +30,24 @@ func cmdDecompose(args []string) {
 	}
 
 	if payloadStr == "" {
-		fmt.Fprintln(os.Stderr, "Error: --into <json> is required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "--into <json> is required")
 	}
 
 	var payload DecomposePayload
 	if err := json.Unmarshal([]byte(payloadStr), &payload); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: invalid JSON: %v\n", err)
-		os.Exit(1)
+		fail(ErrInvalidArgs, "invalid JSON: %v", err)
 	}
 	if len(payload.Subtasks) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: at least one subtask is required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "at least one subtask is required")
 	}
 	for _, sub := range payload.Subtasks {
 		if strings.TrimSpace(sub.Title) == "" {
-			fmt.Fprintln(os.Stderr, "Error: subtask title is required")
-			os.Exit(1)
+			fail(ErrInvalidArgs, "subtask title is required")
 		}
 	}
 
 	parentID := ids[0]
+	agent := optionValue(args, "--as")
 	var added []*store.Task
 	updateStore(func(s *store.TaskStore) error {
 		parentTask, ok := s.GetTask(parentID)
@@ -61,6 +57,9 @@ func cmdDecompose(args []string) {
 		if parentTask.Status == store.StatusCompleted {
 			return fmt.Errorf("parent task %d is already completed", parentID)
 		}
+		if parentTask.Owner != "" && parentTask.Owner != agent {
+			return fmt.Errorf("task %d is claimed by %s (use --as %s to decompose)", parentID, parentTask.Owner, parentTask.Owner)
+		}
 		for _, sub := range payload.Subtasks {
 			subTask := s.AddTask(strings.TrimSpace(sub.Title), nil)
 			subTask.Capabilities = sub.Caps
@@ -68,8 +67,17 @@ func cmdDecompose(args []string) {
 			parentTask.Depends = append(parentTask.Depends, fmt.Sprintf("todo://local/%d", subTask.ID))
 			added = append(added, subTask)
 		}
+		d := dag.NewDAG()
+		d.BuildFromTasks(s.Tasks)
+		if err := d.DetectCycle(parentTask.Depends, parentID); err != nil {
+			return fmt.Errorf("decompose would create a cycle: %w", err)
+		}
 		parentTask.Status = store.StatusPending
-		parentTask.Owner = ""
+		if agent != "" {
+			parentTask.Owner = agent
+		} else {
+			parentTask.Owner = ""
+		}
 		parentTask.LeaseExpires = 0
 		s.AddEvent(store.EventTaskDecomposed, parentID, "", map[string]string{"count": fmt.Sprintf("%d", len(payload.Subtasks))})
 		return nil

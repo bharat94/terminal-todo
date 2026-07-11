@@ -2,22 +2,19 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"terminal-todo/dag"
 )
 
 func cmdDepends(args []string) {
 	ids := parseIDs(args)
 	if len(ids) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: task ID required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "task ID required")
 	}
 
 	s := loadStore()
 	task, ok := s.GetTask(ids[0])
 	if !ok {
-		fmt.Fprintf(os.Stderr, "Error: task %d not found\n", ids[0])
-		os.Exit(1)
+		fail(ErrTaskNotFound, "task %d not found", ids[0])
 	}
 
 	if len(task.Depends) == 0 {

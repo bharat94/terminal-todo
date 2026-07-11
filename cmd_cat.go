@@ -3,29 +3,25 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"terminal-todo/store"
 )
 
 func cmdCat(args []string) {
 	ids := parseIDs(args)
 	if len(ids) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: task ID required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "task ID required")
 	}
 
 	s := loadStore()
 	task, ok := s.GetTask(ids[0])
 	if !ok {
-		fmt.Fprintf(os.Stderr, "Error: task %d not found\n", ids[0])
-		os.Exit(1)
+		fail(ErrTaskNotFound, "task %d not found", ids[0])
 	}
 
 	if hasFlag(args, "--json") {
 		output, err := json.MarshalIndent(taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(task)}, "", "  ")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-			os.Exit(1)
+			fail(ErrStoreCorrupted, "Error encoding JSON: %v", err)
 		}
 		fmt.Println(string(output))
 		return

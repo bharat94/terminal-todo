@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"time"
 
@@ -12,8 +11,7 @@ import (
 func cmdMy(args []string) {
 	owner := optionValue(args, "--as")
 	if owner == "" {
-		fmt.Fprintln(os.Stderr, "Error: --as <agent-name> is required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "--as <agent-name> is required")
 	}
 
 	s := loadStore()

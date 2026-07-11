@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 
 	"terminal-todo/store"
@@ -28,15 +27,13 @@ type lineageEnvelope struct {
 func cmdLineage(args []string) {
 	ids := parseIDs(args)
 	if len(ids) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: task ID required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "task ID required")
 	}
 
 	s := loadStore()
 	root, ok := s.GetTask(ids[0])
 	if !ok {
-		fmt.Fprintf(os.Stderr, "Error: task %d not found\n", ids[0])
-		os.Exit(1)
+		fail(ErrTaskNotFound, "task %d not found", ids[0])
 	}
 	descendants := lineageDescendants(root.ID, s.Tasks)
 	progress := calculateLineageProgress(append([]*store.Task{root}, descendants...))
@@ -53,8 +50,7 @@ func cmdLineage(args []string) {
 			Progress:      progress,
 		}, "", "  ")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-			os.Exit(1)
+			fail(ErrStoreCorrupted, "Error encoding JSON: %v", err)
 		}
 		fmt.Println(string(output))
 		return

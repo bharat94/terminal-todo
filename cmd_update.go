@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -14,8 +13,7 @@ import (
 func cmdUpdate(args []string) {
 	ids := parseIDs(args)
 	if len(ids) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: task ID required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "task ID required")
 	}
 
 	title, hasTitle := optionalValue(args, "--title")
@@ -24,22 +22,19 @@ func cmdUpdate(args []string) {
 	owner := optionValue(args, "--as")
 	extra, err := parseExtraUpdates(args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		fail(ErrInvalidArgs, "%v", err)
 	}
 
 	addDeps := parseRepeatedValues(args, "--add-dep")
 	removeDeps := parseRepeatedValues(args, "--remove-dep")
 
 	if !hasTitle && !hasPriority && !hasCapabilities && len(extra) == 0 && len(addDeps) == 0 && len(removeDeps) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: provide --title, --priority, --caps, --set, --add-dep, or --remove-dep")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "provide --title, --priority, --caps, --set, --add-dep, or --remove-dep")
 	}
 	if hasTitle {
 		title = strings.TrimSpace(title)
 		if title == "" {
-			fmt.Fprintln(os.Stderr, "Error: --title cannot be empty")
-			os.Exit(1)
+			fail(ErrInvalidArgs, "--title cannot be empty")
 		}
 	}
 
@@ -47,8 +42,7 @@ func cmdUpdate(args []string) {
 	if hasPriority {
 		priority, err = strconv.ParseFloat(priorityValue, 32)
 		if err != nil || priority < 0 || priority > 1 {
-			fmt.Fprintln(os.Stderr, "Error: --priority must be between 0 and 1")
-			os.Exit(1)
+			fail(ErrInvalidArgs, "--priority must be between 0 and 1")
 		}
 	}
 	var capabilities []string
@@ -151,8 +145,7 @@ func cmdUpdate(args []string) {
 	if hasFlag(args, "--json") {
 		output, err := json.MarshalIndent(taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(updated)}, "", "  ")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-			os.Exit(1)
+			fail(ErrStoreCorrupted, "Error encoding JSON: %v", err)
 		}
 		fmt.Println(string(output))
 		return

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"terminal-todo/store"
@@ -11,8 +10,7 @@ import (
 func cmdSearch(args []string) {
 	query := strings.Join(args, " ")
 	if query == "" {
-		fmt.Fprintln(os.Stderr, "Error: search query required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "search query required")
 	}
 
 	s := loadStore()

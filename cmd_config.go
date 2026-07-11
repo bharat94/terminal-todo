@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -48,8 +47,7 @@ func cmdConfig(args []string) {
 		}
 		return nil
 	}); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		fail(ErrInvalidArgs, "%v", err)
 	}
 
 	for _, arg := range args {
@@ -60,8 +58,7 @@ func cmdConfig(args []string) {
 func showConfig() {
 	cfg, err := loadConfig()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
-		os.Exit(1)
+		fail(ErrStoreCorrupted, "loading config: %v", err)
 	}
 	fmt.Printf("default_ttl       = %s\n", cfg.DefaultTTL)
 	fmt.Printf("default_priority  = %.2f\n", cfg.DefaultPriority)
@@ -71,8 +68,7 @@ func showConfig() {
 func showConfigValue(key string) {
 	cfg, err := loadConfig()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
-		os.Exit(1)
+		fail(ErrStoreCorrupted, "loading config: %v", err)
 	}
 	switch key {
 	case "default_ttl":
@@ -82,7 +78,6 @@ func showConfigValue(key string) {
 	case "default_caps":
 		fmt.Println(cfg.DefaultCapCaps)
 	default:
-		fmt.Fprintf(os.Stderr, "Error: unknown config key %q\n", key)
-		os.Exit(1)
+		fail(ErrInvalidArgs, "unknown config key %q", key)
 	}
 }

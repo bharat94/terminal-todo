@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -48,8 +47,7 @@ func cmdStatus(args []string) {
 		}
 		output, err := json.MarshalIndent(tasksEnvelope{SchemaVersion: protocolVersion, Tasks: protocolTasks}, "", "  ")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-			os.Exit(1)
+			fail(ErrStoreCorrupted, "Error encoding JSON: %v", err)
 		}
 		fmt.Println(string(output))
 		return
@@ -99,6 +97,23 @@ func cmdStatus(args []string) {
 			colored[i] = colorGray + tag + colorReset
 		}
 		return " [" + strings.Join(colored, " ") + "]"
+	}
+
+	total := 0
+	summary := ""
+	for _, st := range []store.TaskStatus{store.StatusInProgress, store.StatusPending, store.StatusBlocked, store.StatusCompleted} {
+		count := len(grouped[st])
+		total += count
+		if count > 0 {
+			label := statusName(st)
+			if summary != "" {
+				summary += ", "
+			}
+			summary += fmt.Sprintf("%d %s", count, label)
+		}
+	}
+	if total > 0 {
+		fmt.Printf("%sTasks: %s%s\n\n", colorCyan, summary, colorReset)
 	}
 
 	if len(grouped[store.StatusInProgress]) > 0 {
@@ -153,8 +168,7 @@ func cmdStatusAll(args []string) {
 	projects := []projectStatus{projectStatusFromStore("local", ".", loadStore())}
 	registry, err := loadRepositoryRegistry()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading repository registry: %v\n", err)
-		os.Exit(1)
+		fail(ErrStoreCorrupted, "loading repository registry: %v", err)
 	}
 	aliases := make([]string, 0, len(registry.Repositories))
 	for alias := range registry.Repositories {
@@ -178,8 +192,7 @@ func cmdStatusAll(args []string) {
 	if hasFlag(args, "--json") {
 		output, err := json.MarshalIndent(projectsEnvelope{SchemaVersion: protocolVersion, Projects: projects}, "", "  ")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-			os.Exit(1)
+			fail(ErrStoreCorrupted, "Error encoding JSON: %v", err)
 		}
 		fmt.Println(string(output))
 		return

@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"terminal-todo/dag"
@@ -61,8 +60,7 @@ func cmdNext(args []string) {
 			BlockedSummary: newBlockedSummaryWithResolver(s.Tasks, resolver),
 		}, "", "  ")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-			os.Exit(1)
+			fail(ErrStoreCorrupted, "Error encoding JSON: %v", err)
 		}
 		fmt.Println(string(output))
 		return

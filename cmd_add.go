@@ -11,8 +11,7 @@ import (
 func cmdAdd(args []string) {
 	title := extractTitle(args)
 	if title == "" {
-		fmt.Fprintln(os.Stderr, "Error: title is required")
-		os.Exit(1)
+		fail(ErrInvalidArgs, "title is required")
 	}
 
 	afterIDs := extractAfterIDs(args)
@@ -24,32 +23,31 @@ func cmdAdd(args []string) {
 		switch arg {
 		case "--priority":
 			if i+1 >= len(args) {
-				fmt.Fprintln(os.Stderr, "Error: --priority requires a value")
-				os.Exit(1)
+				fail(ErrInvalidArgs, "--priority requires a value")
 			}
 			value, err := strconv.ParseFloat(args[i+1], 32)
 			if err != nil || value < 0 || value > 1 {
-				fmt.Fprintln(os.Stderr, "Error: --priority must be between 0 and 1")
-				os.Exit(1)
+				fail(ErrInvalidArgs, "--priority must be between 0 and 1")
 			}
 			priority = value
 			hasPriority = true
 		case "--caps":
 			if i+1 >= len(args) {
-				fmt.Fprintln(os.Stderr, "Error: --caps requires a comma-separated value")
-				os.Exit(1)
+				fail(ErrInvalidArgs, "--caps requires a comma-separated value")
 			}
 			capabilities = normalizeCapabilities(args[i+1])
 		case "--tag":
 			if i+1 >= len(args) {
-				fmt.Fprintln(os.Stderr, "Error: --tag requires a comma-separated value")
-				os.Exit(1)
+				fail(ErrInvalidArgs, "--tag requires a comma-separated value")
 			}
 			tags = normalizeCapabilities(args[i+1])
 		}
 	}
 
-	cfg, _ := loadConfig()
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not load config: %v\n", err)
+	}
 	if !hasPriority && cfg != nil {
 		priority = float64(cfg.DefaultPriority)
 	}
