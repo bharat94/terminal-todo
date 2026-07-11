@@ -69,6 +69,7 @@ func cmdClaim(args []string) {
 		task.Status = store.StatusInProgress
 		task.LeaseExpires = now + uint64(ttl.Milliseconds())
 		s.AddLog(id, owner, "claimed")
+		s.AddEvent(store.EventTaskClaimed, id, owner, map[string]string{"ttl": ttl.String()})
 		return nil
 	})
 

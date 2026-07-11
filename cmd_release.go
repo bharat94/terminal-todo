@@ -30,12 +30,15 @@ func cmdRelease(args []string) {
 			}
 			task.Status = store.StatusPending
 			task.RetryCount++
+			data := map[string]string{}
 			if errorMsg != "" {
 				task.LastError = errorMsg
+				data["error"] = errorMsg
 				s.AddLog(id, owner, fmt.Sprintf("released with error: %s", errorMsg))
 			} else {
 				s.AddLog(id, owner, "released")
 			}
+			s.AddEvent(store.EventTaskReleased, id, owner, data)
 			task.Owner = ""
 			task.LeaseExpires = 0
 		}

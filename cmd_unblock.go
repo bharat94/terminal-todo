@@ -29,6 +29,7 @@ func cmdUnblock(args []string) {
 		}
 		task.Status = store.StatusPending
 		s.AddLog(ids[0], owner, "unblocked")
+		s.AddEvent(store.EventTaskUnblocked, ids[0], owner, nil)
 		return nil
 	})
 

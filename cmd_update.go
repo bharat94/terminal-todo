@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"terminal-todo/dag"
 	"terminal-todo/store"
 )
 
@@ -26,8 +27,12 @@ func cmdUpdate(args []string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	if !hasTitle && !hasPriority && !hasCapabilities && len(extra) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: provide --title, --priority, --caps, or --set")
+
+	addDeps := parseRepeatedValues(args, "--add-dep")
+	removeDeps := parseRepeatedValues(args, "--remove-dep")
+
+	if !hasTitle && !hasPriority && !hasCapabilities && len(extra) == 0 && len(addDeps) == 0 && len(removeDeps) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: provide --title, --priority, --caps, --set, --add-dep, or --remove-dep")
 		os.Exit(1)
 	}
 	if hasTitle {
@@ -60,6 +65,66 @@ func cmdUpdate(args []string) {
 		if task.Owner != "" && task.Owner != owner {
 			return fmt.Errorf("task %d is claimed by %s; use --as %s", task.ID, task.Owner, task.Owner)
 		}
+
+		// Apply dependency mutations with cycle validation
+		if len(addDeps) > 0 || len(removeDeps) > 0 {
+			d := dag.NewDAG()
+			d.BuildFromTasks(s.Tasks)
+
+			// Build new dependency list
+			depSet := make(map[string]bool)
+			for _, dep := range task.Depends {
+				depSet[dep] = true
+			}
+			for _, dep := range removeDeps {
+				delete(depSet, dep)
+			}
+			for _, dep := range addDeps {
+				if depSet[dep] {
+					continue
+				}
+				// Validate the new dependency
+				depID, local := dag.ParseLocalID(dep)
+				if local {
+					if _, ok := s.Tasks[depID]; !ok {
+						return fmt.Errorf("dependency task %d not found", depID)
+					}
+				} else {
+					if _, _, err := dag.ParseTaskURI(dep); err != nil {
+						return err
+					}
+				}
+				depSet[dep] = true
+			}
+
+			// Build new deps and detect cycles
+			newDeps := make([]string, 0, len(depSet))
+			for dep := range depSet {
+				newDeps = append(newDeps, dep)
+			}
+			if err := d.DetectCycle(newDeps, task.ID); err != nil {
+				return fmt.Errorf("cannot update dependencies: %w", err)
+			}
+
+			// Track added/removed for events
+			oldSet := make(map[string]bool)
+			for _, dep := range task.Depends {
+				oldSet[dep] = true
+			}
+			for _, dep := range newDeps {
+				if !oldSet[dep] {
+					s.AddEvent(store.EventDependencyAdded, task.ID, owner, map[string]string{"dep": dep})
+				}
+			}
+			for _, dep := range task.Depends {
+				if !depSet[dep] {
+					s.AddEvent(store.EventDependencyRemoved, task.ID, owner, map[string]string{"dep": dep})
+				}
+			}
+
+			task.Depends = newDeps
+		}
+
 		if hasTitle {
 			task.Title = title
 		}
@@ -75,6 +140,10 @@ func cmdUpdate(args []string) {
 		for key, value := range extra {
 			task.Extra[key] = value
 		}
+		if hasTitle || hasPriority || hasCapabilities || len(extra) > 0 {
+			s.AddEvent(store.EventTaskUpdated, task.ID, owner, nil)
+		}
+
 		updated = task
 		return nil
 	})
@@ -89,6 +158,16 @@ func cmdUpdate(args []string) {
 		return
 	}
 	fmt.Printf("Updated task %d: %s\n", updated.ID, updated.Title)
+}
+
+func parseRepeatedValues(args []string, flag string) []string {
+	var values []string
+	for i, arg := range args {
+		if arg == flag && i+1 < len(args) {
+			values = append(values, args[i+1])
+		}
+	}
+	return values
 }
 
 func optionalValue(args []string, option string) (string, bool) {

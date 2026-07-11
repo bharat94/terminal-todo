@@ -100,6 +100,16 @@ func main() {
 		cmdUnblock(args)
 	case "log":
 		cmdLog(args)
+	case "what-if", "whatif":
+		cmdWhatIf(args)
+	case "events":
+		cmdEvents(args)
+	case "watch":
+		cmdWatch(args)
+	case "my":
+		cmdMy(args)
+	case "graph":
+		cmdGraph(args)
 	case "search":
 		cmdSearch(args)
 	case "backup":
@@ -147,6 +157,11 @@ Commands:
   log <id> --msg <text> --as <n> Append to task audit trail
   block <id> --reason <text> Mark a task as blocked
   unblock <id>        Unblock a task
+  my --as <owner>     Show tasks claimed by you
+  watch [<id>]        Live-refresh task dashboard or single task
+  events [<since>]    Show the event log
+  graph [--dot]       Visualize the DAG topology (DOT/JSON/text)
+  what-if <id>        Simulate completing a task to see impact
   config [key=value]  View or set project configuration
   search <query>      Search tasks by title or tag
   backup [--output <path>] Snapshot the task store
@@ -197,6 +212,7 @@ func parseIDs(args []string) []uint64 {
 		"--capabilities": true, "--caps": true, "--priority": true,
 		"--into": true, "--title": true, "--set": true,
 		"--reason": true, "--msg": true, "--tag": true,
+		"--add-dep": true, "--remove-dep": true,
 	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -226,8 +242,10 @@ func validateCommandArgs(command string, args []string) error {
 		"next":      {"--capabilities": true},
 		"release":   {"--as": true, "--error": true},
 		"unblock":   {"--as": true},
-		"update":    {"--title": true, "--priority": true, "--caps": true, "--set": true, "--as": true},
-		"status":    {"--tag": true},
+		"update":    {"--title": true, "--priority": true, "--caps": true, "--set": true, "--as": true, "--add-dep": true, "--remove-dep": true},
+		"status":    {"--tag": true, "--as": true},
+		"watch":     {"--poll": true},
+		"my":        {"--as": true},
 	}
 	booleanFlags := map[string]map[string]bool{
 		"cat":     {"--json": true},
@@ -242,7 +260,10 @@ func validateCommandArgs(command string, args []string) error {
 		"cat": true, "rm": true, "depends": true, "dependents": true,
 		"next": true, "export": true, "prune": true, "claim": true,
 		"release": true, "decompose": true, "lineage": true, "update": true,
-		"config": true, "link": true, "block": true, "unblock": true, "log": true, "search": true, "doctor": true, "backup": true, "restore": true,
+		"config": true, "link": true, "block": true, "unblock": true,
+		"log": true, "search": true, "doctor": true, "backup": true,
+		"restore": true, "what-if": true, "whatif": true, "events": true,
+		"watch": true, "my": true, "graph": true,
 	}
 	if !knownCommands[command] {
 		return nil
@@ -304,7 +325,7 @@ func extractTitle(args []string) string {
 			skipNext = false
 			continue
 		}
-		if arg == "--after" || arg == "--as" || arg == "--ttl" || arg == "--capabilities" || arg == "--caps" || arg == "--priority" || arg == "--into" || arg == "--reason" || arg == "--msg" || arg == "--tag" {
+		if arg == "--after" || arg == "--as" || arg == "--ttl" || arg == "--capabilities" || arg == "--caps" || arg == "--priority" || arg == "--into" || arg == "--reason" || arg == "--msg" || arg == "--tag" || arg == "--add-dep" || arg == "--remove-dep" {
 			skipNext = true
 			continue
 		}

@@ -21,6 +21,31 @@ const (
 	StatusBlocked
 )
 
+type EventType string
+
+const (
+	EventTaskCreated    EventType = "created"
+	EventTaskCompleted  EventType = "completed"
+	EventTaskClaimed    EventType = "claimed"
+	EventTaskReleased   EventType = "released"
+	EventTaskBlocked    EventType = "blocked"
+	EventTaskUnblocked  EventType = "unblocked"
+	EventTaskUpdated    EventType = "updated"
+	EventTaskDecomposed EventType = "decomposed"
+	EventTaskRemoved    EventType = "removed"
+	EventDependencyAdded   EventType = "dep_added"
+	EventDependencyRemoved EventType = "dep_removed"
+)
+
+type Event struct {
+	ID        uint64            `msgpack:"id" json:"id"`
+	Timestamp uint64            `msgpack:"ts" json:"timestamp"`
+	Type      EventType         `msgpack:"type" json:"type"`
+	TaskID    uint64            `msgpack:"task_id" json:"task_id"`
+	Actor     string            `msgpack:"actor" json:"actor"`
+	Data      map[string]string `msgpack:"data" json:"data"`
+}
+
 type LogEntry struct {
 	Timestamp uint64 `msgpack:"ts" json:"timestamp"`
 	Agent     string `msgpack:"agent" json:"agent"`
@@ -46,20 +71,20 @@ type Task struct {
 	Extra        map[string]string `msgpack:"extra" json:"extra"`
 }
 
-const CurrentSchemaVersion uint32 = 1
+const CurrentSchemaVersion uint32 = 2
 
 type TaskStore struct {
 	SchemaVersion uint32           `msgpack:"schema_version"`
 	Tasks         map[uint64]*Task `msgpack:"tasks"`
 	NextID        uint64           `msgpack:"next_id"`
 	LastModified  uint64           `msgpack:"last_modified"`
+	NextEventID   uint64           `msgpack:"next_event_id"`
+	Events        []Event          `msgpack:"events"`
 }
 
 type migrationFunc func(*TaskStore) error
 
 var migrations = map[uint32]migrationFunc{
-	// Migration 0→1: no-op. Fields Tags, RetryCount, LastError, Log
-	// default to zero values when an old store without them is loaded.
 	0: func(s *TaskStore) error {
 		if s.Tasks == nil {
 			s.Tasks = make(map[uint64]*Task)
@@ -76,6 +101,14 @@ var migrations = map[uint32]migrationFunc{
 			}
 		}
 		s.SchemaVersion = 1
+		return nil
+	},
+	1: func(s *TaskStore) error {
+		if s.Events == nil {
+			s.Events = []Event{}
+		}
+		s.NextEventID = 1
+		s.SchemaVersion = 2
 		return nil
 	},
 }
@@ -98,6 +131,8 @@ func NewTaskStore() *TaskStore {
 		SchemaVersion: CurrentSchemaVersion,
 		Tasks:         make(map[uint64]*Task),
 		NextID:        1,
+		NextEventID:   1,
+		Events:        make([]Event, 0),
 	}
 }
 
@@ -130,6 +165,40 @@ func (s *TaskStore) GetTask(id uint64) (*Task, bool) {
 		task.LeaseExpires = 0
 	}
 	return task, true
+}
+
+func (s *TaskStore) AddEvent(eventType EventType, taskID uint64, actor string, data map[string]string) *Event {
+	if data == nil {
+		data = map[string]string{}
+	}
+	event := &Event{
+		ID:        s.NextEventID,
+		Timestamp: uint64(time.Now().UnixMilli()),
+		Type:      eventType,
+		TaskID:    taskID,
+		Actor:     actor,
+		Data:      data,
+	}
+	s.Events = append(s.Events, *event)
+	s.NextEventID++
+	s.LastModified = uint64(time.Now().UnixMilli())
+	return event
+}
+
+func (s *TaskStore) EventsSince(id uint64) []Event {
+	if id == 0 {
+		result := make([]Event, len(s.Events))
+		copy(result, s.Events)
+		return result
+	}
+	for i, e := range s.Events {
+		if e.ID > id {
+			result := make([]Event, len(s.Events)-i)
+			copy(result, s.Events[i:])
+			return result
+		}
+	}
+	return []Event{}
 }
 
 func (s *TaskStore) AddLog(id uint64, agent, message string) bool {

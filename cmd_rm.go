@@ -34,6 +34,7 @@ func cmdRm(args []string) {
 			}
 		}
 		for _, id := range ids {
+			s.AddEvent(store.EventTaskRemoved, id, "", nil)
 			s.RemoveTask(id)
 		}
 		return nil

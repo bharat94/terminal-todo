@@ -35,6 +35,7 @@ func cmdBlock(args []string) {
 		}
 		task.Status = store.StatusBlocked
 		s.AddLog(ids[0], owner, fmt.Sprintf("blocked: %s", reason))
+		s.AddEvent(store.EventTaskBlocked, ids[0], owner, map[string]string{"reason": reason})
 		return nil
 	})
 

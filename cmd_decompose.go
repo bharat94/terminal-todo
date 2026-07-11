@@ -71,6 +71,7 @@ func cmdDecompose(args []string) {
 		parentTask.Status = store.StatusPending
 		parentTask.Owner = ""
 		parentTask.LeaseExpires = 0
+		s.AddEvent(store.EventTaskDecomposed, parentID, "", map[string]string{"count": fmt.Sprintf("%d", len(payload.Subtasks))})
 		return nil
 	})
 	fmt.Printf("Decomposing task %d into %d subtasks...\n", parentID, len(payload.Subtasks))

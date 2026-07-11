@@ -84,6 +84,7 @@ func cmdAdd(args []string) {
 		task.Capabilities = capabilities
 		task.Tags = tags
 		taskID = task.ID
+		s.AddEvent(store.EventTaskCreated, task.ID, "", map[string]string{"title": title})
 		return nil
 	})
 
