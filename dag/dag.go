@@ -11,6 +11,8 @@ type DAG struct {
 	adjacency map[uint64][]uint64
 }
 
+type DependencyResolver func(uri string) bool
+
 // ParseTaskURI validates a canonical todo://repository/id reference. Repository
 // aliases may contain letters, digits, dots, underscores, and hyphens.
 func ParseTaskURI(uri string) (string, uint64, error) {
@@ -122,6 +124,10 @@ func (d *DAG) DetectCycle(newDeps []string, newTaskID uint64) error {
 }
 
 func (d *DAG) GetReadyTasks(tasks map[uint64]*store.Task) []*store.Task {
+	return d.GetReadyTasksWithResolver(tasks, nil)
+}
+
+func (d *DAG) GetReadyTasksWithResolver(tasks map[uint64]*store.Task, resolver DependencyResolver) []*store.Task {
 	var ready []*store.Task
 
 	for _, task := range tasks {
@@ -129,7 +135,7 @@ func (d *DAG) GetReadyTasks(tasks map[uint64]*store.Task) []*store.Task {
 			continue
 		}
 
-		if DependenciesComplete(task, tasks) {
+		if DependenciesCompleteWithResolver(task, tasks, resolver) {
 			ready = append(ready, task)
 		}
 	}
@@ -140,10 +146,17 @@ func (d *DAG) GetReadyTasks(tasks map[uint64]*store.Task) []*store.Task {
 // DependenciesComplete reports whether every dependency is a completed local
 // task. Cross-repository dependencies remain blocked until a resolver exists.
 func DependenciesComplete(task *store.Task, tasks map[uint64]*store.Task) bool {
+	return DependenciesCompleteWithResolver(task, tasks, nil)
+}
+
+func DependenciesCompleteWithResolver(task *store.Task, tasks map[uint64]*store.Task, resolver DependencyResolver) bool {
 	for _, depURI := range task.Depends {
 		depID, local := ParseLocalID(depURI)
 		if !local {
-			return false
+			if resolver == nil || !resolver(depURI) {
+				return false
+			}
+			continue
 		}
 		depTask, ok := tasks[depID]
 		if !ok || depTask.Status != store.StatusCompleted {
@@ -154,6 +167,10 @@ func DependenciesComplete(task *store.Task, tasks map[uint64]*store.Task) bool {
 }
 
 func (d *DAG) GetBlockedTasks(tasks map[uint64]*store.Task) map[uint64][]string {
+	return d.GetBlockedTasksWithResolver(tasks, nil)
+}
+
+func (d *DAG) GetBlockedTasksWithResolver(tasks map[uint64]*store.Task, resolver DependencyResolver) map[uint64][]string {
 	blocked := make(map[uint64][]string)
 
 	for _, task := range tasks {
@@ -169,8 +186,9 @@ func (d *DAG) GetBlockedTasks(tasks map[uint64]*store.Task) map[uint64][]string 
 					blocked[task.ID] = append(blocked[task.ID], depURI)
 				}
 			} else {
-				// Cross-repo dependency is always considered blocking for now
-				blocked[task.ID] = append(blocked[task.ID], depURI)
+				if resolver == nil || !resolver(depURI) {
+					blocked[task.ID] = append(blocked[task.ID], depURI)
+				}
 			}
 		}
 	}

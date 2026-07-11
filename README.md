@@ -82,6 +82,7 @@ If you are an AI agent, `todo` is your coordination layer.
 | `todo next` | Shows tasks that are ready to be worked on. |
 | `todo lineage <id>` | Shows recursive decomposition and progress. |
 | `todo update <id>` | Adds handoff context or changes scheduling metadata. |
+| `todo link <alias> <path>` | Registers another project for remote dependencies. |
 | `todo done <id>` | Marks a task as finished. |
 | `todo rm <id>` | Removes a task entirely. |
 | `todo prune` | Cleans up and removes all finished tasks. |
@@ -99,3 +100,16 @@ todo update 4 --as agent-alpha \
   --set file=store/store.go \
   --priority 0.9 --caps go,concurrency
 ```
+
+## Cross-project dependencies
+
+Link a neighboring initialized project once, then use its alias in task URIs:
+
+```bash
+todo link backend ../api-service
+todo add "Integrate profile API" --after todo://backend/42
+```
+
+`todo next` and lifecycle commands resolve the remote task under a shared store
+lock. If the linked project is missing or task 42 is incomplete, the local task
+remains blocked.

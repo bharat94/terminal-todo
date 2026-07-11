@@ -56,10 +56,10 @@ If an agent claims a task and then crashes, the task would remain `In-Progress` 
 - **Agent Heartbeats:** Agents executing long-running tasks (>15m) refresh the
   lease by claiming it again with the same owner and a new `--ttl` value.
 
-## 4. Future: Cross-Repo Consistency
+## 4. Cross-Repo Consistency
 
-Cross-repository URIs are accepted but remain blocked in the current release.
-When repository resolution is implemented, Repo A depending on Repo B will use:
+Linked repositories are resolved lazily when readiness or lifecycle transitions
+are evaluated. Repo A depending on Repo B uses:
 - **Lock Propagation:** When checking the status of `todo://repo-b/50`, the Repo A CLI must acquire a **Shared Lock** on Repo B's `tasks.bin`.
 - **Lazy Validation:** Repo A does not receive push notifications from Repo B. Instead, it re-validates the state of external dependencies only when `todo next` or `todo status` is called in the context of Repo A.
 

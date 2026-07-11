@@ -51,6 +51,18 @@ func TestDAG_GetReadyTasksExcludesNonPendingTasks(t *testing.T) {
 	assert.Equal(t, uint64(1), ready[0].ID)
 }
 
+func TestDAG_GetReadyTasksResolvesRemoteDependencies(t *testing.T) {
+	d := NewDAG()
+	tasks := map[uint64]*store.Task{
+		1: {ID: 1, Status: store.StatusPending, Depends: []string{"todo://backend/9"}},
+	}
+
+	blocked := d.GetReadyTasksWithResolver(tasks, func(string) bool { return false })
+	assert.Empty(t, blocked)
+	ready := d.GetReadyTasksWithResolver(tasks, func(uri string) bool { return uri == "todo://backend/9" })
+	assert.Len(t, ready, 1)
+}
+
 func TestDAG_DetectCycle_NoCycle(t *testing.T) {
 	d := NewDAG()
 	tasks := map[uint64]*store.Task{

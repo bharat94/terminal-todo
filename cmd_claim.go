@@ -38,6 +38,11 @@ func cmdClaim(args []string) {
 	}
 
 	id := ids[0]
+	preflight := loadStore()
+	var resolver dag.DependencyResolver
+	if task, ok := preflight.GetTask(id); ok {
+		resolver = snapshotDependencyResolver([]*store.Task{task})
+	}
 	updateStore(func(s *store.TaskStore) error {
 		task, ok := s.GetTask(id)
 		if !ok {
@@ -49,7 +54,7 @@ func cmdClaim(args []string) {
 		if task.Status == store.StatusBlocked {
 			return fmt.Errorf("task %d is blocked", id)
 		}
-		if !dag.DependenciesComplete(task, s.Tasks) {
+		if !dag.DependenciesCompleteWithResolver(task, s.Tasks, resolver) {
 			return fmt.Errorf("task %d has incomplete dependencies", id)
 		}
 		now := uint64(time.Now().UnixMilli())

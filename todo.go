@@ -93,6 +93,8 @@ func main() {
 		cmdLineage(args)
 	case "update":
 		cmdUpdate(args)
+	case "link":
+		cmdLink(args)
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -123,6 +125,7 @@ Commands:
   decompose <id> --into <json> Split a task into sub-tasks
   lineage <id>        Show an objective's recursive decomposition
   update <id>         Update metadata/context (--set key=value)
+  link <alias> <path> Register a repository for remote dependencies
   export              Export tasks to JSON
   export --markdown  Export tasks to Markdown
   prune               Remove all completed tasks
@@ -209,6 +212,7 @@ func validateCommandArgs(command string, args []string) error {
 		"cat": true, "rm": true, "depends": true, "dependents": true,
 		"next": true, "export": true, "prune": true, "claim": true,
 		"release": true, "decompose": true, "lineage": true, "update": true,
+		"link": true,
 	}
 	if !knownCommands[command] {
 		return nil

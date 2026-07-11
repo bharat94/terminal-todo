@@ -15,7 +15,8 @@ func cmdNext(args []string) {
 	d := dag.NewDAG()
 	d.BuildFromTasks(s.Tasks)
 
-	ready := d.GetReadyTasks(s.Tasks)
+	resolver := dependencyResolver()
+	ready := d.GetReadyTasksWithResolver(s.Tasks, resolver)
 
 	// Filter by capabilities if requested
 	var caps []string
@@ -57,7 +58,7 @@ func cmdNext(args []string) {
 		}
 		output, err := json.MarshalIndent(nextEnvelope{
 			SchemaVersion: protocolVersion, AvailableTasks: available,
-			BlockedSummary: newBlockedSummary(s.Tasks),
+			BlockedSummary: newBlockedSummaryWithResolver(s.Tasks, resolver),
 		}, "", "  ")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)

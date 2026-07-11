@@ -15,6 +15,14 @@ func cmdDone(args []string) {
 		os.Exit(1)
 	}
 	owner := optionValue(args, "--as")
+	preflight := loadStore()
+	remoteTasks := make([]*store.Task, 0, len(ids))
+	for _, id := range ids {
+		if task, ok := preflight.GetTask(id); ok {
+			remoteTasks = append(remoteTasks, task)
+		}
+	}
+	resolver := snapshotDependencyResolver(remoteTasks)
 
 	updateStore(func(s *store.TaskStore) error {
 		for _, id := range ids {
@@ -22,7 +30,7 @@ func cmdDone(args []string) {
 			if !ok {
 				return fmt.Errorf("task %d not found", id)
 			}
-			if !dag.DependenciesComplete(task, s.Tasks) {
+			if !dag.DependenciesCompleteWithResolver(task, s.Tasks, resolver) {
 				return fmt.Errorf("task %d has incomplete dependencies", id)
 			}
 			if task.Owner != "" && task.Owner != owner {

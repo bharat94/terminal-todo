@@ -437,6 +437,62 @@ func TestCLI_LineageReportsRecursiveProgress(t *testing.T) {
 	assert.Contains(t, string(out), `"percent_complete": 50`)
 }
 
+func TestCLI_LinkResolvesCrossRepositoryDependency(t *testing.T) {
+	todo := buildTodo(t)
+	frontend := t.TempDir()
+	backend := t.TempDir()
+	for _, project := range []string{frontend, backend} {
+		cmd := exec.Command(todo, "init")
+		cmd.Dir = project
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, string(out))
+	}
+
+	cmd := exec.Command(todo, "add", "Backend API")
+	cmd.Dir = backend
+	assert.NoError(t, cmd.Run())
+	cmd = exec.Command(todo, "link", "backend", backend)
+	cmd.Dir = frontend
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	cmd = exec.Command(todo, "add", "Frontend integration", "--after", "todo://backend/1")
+	cmd.Dir = frontend
+	assert.NoError(t, cmd.Run())
+
+	cmd = exec.Command(todo, "next", "--json")
+	cmd.Dir = frontend
+	out, err = cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.NotContains(t, string(out), `"title": "Frontend integration"`)
+	assert.Contains(t, string(out), `"todo://backend/1"`)
+
+	cmd = exec.Command(todo, "done", "1")
+	cmd.Dir = backend
+	assert.NoError(t, cmd.Run())
+	cmd = exec.Command(todo, "next", "--json")
+	cmd.Dir = frontend
+	out, err = cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"title": "Frontend integration"`)
+	assert.NotContains(t, string(out), `"todo://backend/1"`)
+
+	cmd = exec.Command(todo, "claim", "1", "--as", "frontend-agent")
+	cmd.Dir = frontend
+	out, err = cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+}
+
+func TestCLI_LinkRejectsCurrentProject(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	cmd := exec.Command(todo, "link", "self", tmpDir)
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.Error(t, err)
+	assert.Contains(t, string(out), "cannot link a project to itself")
+}
+
 func TestCLI_ExportJSON(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)

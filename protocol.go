@@ -117,7 +117,11 @@ func formatTimestamp(milliseconds uint64) string {
 }
 
 func newBlockedSummary(tasks map[uint64]*store.Task) blockedSummary {
-	blocked := dag.NewDAG().GetBlockedTasks(tasks)
+	return newBlockedSummaryWithResolver(tasks, nil)
+}
+
+func newBlockedSummaryWithResolver(tasks map[uint64]*store.Task, resolver dag.DependencyResolver) blockedSummary {
+	blocked := dag.NewDAG().GetBlockedTasksWithResolver(tasks, resolver)
 	counted := make(map[uint64]struct{}, len(blocked))
 	unique := make(map[string]struct{})
 	for taskID, blockers := range blocked {

@@ -5,7 +5,7 @@
 ### Location
 
 Local State: `<project>/.terminal-todo/tasks.bin`
-Global Config: `~/.config/terminal-todo/config.json`
+Repository Registry: `<project>/.terminal-todo/repositories.json`
 
 ### Format: Enhanced Binary (MessagePack)
 
@@ -44,7 +44,9 @@ To coordinate across repositories, `terminal-todo` uses a URI-based scheme:
 - `todo://infra-repo/50` -> Task 50 in a known repository named `infra-repo`.
 
 **Resolution Strategy:**
-Agents resolve `infra-repo` by looking up a global registry in `~/.config/terminal-todo/repositories.json`.
+Agents resolve `infra-repo` from the current project's checked-in or shared
+`.terminal-todo/repositories.json`. Paths are stored relative to the current
+project when possible, keeping a workspace self-describing across machines.
 
 ### Inference-Time Ownership (Lease Management)
 
