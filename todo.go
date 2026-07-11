@@ -159,7 +159,17 @@ func updateStore(mutate func(*store.TaskStore) error) *store.TaskStore {
 
 func parseIDs(args []string) []uint64 {
 	var ids []uint64
-	for _, arg := range args {
+	valueOptions := map[string]bool{
+		"--after": true, "--as": true, "--ttl": true,
+		"--capabilities": true, "--caps": true, "--priority": true,
+		"--into": true,
+	}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if valueOptions[arg] {
+			i++
+			continue
+		}
 		if strings.HasPrefix(arg, "-") {
 			continue
 		}

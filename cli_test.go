@@ -168,6 +168,24 @@ func TestCLI_ClaimedTaskRequiresOwnerToCompleteOrRelease(t *testing.T) {
 	assert.Contains(t, string(out), "Released task 1")
 }
 
+func TestCLI_NumericOwnerIsNotParsedAsTaskID(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	for _, args := range [][]string{{"add", "First"}, {"add", "Second"}, {"claim", "1", "--as", "2"}, {"done", "1", "--as", "2"}} {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, string(out))
+	}
+
+	cmd := exec.Command(todo, "cat", "2", "--json")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"status": "pending"`)
+}
+
 func TestCLI_ConcurrentClaimsHaveSingleWinner(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)
