@@ -56,6 +56,11 @@ When you're done, mark it off:
 todo done 1
 ```
 
+For a claimed task, identify the owner when completing or releasing it:
+```bash
+todo done 1 --as agent-alpha
+```
+
 ---
 
 ## For AI Agents

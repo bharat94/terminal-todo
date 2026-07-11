@@ -105,7 +105,7 @@ Commands:
   init                Initialize .terminal-todo/ in current directory
   add "<title>"       Add a new task (--priority 0..1, --caps go,testing)
   add "<title>" --after <id> Add task with dependency
-  done <id>           Mark task as complete
+  done <id>           Mark complete (--as owner for claimed tasks)
   status              Show all tasks
   status --json       Show all tasks in JSON format
   cat <id>            Show task details
@@ -115,7 +115,7 @@ Commands:
   next                Show tasks ready to work
   next --json         Show ready tasks in JSON format
   claim <id> --as <n> Secure an exclusive execution lease
-  release <id>        Yield a lease back to the pool
+  release <id> --as <n> Yield an owned lease back to the pool
   decompose <id> --into <json> Split a task into sub-tasks
   export              Export tasks to JSON
   export --markdown  Export tasks to Markdown
@@ -175,7 +175,9 @@ func validateCommandArgs(command string, args []string) error {
 		"add":       {"--after": true, "--priority": true, "--caps": true},
 		"claim":     {"--as": true, "--ttl": true},
 		"decompose": {"--into": true},
+		"done":      {"--as": true},
 		"next":      {"--capabilities": true},
+		"release":   {"--as": true},
 	}
 	booleanFlags := map[string]map[string]bool{
 		"cat":    {"--json": true},
@@ -230,6 +232,15 @@ func hasFlag(args []string, flag string) bool {
 		}
 	}
 	return false
+}
+
+func optionValue(args []string, option string) string {
+	for i, arg := range args {
+		if arg == option && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
 }
 
 func extractTitle(args []string) string {

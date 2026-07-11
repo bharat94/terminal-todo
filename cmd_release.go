@@ -12,6 +12,7 @@ func cmdRelease(args []string) {
 		fmt.Fprintln(os.Stderr, "Error: task ID required")
 		os.Exit(1)
 	}
+	owner := optionValue(args, "--as")
 
 	updateStore(func(s *store.TaskStore) error {
 		for _, id := range ids {
@@ -21,6 +22,9 @@ func cmdRelease(args []string) {
 			}
 			if task.Status != store.StatusInProgress {
 				return fmt.Errorf("task %d is not in progress", id)
+			}
+			if task.Owner != "" && task.Owner != owner {
+				return fmt.Errorf("task %d is claimed by %s; use --as %s", id, task.Owner, task.Owner)
 			}
 			task.Status = store.StatusPending
 			task.Owner = ""

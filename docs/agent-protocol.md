@@ -80,7 +80,9 @@ To ensure exclusive execution in distributed inference:
 2. **Action: Claim** -> Agent calls `todo claim 101 --as agent-alpha-4 --ttl 15m`.
 3. **State: In-Progress** -> Task is locked to `agent-alpha-4`.
 4. **Heartbeat:** Agent must call `todo claim 101` again before 15m elapses to retain the lock.
-5. **Release/Done:** Agent calls `todo done 101` or `todo release 101`.
+5. **Release/Done:** The owner calls `todo done 101 --as agent-alpha-4` or
+   `todo release 101 --as agent-alpha-4`. A different agent cannot mutate the
+   live lease.
 
 ## 5. Agent Best Practices
 

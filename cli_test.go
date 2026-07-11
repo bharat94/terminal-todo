@@ -142,6 +142,32 @@ func TestCLI_Done(t *testing.T) {
 	assert.Contains(t, string(out), "Marked task 1 as done")
 }
 
+func TestCLI_ClaimedTaskRequiresOwnerToCompleteOrRelease(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	for _, args := range [][]string{{"add", "Owned task"}, {"claim", "1", "--as", "agent-a"}} {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, string(out))
+	}
+
+	for _, action := range []string{"done", "release"} {
+		cmd := exec.Command(todo, action, "1", "--as", "agent-b")
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.Error(t, err)
+		assert.Contains(t, string(out), "claimed by agent-a")
+	}
+
+	cmd := exec.Command(todo, "release", "1", "--as", "agent-a")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), "Released task 1")
+}
+
 func TestCLI_Status(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)

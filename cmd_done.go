@@ -14,6 +14,7 @@ func cmdDone(args []string) {
 		fmt.Fprintln(os.Stderr, "Error: task ID required")
 		os.Exit(1)
 	}
+	owner := optionValue(args, "--as")
 
 	updateStore(func(s *store.TaskStore) error {
 		for _, id := range ids {
@@ -23,6 +24,9 @@ func cmdDone(args []string) {
 			}
 			if !dag.DependenciesComplete(task, s.Tasks) {
 				return fmt.Errorf("task %d has incomplete dependencies", id)
+			}
+			if task.Owner != "" && task.Owner != owner {
+				return fmt.Errorf("task %d is claimed by %s; use --as %s", id, task.Owner, task.Owner)
 			}
 			task.Status = store.StatusCompleted
 			task.Completed = uint64(time.Now().UnixMilli())
