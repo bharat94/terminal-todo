@@ -43,13 +43,10 @@ func cmdLink(args []string) {
 		storedPath = relative
 	}
 
-	registry, err := loadRepositoryRegistry()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading repository registry: %v\n", err)
-		os.Exit(1)
-	}
-	registry.Repositories[alias] = storedPath
-	if err := saveRepositoryRegistry(registry); err != nil {
+	if err := updateRepositoryRegistry(func(registry *repositoryRegistry) error {
+		registry.Repositories[alias] = storedPath
+		return nil
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "Error saving repository registry: %v\n", err)
 		os.Exit(1)
 	}

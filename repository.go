@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"terminal-todo/dag"
 	"terminal-todo/store"
@@ -59,7 +60,36 @@ func saveRepositoryRegistry(registry *repositoryRegistry) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpPath, registryPath())
+	if err := os.Rename(tmpPath, registryPath()); err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(registryPath()))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
+}
+
+func updateRepositoryRegistry(mutate func(*repositoryRegistry) error) error {
+	lock, err := os.OpenFile(registryPath()+".lock", os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("failed to lock repository registry: %w", err)
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+
+	registry, err := loadRepositoryRegistry()
+	if err != nil {
+		return err
+	}
+	if err := mutate(registry); err != nil {
+		return err
+	}
+	return saveRepositoryRegistry(registry)
 }
 
 func dependencyResolver() dag.DependencyResolver {

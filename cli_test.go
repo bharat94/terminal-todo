@@ -501,6 +501,37 @@ func TestCLI_LinkRejectsCurrentProject(t *testing.T) {
 	assert.Contains(t, string(out), "cannot link a project to itself")
 }
 
+func TestCLI_ConcurrentLinksPreserveBothRepositories(t *testing.T) {
+	todo := buildTodo(t)
+	root := t.TempDir()
+	serviceA := t.TempDir()
+	serviceB := t.TempDir()
+	for _, project := range []string{root, serviceA, serviceB} {
+		cmd := exec.Command(todo, "init")
+		cmd.Dir = project
+		assert.NoError(t, cmd.Run())
+	}
+
+	errs := make(chan error, 2)
+	for alias, path := range map[string]string{"service-a": serviceA, "service-b": serviceB} {
+		go func(alias, path string) {
+			cmd := exec.Command(todo, "link", alias, path)
+			cmd.Dir = root
+			_, err := cmd.CombinedOutput()
+			errs <- err
+		}(alias, path)
+	}
+	assert.NoError(t, <-errs)
+	assert.NoError(t, <-errs)
+
+	cmd := exec.Command(todo, "status", "--all", "--json")
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"alias": "service-a"`)
+	assert.Contains(t, string(out), `"alias": "service-b"`)
+}
+
 func TestCLI_ExportJSON(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)
