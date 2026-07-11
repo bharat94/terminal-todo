@@ -62,15 +62,15 @@ func cmdUpdate(args []string) {
 
 		// Apply dependency mutations with cycle validation
 		if len(addDeps) > 0 || len(removeDeps) > 0 {
-			d := dag.NewDAG()
-			d.BuildFromTasks(s.Tasks)
-
 			// Build new dependency list
 			depSet := make(map[string]bool)
 			for _, dep := range task.Depends {
 				depSet[dep] = true
 			}
 			for _, dep := range removeDeps {
+				if !depSet[dep] {
+					return fmt.Errorf("dependency %q not found on task %d", dep, task.ID)
+				}
 				delete(depSet, dep)
 			}
 			for _, dep := range addDeps {
@@ -96,7 +96,16 @@ func cmdUpdate(args []string) {
 			for dep := range depSet {
 				newDeps = append(newDeps, dep)
 			}
-			if err := d.DetectCycle(newDeps, task.ID); err != nil {
+
+			// Build DAG with the task's updated deps to avoid false-positive
+			// cycle detection when removing deps.
+			d := dag.NewDAG()
+			oldDeps := task.Depends
+			task.Depends = newDeps
+			d.BuildFromTasks(s.Tasks)
+			task.Depends = oldDeps
+
+			if err := d.DetectCycle(nil, task.ID); err != nil {
 				return fmt.Errorf("cannot update dependencies: %w", err)
 			}
 

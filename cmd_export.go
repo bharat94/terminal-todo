@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"terminal-todo/store"
@@ -31,7 +30,9 @@ func cmdExport(args []string) {
 		return
 	}
 
-	// Default to JSON
-	data, _ := json.MarshalIndent(tasks, "", "  ")
-	fmt.Println(string(data))
+	protocolTasks := make([]protocolTask, 0, len(tasks))
+	for _, t := range tasks {
+		protocolTasks = append(protocolTasks, newProtocolTask(t))
+	}
+	writeJSON(tasksEnvelope{SchemaVersion: protocolVersion, Tasks: protocolTasks})
 }

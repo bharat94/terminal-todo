@@ -239,6 +239,25 @@ func (s *TaskStore) GetAllTasks() []*Task {
 	return tasks
 }
 
+// CleanExpiredLeases scans all tasks and resets any whose lease has expired.
+// Returns the number of leases cleaned. Must be called under a write lock.
+func (s *TaskStore) CleanExpiredLeases() int {
+	now := uint64(time.Now().UnixMilli())
+	cleaned := 0
+	for _, task := range s.Tasks {
+		if task.Status == StatusInProgress && task.LeaseExpires > 0 && task.LeaseExpires < now {
+			task.Status = StatusPending
+			task.Owner = ""
+			task.LeaseExpires = 0
+			cleaned++
+		}
+	}
+	if cleaned > 0 {
+		s.LastModified = uint64(time.Now().UnixMilli())
+	}
+	return cleaned
+}
+
 func (s *TaskStore) Save(path string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -291,6 +310,7 @@ func Update(path string, mutate func(*TaskStore) error) (*TaskStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	s.CleanExpiredLeases()
 	if err := mutate(s); err != nil {
 		return nil, err
 	}

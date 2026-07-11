@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 func TestStore_SaveLoad(t *testing.T) {
@@ -90,4 +91,136 @@ func TestStore_AddTask(t *testing.T) {
 	assert.Equal(t, "Test Task", task.Title)
 	assert.Equal(t, StatusPending, task.Status)
 	assert.Equal(t, []string{"todo://local/1", "todo://local/2"}, task.Depends)
+}
+
+func TestStore_MigrationV0toV2(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tasks.bin")
+
+	type v0Task struct {
+		ID    uint64            `msgpack:"id"`
+		Title string            `msgpack:"title"`
+		Tags  []string          `msgpack:"tags"`
+		Log   []LogEntry        `msgpack:"log"`
+		Extra map[string]string `msgpack:"extra"`
+	}
+	type v0Store struct {
+		Tasks  map[uint64]*v0Task `msgpack:"tasks"`
+		NextID uint64             `msgpack:"next_id"`
+	}
+
+	task := &v0Task{
+		ID:    1,
+		Title: "migration task",
+		Tags:  nil,
+		Log:   nil,
+		Extra: nil,
+	}
+	v0 := &v0Store{
+		Tasks:  map[uint64]*v0Task{1: task},
+		NextID: 2,
+	}
+
+	data, err := msgpack.Marshal(v0)
+	assert.NoError(t, err)
+	err = os.WriteFile(path, data, 0644)
+	assert.NoError(t, err)
+
+	s, err := loadUnlocked(path)
+	assert.NoError(t, err)
+
+	assert.Equal(t, uint32(2), s.SchemaVersion)
+	assert.Equal(t, 1, len(s.Tasks))
+	assert.NotNil(t, s.Tasks)
+
+	loaded, ok := s.Tasks[1]
+	assert.True(t, ok)
+	assert.Equal(t, "migration task", loaded.Title)
+	assert.Equal(t, []string{}, loaded.Tags)
+	assert.Equal(t, []LogEntry{}, loaded.Log)
+	assert.Equal(t, map[string]string{}, loaded.Extra)
+	assert.NotNil(t, s.Events)
+	assert.Equal(t, 0, len(s.Events))
+	assert.Equal(t, uint64(1), s.NextEventID)
+	assert.Equal(t, uint64(2), s.NextID)
+}
+
+func TestStore_MigrationV1toV2(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tasks.bin")
+
+	type v1Store struct {
+		SchemaVersion uint32           `msgpack:"schema_version"`
+		Tasks         map[uint64]*Task `msgpack:"tasks"`
+		NextID        uint64           `msgpack:"next_id"`
+		LastModified  uint64           `msgpack:"last_modified"`
+	}
+
+	v1 := &v1Store{
+		SchemaVersion: 1,
+		Tasks:         map[uint64]*Task{1: {ID: 1, Title: "v1 task"}},
+		NextID:        2,
+	}
+
+	data, err := msgpack.Marshal(v1)
+	assert.NoError(t, err)
+	err = os.WriteFile(path, data, 0644)
+	assert.NoError(t, err)
+
+	s, err := loadUnlocked(path)
+	assert.NoError(t, err)
+
+	assert.Equal(t, uint32(2), s.SchemaVersion)
+	assert.NotNil(t, s.Events)
+	assert.Equal(t, 0, len(s.Events))
+	assert.Equal(t, uint64(1), s.NextEventID)
+	assert.Equal(t, uint64(2), s.NextID)
+}
+
+func TestStore_SchemaVersionTooNew(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tasks.bin")
+
+	type futureStore struct {
+		SchemaVersion uint32 `msgpack:"schema_version"`
+	}
+
+	future := &futureStore{SchemaVersion: CurrentSchemaVersion + 1}
+	data, err := msgpack.Marshal(future)
+	assert.NoError(t, err)
+	err = os.WriteFile(path, data, 0644)
+	assert.NoError(t, err)
+
+	_, err = loadUnlocked(path)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "store schema version")
+}
+
+func TestStore_CleanExpiredLeases(t *testing.T) {
+	s := NewTaskStore()
+
+	t1 := s.AddTask("active lease", nil)
+	t1.Status = StatusInProgress
+	t1.Owner = "agent-1"
+	t1.LeaseExpires = uint64(time.Now().Add(time.Hour).UnixMilli())
+
+	t2 := s.AddTask("expired lease", nil)
+	t2.Status = StatusInProgress
+	t2.Owner = "agent-2"
+	t2.LeaseExpires = uint64(time.Now().Add(-time.Hour).UnixMilli())
+
+	t3 := s.AddTask("no lease", nil)
+	t3.Status = StatusPending
+
+	cleaned := s.CleanExpiredLeases()
+	assert.Equal(t, 1, cleaned)
+
+	assert.Equal(t, StatusPending, t2.Status)
+	assert.Equal(t, "", t2.Owner)
+	assert.Equal(t, uint64(0), t2.LeaseExpires)
+
+	assert.Equal(t, StatusInProgress, t1.Status)
+	assert.Equal(t, "agent-1", t1.Owner)
+
+	assert.Equal(t, StatusPending, t3.Status)
 }

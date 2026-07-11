@@ -33,21 +33,24 @@ func cmdWhatIf(args []string) {
 		d := dag.NewDAG()
 		d.BuildFromTasks(s.Tasks)
 
-		// Simulate completing the task
 		simTasks := make(map[uint64]*store.Task)
 		for k, v := range s.Tasks {
 			t := *v
+			t.Depends = append([]string(nil), v.Depends...)
+			t.Capabilities = append([]string(nil), v.Capabilities...)
+			t.Tags = append([]string(nil), v.Tags...)
+			t.Log = append([]store.LogEntry(nil), v.Log...)
 			simTasks[k] = &t
 		}
 		if simTask, ok := simTasks[ids[0]]; ok {
 			simTask.Status = store.StatusCompleted
 		}
 
-		ready := d.GetReadyTasks(simTasks)
-		blocked := d.GetBlockedTasks(simTasks)
+		resolver := dependencyResolver()
+		ready := d.GetReadyTasksWithResolver(simTasks, resolver)
+		blocked := d.GetBlockedTasksWithResolver(simTasks, resolver)
 
-		// Find what would be unblocked
-		beforeBlocked := d.GetBlockedTasks(s.Tasks)
+		beforeBlocked := d.GetBlockedTasksWithResolver(s.Tasks, resolver)
 		var newlyReady []*store.Task
 		for _, t := range ready {
 			if _, wasBlocked := beforeBlocked[t.ID]; wasBlocked {
