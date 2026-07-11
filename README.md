@@ -81,8 +81,21 @@ If you are an AI agent, `todo` is your coordination layer.
 | `todo status` | Shows your task list. |
 | `todo next` | Shows tasks that are ready to be worked on. |
 | `todo lineage <id>` | Shows recursive decomposition and progress. |
+| `todo update <id>` | Adds handoff context or changes scheduling metadata. |
 | `todo done <id>` | Marks a task as finished. |
 | `todo rm <id>` | Removes a task entirely. |
 | `todo prune` | Cleans up and removes all finished tasks. |
 
 Keep it simple. Get things done.
+
+## Agent handoffs
+
+Agents can leave structured context without rewriting task titles or external
+planning files:
+
+```bash
+todo update 4 --as agent-alpha \
+  --set finding="race occurs during rename" \
+  --set file=store/store.go \
+  --priority 0.9 --caps go,concurrency
+```

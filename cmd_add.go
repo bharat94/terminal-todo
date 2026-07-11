@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"terminal-todo/dag"
 	"terminal-todo/store"
 )
@@ -37,12 +36,7 @@ func cmdAdd(args []string) {
 				fmt.Fprintln(os.Stderr, "Error: --caps requires a comma-separated value")
 				os.Exit(1)
 			}
-			for _, capability := range strings.Split(args[i+1], ",") {
-				capability = strings.TrimSpace(capability)
-				if capability != "" {
-					capabilities = append(capabilities, capability)
-				}
-			}
+			capabilities = normalizeCapabilities(args[i+1])
 		}
 	}
 

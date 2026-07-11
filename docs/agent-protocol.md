@@ -90,6 +90,11 @@ To ensure exclusive execution in distributed inference:
 - **Semantic Tagging:** Use standard capability tags (e.g., `lang:go`, `tool:docker`) to help the allocator.
 - **Context Sharing:** Use the `extra` field to pass findings (e.g., "Found bug in line 42") to the next agent in the DAG.
 
+Agents write that context atomically with `todo update <id> --set key=value`.
+Multiple `--set` options may be supplied. Claimed tasks require the matching
+`--as <owner>`, just like completion and release. The same command can update
+`--title`, `--priority`, and the complete `--caps` requirement list.
+
 ## 6. Objective Progress (`todo lineage`)
 
 Managers query `todo lineage <id> --json` to receive the root task, every

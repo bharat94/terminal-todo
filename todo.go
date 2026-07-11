@@ -91,6 +91,8 @@ func main() {
 		cmdDecompose(args)
 	case "lineage":
 		cmdLineage(args)
+	case "update":
+		cmdUpdate(args)
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -120,6 +122,7 @@ Commands:
   release <id> --as <n> Yield an owned lease back to the pool
   decompose <id> --into <json> Split a task into sub-tasks
   lineage <id>        Show an objective's recursive decomposition
+  update <id>         Update metadata/context (--set key=value)
   export              Export tasks to JSON
   export --markdown  Export tasks to Markdown
   prune               Remove all completed tasks
@@ -165,7 +168,7 @@ func parseIDs(args []string) []uint64 {
 	valueOptions := map[string]bool{
 		"--after": true, "--as": true, "--ttl": true,
 		"--capabilities": true, "--caps": true, "--priority": true,
-		"--into": true,
+		"--into": true, "--title": true, "--set": true,
 	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -191,19 +194,21 @@ func validateCommandArgs(command string, args []string) error {
 		"done":      {"--as": true},
 		"next":      {"--capabilities": true},
 		"release":   {"--as": true},
+		"update":    {"--title": true, "--priority": true, "--caps": true, "--set": true, "--as": true},
 	}
 	booleanFlags := map[string]map[string]bool{
 		"cat":     {"--json": true},
 		"status":  {"--json": true},
 		"next":    {"--json": true, "--ready": true},
 		"lineage": {"--json": true},
+		"update":  {"--json": true},
 		"export":  {"--markdown": true},
 	}
 	knownCommands := map[string]bool{
 		"init": true, "add": true, "done": true, "status": true,
 		"cat": true, "rm": true, "depends": true, "dependents": true,
 		"next": true, "export": true, "prune": true, "claim": true,
-		"release": true, "decompose": true, "lineage": true,
+		"release": true, "decompose": true, "lineage": true, "update": true,
 	}
 	if !knownCommands[command] {
 		return nil

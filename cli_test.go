@@ -3,6 +3,7 @@ package main
 import (
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -80,6 +81,47 @@ func TestCLI_AddRejectsInvalidPriority(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	assert.Error(t, err)
 	assert.Contains(t, string(out), "--priority must be between 0 and 1")
+}
+
+func TestCLI_UpdateAddsHandoffContext(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	cmd := exec.Command(todo, "add", "Investigate")
+	cmd.Dir = tmpDir
+	assert.NoError(t, cmd.Run())
+
+	cmd = exec.Command(todo, "update", "1", "--title", "Fix locking", "--priority", "0.95", "--caps", "go,concurrency,go", "--set", "finding=lost update", "--set", "file=store/store.go", "--json")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"title": "Fix locking"`)
+	assert.Contains(t, string(out), `"priority": 0.95`)
+	assert.Contains(t, string(out), `"finding": "lost update"`)
+	assert.Contains(t, string(out), `"file": "store/store.go"`)
+	assert.Equal(t, 1, strings.Count(string(out), `"go"`))
+}
+
+func TestCLI_UpdateEnforcesClaimOwner(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	for _, args := range [][]string{{"add", "Owned"}, {"claim", "1", "--as", "agent-a"}} {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		assert.NoError(t, cmd.Run())
+	}
+
+	cmd := exec.Command(todo, "update", "1", "--set", "finding=secret", "--as", "agent-b")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.Error(t, err)
+	assert.Contains(t, string(out), "claimed by agent-a")
+
+	cmd = exec.Command(todo, "update", "1", "--set", "finding=shared", "--as", "agent-a")
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
 }
 
 func TestCLI_RejectsUnknownOptions(t *testing.T) {
