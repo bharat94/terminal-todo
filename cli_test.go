@@ -261,8 +261,11 @@ func TestCLI_Rm(t *testing.T) {
 
 func buildTodo(t *testing.T) string {
 	t.Helper()
-	// Build the binary once if it doesn't exist or is old
-	path := "/Users/bharatvaidhyanathan/Code/terminal-todo/todo"
+	path := filepath.Join(t.TempDir(), "todo")
+	cmd := exec.Command("go", "build", "-o", path, ".")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("failed to build todo: %v\n%s", err, out)
+	}
 	return path
 }
 

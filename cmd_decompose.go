@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"terminal-todo/store"
 )
 
@@ -39,28 +40,42 @@ func cmdDecompose(args []string) {
 		fmt.Fprintf(os.Stderr, "Error: invalid JSON: %v\n", err)
 		os.Exit(1)
 	}
-
-	s := loadStore()
-	parentID := ids[0]
-	parentTask, ok := s.GetTask(parentID)
-	if !ok {
-		fmt.Fprintf(os.Stderr, "Error: parent task %d not found\n", parentID)
+	if len(payload.Subtasks) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: at least one subtask is required")
 		os.Exit(1)
 	}
-
-	fmt.Printf("Decomposing task %d into %d subtasks...\n", parentID, len(payload.Subtasks))
-	
 	for _, sub := range payload.Subtasks {
-		subTask := s.AddTask(sub.Title, []string{})
-		subTask.Capabilities = sub.Caps
-		subTask.Lineage = fmt.Sprintf("todo://local/%d", parentID)
-		
-		// Parent now depends on all new subtasks
-		parentTask.Depends = append(parentTask.Depends, fmt.Sprintf("todo://local/%d", subTask.ID))
-		fmt.Printf("  Added subtask %d: %s\n", subTask.ID, sub.Title)
+		if strings.TrimSpace(sub.Title) == "" {
+			fmt.Fprintln(os.Stderr, "Error: subtask title is required")
+			os.Exit(1)
+		}
 	}
 
-	parentTask.Status = store.StatusBlocked
-	saveStore(s)
+	parentID := ids[0]
+	var added []*store.Task
+	updateStore(func(s *store.TaskStore) error {
+		parentTask, ok := s.GetTask(parentID)
+		if !ok {
+			return fmt.Errorf("parent task %d not found", parentID)
+		}
+		if parentTask.Status == store.StatusCompleted {
+			return fmt.Errorf("parent task %d is already completed", parentID)
+		}
+		for _, sub := range payload.Subtasks {
+			subTask := s.AddTask(strings.TrimSpace(sub.Title), nil)
+			subTask.Capabilities = sub.Caps
+			subTask.Lineage = fmt.Sprintf("todo://local/%d", parentID)
+			parentTask.Depends = append(parentTask.Depends, fmt.Sprintf("todo://local/%d", subTask.ID))
+			added = append(added, subTask)
+		}
+		parentTask.Status = store.StatusPending
+		parentTask.Owner = ""
+		parentTask.LeaseExpires = 0
+		return nil
+	})
+	fmt.Printf("Decomposing task %d into %d subtasks...\n", parentID, len(payload.Subtasks))
+	for _, subTask := range added {
+		fmt.Printf("  Added subtask %d: %s\n", subTask.ID, subTask.Title)
+	}
 	fmt.Println("Decomposition complete.")
 }

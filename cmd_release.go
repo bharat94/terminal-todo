@@ -13,21 +13,22 @@ func cmdRelease(args []string) {
 		os.Exit(1)
 	}
 
-	s := loadStore()
+	updateStore(func(s *store.TaskStore) error {
+		for _, id := range ids {
+			task, ok := s.GetTask(id)
+			if !ok {
+				return fmt.Errorf("task %d not found", id)
+			}
+			if task.Status != store.StatusInProgress {
+				return fmt.Errorf("task %d is not in progress", id)
+			}
+			task.Status = store.StatusPending
+			task.Owner = ""
+			task.LeaseExpires = 0
+		}
+		return nil
+	})
 	for _, id := range ids {
-		task, ok := s.GetTask(id)
-		if !ok {
-			fmt.Fprintf(os.Stderr, "Error: task %d not found\n", id)
-			continue
-		}
-		if task.Status != store.StatusInProgress {
-			fmt.Fprintf(os.Stderr, "Error: task %d is not in progress\n", id)
-			continue
-		}
-		task.Status = store.StatusPending
-		task.Owner = ""
-		task.LeaseExpires = 0
 		fmt.Printf("Released task %d\n", id)
 	}
-	saveStore(s)
 }

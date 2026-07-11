@@ -104,32 +104,32 @@ func (d *DAG) GetReadyTasks(tasks map[uint64]*store.Task) []*store.Task {
 	var ready []*store.Task
 
 	for _, task := range tasks {
-		if task.Status == store.StatusCompleted {
+		if task.Status != store.StatusPending {
 			continue
 		}
 
-		allDepsDone := true
-		for _, depURI := range task.Depends {
-			depID, local := ParseLocalID(depURI)
-			if local {
-				depTask, ok := tasks[depID]
-				if !ok || depTask.Status != store.StatusCompleted {
-					allDepsDone = false
-					break
-				}
-			} else {
-				// Cross-repo dependency: For now, assume not done if we can't resolve it
-				allDepsDone = false
-				break
-			}
-		}
-
-		if allDepsDone {
+		if DependenciesComplete(task, tasks) {
 			ready = append(ready, task)
 		}
 	}
 
 	return ready
+}
+
+// DependenciesComplete reports whether every dependency is a completed local
+// task. Cross-repository dependencies remain blocked until a resolver exists.
+func DependenciesComplete(task *store.Task, tasks map[uint64]*store.Task) bool {
+	for _, depURI := range task.Depends {
+		depID, local := ParseLocalID(depURI)
+		if !local {
+			return false
+		}
+		depTask, ok := tasks[depID]
+		if !ok || depTask.Status != store.StatusCompleted {
+			return false
+		}
+	}
+	return true
 }
 
 func (d *DAG) GetBlockedTasks(tasks map[uint64]*store.Task) map[uint64][]string {

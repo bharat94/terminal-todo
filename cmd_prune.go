@@ -7,19 +7,15 @@ import (
 )
 
 func cmdPrune(args []string) {
-	s := loadStore()
-	tasks := s.GetAllTasks()
-
 	var removedCount int
-	for _, t := range tasks {
-		if t.Status == store.StatusCompleted {
-			s.RemoveTask(t.ID)
-			removedCount++
+	updateStore(func(s *store.TaskStore) error {
+		for _, t := range s.GetAllTasks() {
+			if t.Status == store.StatusCompleted {
+				s.RemoveTask(t.ID)
+				removedCount++
+			}
 		}
-	}
-
-	if removedCount > 0 {
-		saveStore(s)
-	}
+		return nil
+	})
 	fmt.Printf("Removed %d completed task(s)\n", removedCount)
 }

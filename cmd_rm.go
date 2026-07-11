@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"terminal-todo/store"
 )
 
 func cmdRm(args []string) {
@@ -12,13 +13,15 @@ func cmdRm(args []string) {
 		os.Exit(1)
 	}
 
-	s := loadStore()
-	for _, id := range ids {
-		if s.RemoveTask(id) {
-			fmt.Printf("Removed task %d\n", id)
-		} else {
-			fmt.Fprintf(os.Stderr, "Error: task %d not found\n", id)
+	updateStore(func(s *store.TaskStore) error {
+		for _, id := range ids {
+			if !s.RemoveTask(id) {
+				return fmt.Errorf("task %d not found", id)
+			}
 		}
+		return nil
+	})
+	for _, id := range ids {
+		fmt.Printf("Removed task %d\n", id)
 	}
-	saveStore(s)
 }

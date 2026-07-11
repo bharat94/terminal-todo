@@ -11,7 +11,7 @@ import (
 func cmdStatus(args []string) {
 	s := loadStore()
 	tasks := s.GetAllTasks()
-	
+
 	sort.Slice(tasks, func(i, j int) bool {
 		return tasks[i].ID < tasks[j].ID
 	})

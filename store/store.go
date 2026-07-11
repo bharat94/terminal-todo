@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -106,53 +107,73 @@ func (s *TaskStore) Save(path string) error {
 		return err
 	}
 
-	// 1. Open/Create the file for locking
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	lock, err := lockFile(path, syscall.LOCK_EX)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-
-	// 2. Acquire Exclusive Lock (EX)
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		return fmt.Errorf("failed to lock store: %w", err)
-	}
-	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-
-	// 3. Prepare data
-	s.LastModified = uint64(time.Now().UnixMilli())
-	data, err := msgpack.Marshal(s)
-	if err != nil {
-		return err
-	}
-
-	// 4. Atomic Rename-Swap
-	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
-		return err
-	}
-
-	return os.Rename(tmpPath, path)
+	defer unlockFile(lock)
+	return writeStore(path, s)
 }
 
 func Load(path string) (*TaskStore, error) {
-	// 1. Open for reading and Shared Lock (SH)
-	f, err := os.Open(path)
+	lock, err := lockFile(path, syscall.LOCK_SH)
+	if err != nil {
+		return nil, err
+	}
+	defer unlockFile(lock)
+	return loadUnlocked(path)
+}
+
+// Update serializes a complete read-modify-write operation. The callback runs
+// while holding a lock on a stable sidecar file, so replacing tasks.bin cannot
+// invalidate the lock and concurrent processes cannot overwrite newer state.
+func Update(path string, mutate func(*TaskStore) error) (*TaskStore, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return nil, err
+	}
+	lock, err := lockFile(path, syscall.LOCK_EX)
+	if err != nil {
+		return nil, err
+	}
+	defer unlockFile(lock)
+
+	s, err := loadUnlocked(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := mutate(s); err != nil {
+		return nil, err
+	}
+	if err := writeStore(path, s); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func lockFile(path string, mode int) (*os.File, error) {
+	lock, err := os.OpenFile(path+".lock", os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(lock.Fd()), mode); err != nil {
+		lock.Close()
+		return nil, fmt.Errorf("failed to lock store: %w", err)
+	}
+	return lock, nil
+}
+
+func unlockFile(lock *os.File) {
+	_ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	_ = lock.Close()
+}
+
+func loadUnlocked(path string) (*TaskStore, error) {
+
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return NewTaskStore(), nil
 		}
-		return nil, err
-	}
-	defer f.Close()
-
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_SH); err != nil {
-		return nil, fmt.Errorf("failed to read-lock store: %w", err)
-	}
-	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-
-	data, err := os.ReadFile(path)
-	if err != nil {
 		return nil, err
 	}
 
@@ -164,4 +185,45 @@ func Load(path string) (*TaskStore, error) {
 		store.Tasks = make(map[uint64]*Task)
 	}
 	return &store, nil
+}
+
+func writeStore(path string, s *TaskStore) error {
+	s.LastModified = uint64(time.Now().UnixMilli())
+	data, err := msgpack.Marshal(s)
+	if err != nil {
+		return err
+	}
+
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tasks-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if err := tmp.Chmod(0644); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.ReadFrom(bytes.NewReader(data)); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }

@@ -2,6 +2,8 @@ package store
 
 import (
 	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +18,7 @@ func TestStore_SaveLoad(t *testing.T) {
 	tmpFile := "./test_store.bin"
 	defer os.Remove(tmpFile)
 	defer os.Remove(tmpFile + ".tmp")
+	defer os.Remove(tmpFile + ".lock")
 
 	err := s.Save(tmpFile)
 	assert.NoError(t, err)
@@ -34,6 +37,35 @@ func TestStore_SaveLoad(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, "Task 2", task2.Title)
 	assert.Equal(t, []string{"todo://local/1"}, task2.Depends)
+}
+
+func TestStore_ConcurrentUpdatesDoNotLoseTasks(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tasks.bin")
+	const writers = 24
+	var wg sync.WaitGroup
+	errs := make(chan error, writers)
+
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := Update(path, func(s *TaskStore) error {
+				s.AddTask("concurrent task", nil)
+				return nil
+			})
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		assert.NoError(t, err)
+	}
+
+	s, err := Load(path)
+	assert.NoError(t, err)
+	assert.Len(t, s.Tasks, writers)
+	assert.Equal(t, uint64(writers+1), s.NextID)
 }
 
 func TestStore_LeaseExpiration(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"terminal-todo/dag"
+	"terminal-todo/store"
 )
 
 func cmdAdd(args []string) {
@@ -14,35 +15,30 @@ func cmdAdd(args []string) {
 	}
 
 	afterIDs := extractAfterIDs(args)
-	
-	s := loadStore()
-	d := dag.NewDAG()
-	d.BuildFromTasks(s.Tasks)
 
-	// Validate dependencies and check for cycles
-	var finalDeps []string
-	for _, dep := range afterIDs {
-		depID, local := dag.ParseLocalID(dep)
-		if local {
-			if _, ok := s.Tasks[depID]; !ok {
-				fmt.Fprintf(os.Stderr, "Error: dependency task %d not found\n", depID)
-				os.Exit(1)
+	var taskID uint64
+	updateStore(func(s *store.TaskStore) error {
+		d := dag.NewDAG()
+		d.BuildFromTasks(s.Tasks)
+		var finalDeps []string
+		for _, dep := range afterIDs {
+			depID, local := dag.ParseLocalID(dep)
+			if local {
+				if _, ok := s.Tasks[depID]; !ok {
+					return fmt.Errorf("dependency task %d not found", depID)
+				}
+				finalDeps = append(finalDeps, fmt.Sprintf("todo://local/%d", depID))
+			} else {
+				finalDeps = append(finalDeps, dep)
 			}
-			finalDeps = append(finalDeps, fmt.Sprintf("todo://local/%d", depID))
-		} else {
-			// Assume it's a cross-repo URI, add as is
-			finalDeps = append(finalDeps, dep)
 		}
-	}
+		if err := d.DetectCycle(finalDeps, s.NextID); err != nil {
+			return err
+		}
+		task := s.AddTask(title, finalDeps)
+		taskID = task.ID
+		return nil
+	})
 
-	// Cycle detection (only for local tasks)
-	if err := d.DetectCycle(finalDeps, s.NextID); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	task := s.AddTask(title, finalDeps)
-	saveStore(s)
-
-	fmt.Printf("Added task %d: %s\n", task.ID, task.Title)
+	fmt.Printf("Added task %d: %s\n", taskID, title)
 }

@@ -1,8 +1,8 @@
 package dag
 
 import (
-	"testing"
 	"terminal-todo/store"
+	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -35,6 +35,20 @@ func TestDAG_GetReadyTasks(t *testing.T) {
 	ready := d.GetReadyTasks(tasks)
 	assert.Equal(t, 1, len(ready))
 	assert.Equal(t, uint64(2), ready[0].ID)
+}
+
+func TestDAG_GetReadyTasksExcludesNonPendingTasks(t *testing.T) {
+	d := NewDAG()
+	tasks := map[uint64]*store.Task{
+		1: {ID: 1, Status: store.StatusPending},
+		2: {ID: 2, Status: store.StatusInProgress},
+		3: {ID: 3, Status: store.StatusBlocked},
+		4: {ID: 4, Status: store.StatusCompleted},
+	}
+
+	ready := d.GetReadyTasks(tasks)
+	assert.Len(t, ready, 1)
+	assert.Equal(t, uint64(1), ready[0].ID)
 }
 
 func TestDAG_DetectCycle_NoCycle(t *testing.T) {

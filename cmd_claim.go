@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"terminal-todo/dag"
 	"terminal-todo/store"
 	"time"
 )
@@ -23,9 +24,11 @@ func cmdClaim(args []string) {
 		}
 		if arg == "--ttl" && i+1 < len(args) {
 			t, err := time.ParseDuration(args[i+1])
-			if err == nil {
-				ttl = t
+			if err != nil || t <= 0 {
+				fmt.Fprintln(os.Stderr, "Error: --ttl must be a positive duration")
+				os.Exit(1)
 			}
+			ttl = t
 		}
 	}
 
@@ -34,25 +37,29 @@ func cmdClaim(args []string) {
 		os.Exit(1)
 	}
 
-	s := loadStore()
 	id := ids[0]
-	task, ok := s.GetTask(id)
-	if !ok {
-		fmt.Fprintf(os.Stderr, "Error: task %d not found\n", id)
-		os.Exit(1)
-	}
-
-	now := uint64(time.Now().UnixMilli())
-	if task.Owner != "" && task.Owner != owner && task.LeaseExpires > now {
-		fmt.Fprintf(os.Stderr, "Error: task %d already claimed by %s (expires in %s)\n", 
-			id, task.Owner, time.Duration(task.LeaseExpires-now)*time.Millisecond)
-		os.Exit(1)
-	}
-
-	task.Owner = owner
-	task.Status = store.StatusInProgress
-	task.LeaseExpires = now + uint64(ttl.Milliseconds())
-	
-	saveStore(s)
+	updateStore(func(s *store.TaskStore) error {
+		task, ok := s.GetTask(id)
+		if !ok {
+			return fmt.Errorf("task %d not found", id)
+		}
+		if task.Status == store.StatusCompleted {
+			return fmt.Errorf("task %d is already completed", id)
+		}
+		if task.Status == store.StatusBlocked {
+			return fmt.Errorf("task %d is blocked", id)
+		}
+		if !dag.DependenciesComplete(task, s.Tasks) {
+			return fmt.Errorf("task %d has incomplete dependencies", id)
+		}
+		now := uint64(time.Now().UnixMilli())
+		if task.Owner != "" && task.Owner != owner && task.LeaseExpires > now {
+			return fmt.Errorf("task %d already claimed by %s (expires in %s)", id, task.Owner, time.Duration(task.LeaseExpires-now)*time.Millisecond)
+		}
+		task.Owner = owner
+		task.Status = store.StatusInProgress
+		task.LeaseExpires = now + uint64(ttl.Milliseconds())
+		return nil
+	})
 	fmt.Printf("Task %d claimed by %s (expires in %s)\n", id, owner, ttl)
 }
