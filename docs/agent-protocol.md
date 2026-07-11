@@ -101,3 +101,11 @@ Managers query `todo lineage <id> --json` to receive the root task, every
 recursive descendant in deterministic traversal order, and aggregate counts for
 pending, in-progress, completed, and blocked work. The response uses the same
 versioned task representation as `status` and `cat`.
+
+## 7. Multi-Repository Visibility (`todo status --all`)
+
+`todo status --all --json` returns a deterministic `projects` array containing
+the local project followed by linked repositories in alias order. Each entry
+contains its path, availability, and v1 task objects. An inaccessible checkout
+is represented with `available: false` and an error instead of failing the
+entire aggregation.

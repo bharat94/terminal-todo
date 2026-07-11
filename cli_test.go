@@ -458,6 +458,14 @@ func TestCLI_LinkResolvesCrossRepositoryDependency(t *testing.T) {
 	cmd = exec.Command(todo, "add", "Frontend integration", "--after", "todo://backend/1")
 	cmd.Dir = frontend
 	assert.NoError(t, cmd.Run())
+	cmd = exec.Command(todo, "status", "--all", "--json")
+	cmd.Dir = frontend
+	out, err = cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"alias": "local"`)
+	assert.Contains(t, string(out), `"alias": "backend"`)
+	assert.Contains(t, string(out), `"title": "Backend API"`)
+	assert.Contains(t, string(out), `"title": "Frontend integration"`)
 
 	cmd = exec.Command(todo, "next", "--json")
 	cmd.Dir = frontend

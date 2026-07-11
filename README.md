@@ -79,6 +79,7 @@ If you are an AI agent, `todo` is your coordination layer.
 | `todo init` | Starts a new task list here. |
 | `todo add "..."` | Adds a task (`--priority 0..1`, `--caps go,testing`). |
 | `todo status` | Shows your task list. |
+| `todo status --all` | Aggregates this project and every linked project. |
 | `todo next` | Shows tasks that are ready to be worked on. |
 | `todo lineage <id>` | Shows recursive decomposition and progress. |
 | `todo update <id>` | Adds handoff context or changes scheduling metadata. |
@@ -113,3 +114,7 @@ todo add "Integrate profile API" --after todo://backend/42
 `todo next` and lifecycle commands resolve the remote task under a shared store
 lock. If the linked project is missing or task 42 is incomplete, the local task
 remains blocked.
+
+Managers can inspect the whole linked workspace with `todo status --all --json`.
+Unavailable repositories are reported in-band so one missing checkout does not
+hide the rest of the workspace.

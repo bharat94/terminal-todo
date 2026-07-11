@@ -114,6 +114,7 @@ Commands:
   done <id>           Mark complete (--as owner for claimed tasks)
   status              Show all tasks
   status --json       Show all tasks in JSON format
+  status --all        Aggregate local and linked projects
   cat <id>            Show task details
   rm <id>             Remove a task
   depends <id>        Show what this task depends on
@@ -201,7 +202,7 @@ func validateCommandArgs(command string, args []string) error {
 	}
 	booleanFlags := map[string]map[string]bool{
 		"cat":     {"--json": true},
-		"status":  {"--json": true},
+		"status":  {"--json": true, "--all": true},
 		"next":    {"--json": true, "--ready": true},
 		"lineage": {"--json": true},
 		"update":  {"--json": true},
