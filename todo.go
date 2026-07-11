@@ -143,6 +143,8 @@ Commands:
   status              Show all tasks
   status --json       Show all tasks in JSON format
   status --all        Aggregate local and linked projects
+  status --as <owner> Filter tasks by owner
+  status --tag <tag>  Filter tasks by tag
   cat <id>            Show task details
   rm <id>             Remove a task
   depends <id>        Show what this task depends on

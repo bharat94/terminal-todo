@@ -29,6 +29,7 @@ func cmdStatus(args []string) {
 	tasks := s.GetAllTasks()
 
 	filterTag := optionValue(args, "--tag")
+	filterAgent := optionValue(args, "--as")
 
 	sort.Slice(tasks, func(i, j int) bool {
 		return tasks[i].ID < tasks[j].ID
@@ -38,6 +39,9 @@ func cmdStatus(args []string) {
 		protocolTasks := make([]protocolTask, 0, len(tasks))
 		for _, task := range tasks {
 			if filterTag != "" && !hasTag(task.Tags, filterTag) {
+				continue
+			}
+			if filterAgent != "" && task.Owner != filterAgent {
 				continue
 			}
 			protocolTasks = append(protocolTasks, newProtocolTask(task))
@@ -59,6 +63,9 @@ func cmdStatus(args []string) {
 	}
 	for _, t := range tasks {
 		if filterTag != "" && !hasTag(t.Tags, filterTag) {
+			continue
+		}
+		if filterAgent != "" && t.Owner != filterAgent {
 			continue
 		}
 		grouped[t.Status] = append(grouped[t.Status], t)
