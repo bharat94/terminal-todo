@@ -59,6 +59,9 @@ func cmdAdd(args []string) {
 				}
 				finalDeps = append(finalDeps, fmt.Sprintf("todo://local/%d", depID))
 			} else {
+				if _, _, err := dag.ParseTaskURI(dep); err != nil {
+					return err
+				}
 				finalDeps = append(finalDeps, dep)
 			}
 		}

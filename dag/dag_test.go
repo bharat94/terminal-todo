@@ -87,4 +87,19 @@ func TestDAG_ParseLocalID(t *testing.T) {
 
 	_, local = ParseLocalID("todo://other-repo/42")
 	assert.False(t, local)
+
+	_, local = ParseLocalID("todo://local/not-a-number")
+	assert.False(t, local)
+}
+
+func TestParseTaskURI(t *testing.T) {
+	repository, id, err := ParseTaskURI("todo://api-service/42")
+	assert.NoError(t, err)
+	assert.Equal(t, "api-service", repository)
+	assert.Equal(t, uint64(42), id)
+
+	for _, invalid := range []string{"api-service/42", "todo:///42", "todo://api/0", "todo://api/nope", "todo://api/1/extra", "todo://bad alias/1"} {
+		_, _, err := ParseTaskURI(invalid)
+		assert.Error(t, err, invalid)
+	}
 }

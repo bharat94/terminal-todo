@@ -127,6 +127,17 @@ func TestCLI_AddWithDependency(t *testing.T) {
 	assert.Contains(t, string(out), "Added task 3")
 }
 
+func TestCLI_AddRejectsMalformedDependencyURI(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	cmd := exec.Command(todo, "add", "Blocked forever", "--after", "todo://local/nope")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.Error(t, err)
+	assert.Contains(t, string(out), "invalid task ID in URI")
+}
+
 func TestCLI_Done(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)
