@@ -93,6 +93,16 @@ func main() {
 		cmdLineage(args)
 	case "update":
 		cmdUpdate(args)
+	case "block":
+		cmdBlock(args)
+	case "unblock":
+		cmdUnblock(args)
+	case "log":
+		cmdLog(args)
+	case "search":
+		cmdSearch(args)
+	case "config":
+		cmdConfig(args)
 	case "link":
 		cmdLink(args)
 	case "help", "--help", "-h":
@@ -126,6 +136,11 @@ Commands:
   decompose <id> --into <json> Split a task into sub-tasks
   lineage <id>        Show an objective's recursive decomposition
   update <id>         Update metadata/context (--set key=value)
+  log <id> --msg <text> --as <n> Append to task audit trail
+  block <id> --reason <text> Mark a task as blocked
+  unblock <id>        Unblock a task
+  config [key=value]  View or set project configuration
+  search <query>      Search tasks by title or tag
   link <alias> <path> Register a repository for remote dependencies
   export              Export tasks to JSON
   export --markdown  Export tasks to Markdown
@@ -173,6 +188,7 @@ func parseIDs(args []string) []uint64 {
 		"--after": true, "--as": true, "--ttl": true,
 		"--capabilities": true, "--caps": true, "--priority": true,
 		"--into": true, "--title": true, "--set": true,
+		"--reason": true, "--msg": true, "--tag": true,
 	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -192,13 +208,17 @@ func parseIDs(args []string) []uint64 {
 
 func validateCommandArgs(command string, args []string) error {
 	valueFlags := map[string]map[string]bool{
-		"add":       {"--after": true, "--priority": true, "--caps": true},
+		"add":       {"--after": true, "--priority": true, "--caps": true, "--tag": true},
+		"block":     {"--reason": true, "--as": true},
 		"claim":     {"--as": true, "--ttl": true},
 		"decompose": {"--into": true},
 		"done":      {"--as": true},
+		"log":       {"--msg": true, "--as": true},
 		"next":      {"--capabilities": true},
-		"release":   {"--as": true},
+		"release":   {"--as": true, "--error": true},
+		"unblock":   {"--as": true},
 		"update":    {"--title": true, "--priority": true, "--caps": true, "--set": true, "--as": true},
+		"status":    {"--tag": true},
 	}
 	booleanFlags := map[string]map[string]bool{
 		"cat":     {"--json": true},
@@ -213,7 +233,7 @@ func validateCommandArgs(command string, args []string) error {
 		"cat": true, "rm": true, "depends": true, "dependents": true,
 		"next": true, "export": true, "prune": true, "claim": true,
 		"release": true, "decompose": true, "lineage": true, "update": true,
-		"link": true,
+		"config": true, "link": true, "block": true, "unblock": true, "log": true, "search": true,
 	}
 	if !knownCommands[command] {
 		return nil
@@ -275,7 +295,7 @@ func extractTitle(args []string) string {
 			skipNext = false
 			continue
 		}
-		if arg == "--after" || arg == "--as" || arg == "--ttl" || arg == "--capabilities" || arg == "--caps" || arg == "--priority" || arg == "--into" {
+		if arg == "--after" || arg == "--as" || arg == "--ttl" || arg == "--capabilities" || arg == "--caps" || arg == "--priority" || arg == "--into" || arg == "--reason" || arg == "--msg" || arg == "--tag" {
 			skipNext = true
 			continue
 		}

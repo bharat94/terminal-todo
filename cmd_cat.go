@@ -46,6 +46,21 @@ func cmdCat(args []string) {
 	fmt.Printf("Owner:      %s\n", task.Owner)
 	fmt.Printf("Depends:    %v\n", task.Depends)
 	fmt.Printf("Caps:       %v\n", task.Capabilities)
+	fmt.Printf("Tags:       %v\n", task.Tags)
 	fmt.Printf("Priority:   %.2f\n", task.Priority)
 	fmt.Printf("Lineage:    %s\n", task.Lineage)
+	fmt.Printf("Retries:    %d\n", task.RetryCount)
+	if task.LastError != "" {
+		fmt.Printf("Last Error: %s\n", task.LastError)
+	}
+	if len(task.Log) > 0 {
+		fmt.Println("Log:")
+		start := 0
+		if len(task.Log) > 5 {
+			start = len(task.Log) - 5
+		}
+		for _, entry := range task.Log[start:] {
+			fmt.Printf("  [%s] %s: %s\n", formatTimestamp(entry.Timestamp), entry.Agent, entry.Message)
+		}
+	}
 }

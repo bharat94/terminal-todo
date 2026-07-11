@@ -16,8 +16,10 @@ func cmdAdd(args []string) {
 	}
 
 	afterIDs := extractAfterIDs(args)
+	hasPriority := false
 	var priority float64
 	var capabilities []string
+	var tags []string
 	for i, arg := range args {
 		switch arg {
 		case "--priority":
@@ -31,13 +33,28 @@ func cmdAdd(args []string) {
 				os.Exit(1)
 			}
 			priority = value
+			hasPriority = true
 		case "--caps":
 			if i+1 >= len(args) {
 				fmt.Fprintln(os.Stderr, "Error: --caps requires a comma-separated value")
 				os.Exit(1)
 			}
 			capabilities = normalizeCapabilities(args[i+1])
+		case "--tag":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "Error: --tag requires a comma-separated value")
+				os.Exit(1)
+			}
+			tags = normalizeCapabilities(args[i+1])
 		}
+	}
+
+	cfg, _ := loadConfig()
+	if !hasPriority && cfg != nil {
+		priority = float64(cfg.DefaultPriority)
+	}
+	if capabilities == nil && cfg != nil && cfg.DefaultCapCaps != "" {
+		capabilities = normalizeCapabilities(cfg.DefaultCapCaps)
 	}
 
 	var taskID uint64
@@ -65,6 +82,7 @@ func cmdAdd(args []string) {
 		task := s.AddTask(title, finalDeps)
 		task.Priority = float32(priority)
 		task.Capabilities = capabilities
+		task.Tags = tags
 		taskID = task.ID
 		return nil
 	})

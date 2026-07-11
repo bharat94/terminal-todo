@@ -11,12 +11,16 @@ import (
 const protocolVersion = "1"
 
 type protocolMetadata struct {
-	Capabilities []string          `json:"capabilities"`
-	Owner        string            `json:"owner,omitempty"`
-	LeaseExpires *string           `json:"lease_expires,omitempty"`
-	Priority     float32           `json:"priority"`
-	Lineage      string            `json:"lineage,omitempty"`
-	Extra        map[string]string `json:"extra"`
+	Capabilities []string            `json:"capabilities"`
+	Owner        string              `json:"owner,omitempty"`
+	LeaseExpires *string             `json:"lease_expires,omitempty"`
+	Priority     float32             `json:"priority"`
+	Lineage      string              `json:"lineage,omitempty"`
+	Tags         []string            `json:"tags"`
+	RetryCount   uint32              `json:"retry_count"`
+	LastError    string              `json:"last_error,omitempty"`
+	Log          []store.LogEntry    `json:"log"`
+	Extra        map[string]string   `json:"extra"`
 }
 
 type protocolTask struct {
@@ -61,11 +65,19 @@ type nextEnvelope struct {
 func newProtocolTask(task *store.Task) protocolTask {
 	capabilities := append([]string(nil), task.Capabilities...)
 	depends := append([]string(nil), task.Depends...)
+	tags := append([]string(nil), task.Tags...)
+	logEntries := append([]store.LogEntry(nil), task.Log...)
 	if capabilities == nil {
 		capabilities = []string{}
 	}
 	if depends == nil {
 		depends = []string{}
+	}
+	if tags == nil {
+		tags = []string{}
+	}
+	if logEntries == nil {
+		logEntries = []store.LogEntry{}
 	}
 	extra := task.Extra
 	if extra == nil {
@@ -83,6 +95,10 @@ func newProtocolTask(task *store.Task) protocolTask {
 			Owner:        task.Owner,
 			Priority:     task.Priority,
 			Lineage:      task.Lineage,
+			Tags:         tags,
+			RetryCount:   task.RetryCount,
+			LastError:    task.LastError,
+			Log:          logEntries,
 			Extra:        extra,
 		},
 	}

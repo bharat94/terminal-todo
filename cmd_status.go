@@ -10,6 +10,16 @@ import (
 	"terminal-todo/store"
 )
 
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBlue   = "\033[34m"
+	colorCyan   = "\033[36m"
+	colorGray   = "\033[90m"
+)
+
 func cmdStatus(args []string) {
 	if hasFlag(args, "--all") {
 		cmdStatusAll(args)
@@ -18,6 +28,8 @@ func cmdStatus(args []string) {
 	s := loadStore()
 	tasks := s.GetAllTasks()
 
+	filterTag := optionValue(args, "--tag")
+
 	sort.Slice(tasks, func(i, j int) bool {
 		return tasks[i].ID < tasks[j].ID
 	})
@@ -25,6 +37,9 @@ func cmdStatus(args []string) {
 	if hasFlag(args, "--json") {
 		protocolTasks := make([]protocolTask, 0, len(tasks))
 		for _, task := range tasks {
+			if filterTag != "" && !hasTag(task.Tags, filterTag) {
+				continue
+			}
 			protocolTasks = append(protocolTasks, newProtocolTask(task))
 		}
 		output, err := json.MarshalIndent(tasksEnvelope{SchemaVersion: protocolVersion, Tasks: protocolTasks}, "", "  ")
@@ -36,30 +51,82 @@ func cmdStatus(args []string) {
 		return
 	}
 
-	fmt.Printf("%-4s %-12s %-30s %-20s %s\n", "ID", "STATUS", "TITLE", "OWNER", "DEPENDS")
+	grouped := map[store.TaskStatus][]*store.Task{
+		store.StatusInProgress: {},
+		store.StatusPending:    {},
+		store.StatusBlocked:    {},
+		store.StatusCompleted:  {},
+	}
 	for _, t := range tasks {
-		statusStr := "[ ]"
+		if filterTag != "" && !hasTag(t.Tags, filterTag) {
+			continue
+		}
+		grouped[t.Status] = append(grouped[t.Status], t)
+	}
+
+	sectionHeader := func(label string) {
+		fmt.Printf("\n%s%s%s\n", colorCyan, label, colorReset)
+	}
+
+	statusIcon := func(t *store.Task) string {
 		switch t.Status {
 		case store.StatusInProgress:
-			statusStr = "[/]"
-		case store.StatusCompleted:
-			statusStr = "[x]"
+			return colorYellow + " ◐" + colorReset
+		case store.StatusPending:
+			return " ○"
 		case store.StatusBlocked:
-			statusStr = "[B]"
+			return colorRed + " ⊗" + colorReset
+		case store.StatusCompleted:
+			return colorGreen + " ●" + colorReset
+		default:
+			return " ?"
 		}
-
-		owner := t.Owner
-		if owner == "" {
-			owner = "-"
-		}
-
-		deps := strings.Join(t.Depends, ", ")
-		if deps == "" {
-			deps = "-"
-		}
-
-		fmt.Printf("%-4d %-12s %-30s %-20s %s\n", t.ID, statusStr, t.Title, owner, deps)
 	}
+
+	tagStr := func(tags []string) string {
+		if len(tags) == 0 {
+			return ""
+		}
+		colored := make([]string, len(tags))
+		for i, tag := range tags {
+			colored[i] = colorGray + tag + colorReset
+		}
+		return " [" + strings.Join(colored, " ") + "]"
+	}
+
+	if len(grouped[store.StatusInProgress]) > 0 {
+		sectionHeader("In Progress")
+		for _, t := range grouped[store.StatusInProgress] {
+			fmt.Printf("  %s %d %-40s %s%s\n", statusIcon(t), t.ID, t.Title, colorYellow+t.Owner+colorReset, tagStr(t.Tags))
+		}
+	}
+	if len(grouped[store.StatusPending]) > 0 {
+		sectionHeader("Pending")
+		for _, t := range grouped[store.StatusPending] {
+			fmt.Printf("  %s %d %-40s%s\n", statusIcon(t), t.ID, t.Title, tagStr(t.Tags))
+		}
+	}
+	if len(grouped[store.StatusBlocked]) > 0 {
+		sectionHeader("Blocked")
+		for _, t := range grouped[store.StatusBlocked] {
+			fmt.Printf("  %s %d %-40s%s\n", statusIcon(t), t.ID, t.Title, tagStr(t.Tags))
+		}
+	}
+	if len(grouped[store.StatusCompleted]) > 0 {
+		sectionHeader("Completed")
+		for _, t := range grouped[store.StatusCompleted] {
+			fmt.Printf("  %s %d %-40s%s\n", statusIcon(t), t.ID, t.Title, tagStr(t.Tags))
+		}
+	}
+}
+
+func hasTag(tags []string, target string) bool {
+	for _, tag := range tags {
+		if tag == target {
+			return true
+		}
+	}
+	return false
 }
 
 type projectStatus struct {

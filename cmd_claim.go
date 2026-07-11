@@ -43,6 +43,8 @@ func cmdClaim(args []string) {
 	if task, ok := preflight.GetTask(id); ok {
 		resolver = snapshotDependencyResolver([]*store.Task{task})
 	}
+	var retryCount uint32
+	var lastError string
 	updateStore(func(s *store.TaskStore) error {
 		task, ok := s.GetTask(id)
 		if !ok {
@@ -61,10 +63,21 @@ func cmdClaim(args []string) {
 		if task.Owner != "" && task.Owner != owner && task.LeaseExpires > now {
 			return fmt.Errorf("task %d already claimed by %s (expires in %s)", id, task.Owner, time.Duration(task.LeaseExpires-now)*time.Millisecond)
 		}
+		retryCount = task.RetryCount
+		lastError = task.LastError
 		task.Owner = owner
 		task.Status = store.StatusInProgress
 		task.LeaseExpires = now + uint64(ttl.Milliseconds())
+		s.AddLog(id, owner, "claimed")
 		return nil
 	})
-	fmt.Printf("Task %d claimed by %s (expires in %s)\n", id, owner, ttl)
+
+	msg := fmt.Sprintf("Task %d claimed by %s (expires in %s)", id, owner, ttl)
+	if retryCount > 0 {
+		msg += fmt.Sprintf(" [retry #%d]", retryCount)
+	}
+	if lastError != "" {
+		msg += fmt.Sprintf(" (previous error: %s)", lastError)
+	}
+	fmt.Println(msg)
 }

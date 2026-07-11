@@ -20,6 +20,12 @@ const (
 	StatusBlocked
 )
 
+type LogEntry struct {
+	Timestamp uint64 `msgpack:"ts" json:"timestamp"`
+	Agent     string `msgpack:"agent" json:"agent"`
+	Message   string `msgpack:"msg" json:"message"`
+}
+
 type Task struct {
 	ID           uint64            `msgpack:"id" json:"id"`
 	Title        string            `msgpack:"title" json:"title"`
@@ -32,6 +38,10 @@ type Task struct {
 	LeaseExpires uint64            `msgpack:"lease_exp" json:"lease_expires"`
 	Priority     float32           `msgpack:"priority" json:"priority"`
 	Lineage      string            `msgpack:"lineage" json:"lineage"`
+	Tags         []string          `msgpack:"tags" json:"tags"`
+	RetryCount   uint32            `msgpack:"retry_count" json:"retry_count"`
+	LastError    string            `msgpack:"last_error" json:"last_error"`
+	Log          []LogEntry        `msgpack:"log" json:"log"`
 	Extra        map[string]string `msgpack:"extra" json:"extra"`
 }
 
@@ -55,6 +65,8 @@ func (s *TaskStore) AddTask(title string, depends []string) *Task {
 		Status:  StatusPending,
 		Depends: depends,
 		Created: uint64(time.Now().UnixMilli()),
+		Tags:    make([]string, 0),
+		Log:     make([]LogEntry, 0),
 		Extra:   make(map[string]string),
 	}
 	s.Tasks[task.ID] = task
@@ -75,6 +87,20 @@ func (s *TaskStore) GetTask(id uint64) (*Task, bool) {
 		task.LeaseExpires = 0
 	}
 	return task, true
+}
+
+func (s *TaskStore) AddLog(id uint64, agent, message string) bool {
+	task, ok := s.Tasks[id]
+	if !ok {
+		return false
+	}
+	task.Log = append(task.Log, LogEntry{
+		Timestamp: uint64(time.Now().UnixMilli()),
+		Agent:     agent,
+		Message:   message,
+	})
+	s.LastModified = uint64(time.Now().UnixMilli())
+	return true
 }
 
 func (s *TaskStore) RemoveTask(id uint64) bool {
