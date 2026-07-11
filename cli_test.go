@@ -20,6 +20,27 @@ func TestCLI_Init(t *testing.T) {
 	assert.FileExists(t, filepath.Join(tmpDir, ".terminal-todo", "tasks.bin"))
 }
 
+func TestCLI_InitDoesNotOverwriteExistingTasks(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	cmd := exec.Command(todo, "add", "Keep me")
+	cmd.Dir = tmpDir
+	assert.NoError(t, cmd.Run())
+
+	cmd = exec.Command(todo, "init")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), "Already initialized")
+
+	cmd = exec.Command(todo, "status")
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), "Keep me")
+}
+
 func TestCLI_AddTask(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)
@@ -285,6 +306,30 @@ func TestCLI_Prune(t *testing.T) {
 	assert.Contains(t, string(statusOut), "Task 2")
 }
 
+func TestCLI_PrunePreservesSatisfiedDependency(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	for _, args := range [][]string{{"add", "Foundation"}, {"add", "Follow-up", "--after", "1"}, {"done", "1"}, {"prune"}} {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, string(out))
+	}
+
+	cmd := exec.Command(todo, "next", "--json")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"title": "Follow-up"`)
+
+	cmd = exec.Command(todo, "cat", "2", "--json")
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"depends": []`)
+}
+
 func TestCLI_Rm(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)
@@ -298,6 +343,23 @@ func TestCLI_Rm(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	assert.NoError(t, err, string(out))
 	assert.Contains(t, string(out), "Removed task 1")
+}
+
+func TestCLI_RmRefusesDanglingDependency(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	for _, args := range [][]string{{"add", "Foundation"}, {"add", "Follow-up", "--after", "1"}} {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		assert.NoError(t, cmd.Run())
+	}
+
+	cmd := exec.Command(todo, "rm", "1")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.Error(t, err)
+	assert.Contains(t, string(out), "task 2 depends on it")
 }
 
 func buildTodo(t *testing.T) string {
