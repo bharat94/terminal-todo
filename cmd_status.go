@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"terminal-todo/store"
@@ -17,7 +18,15 @@ func cmdStatus(args []string) {
 	})
 
 	if hasFlag(args, "--json") {
-		output, _ := json.MarshalIndent(map[string]interface{}{"tasks": tasks}, "", "  ")
+		protocolTasks := make([]protocolTask, 0, len(tasks))
+		for _, task := range tasks {
+			protocolTasks = append(protocolTasks, newProtocolTask(task))
+		}
+		output, err := json.MarshalIndent(tasksEnvelope{SchemaVersion: protocolVersion, Tasks: protocolTasks}, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
+			os.Exit(1)
+		}
 		fmt.Println(string(output))
 		return
 	}

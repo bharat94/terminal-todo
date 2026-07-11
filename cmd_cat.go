@@ -22,7 +22,11 @@ func cmdCat(args []string) {
 	}
 
 	if hasFlag(args, "--json") {
-		output, _ := json.MarshalIndent(task, "", "  ")
+		output, err := json.MarshalIndent(taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(task)}, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
+			os.Exit(1)
+		}
 		fmt.Println(string(output))
 		return
 	}

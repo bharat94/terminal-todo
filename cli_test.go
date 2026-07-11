@@ -123,6 +123,9 @@ func TestCLI_StatusJSON(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	assert.NoError(t, err, string(out))
 	assert.Contains(t, string(out), `"title": "Task 1"`)
+	assert.Contains(t, string(out), `"schema_version": "1"`)
+	assert.Contains(t, string(out), `"status": "pending"`)
+	assert.Contains(t, string(out), `"metadata": {`)
 }
 
 func TestCLI_Next(t *testing.T) {
@@ -160,7 +163,9 @@ func TestCLI_NextJSON(t *testing.T) {
 	cmd.Dir = tmpDir
 	out, err := cmd.CombinedOutput()
 	assert.NoError(t, err, string(out))
-	assert.Contains(t, string(out), `"ready"`)
+	assert.Contains(t, string(out), `"available_tasks"`)
+	assert.Contains(t, string(out), `"blocked_summary"`)
+	assert.Contains(t, string(out), `"schema_version": "1"`)
 }
 
 func TestMatchesCapabilitiesRequiresAllTaskCapabilities(t *testing.T) {

@@ -4,23 +4,28 @@ This document defines the JSON interface for agent-to-agent and agent-to-CLI com
 
 ## 1. Task Representation (JSON)
 
-When an agent queries `todo cat <id> --json` or `todo status --json`, the following schema is used.
+Every JSON response includes `"schema_version": "1"`. `todo cat <id> --json`
+wraps the task in a `task` field; `todo status --json` returns the same task
+objects in a `tasks` array. The task schema is:
 
 ```json
 {
-  "id": 101,
-  "title": "Implement auth middleware",
-  "status": "in_progress",
-  "depends": ["todo://local/100"],
-  "metadata": {
-    "capabilities": ["go", "security"],
-    "owner": "agent-alpha-4",
-    "lease_expires": "2026-04-04T14:30:00Z",
-    "priority": 0.85,
-    "lineage": "goal-auth-v1",
-    "extra": {
-      "github_issue": "42",
-      "suggested_approach": "Use JWT with RS256"
+  "schema_version": "1",
+  "task": {
+    "id": 101,
+    "title": "Implement auth middleware",
+    "status": "in_progress",
+    "depends": ["todo://local/100"],
+    "created": "2026-04-04T14:00:00Z",
+    "metadata": {
+      "capabilities": ["go", "security"],
+      "owner": "agent-alpha-4",
+      "lease_expires": "2026-04-04T14:30:00Z",
+      "priority": 0.85,
+      "lineage": "goal-auth-v1",
+      "extra": {
+        "github_issue": "42"
+      }
     }
   }
 }
@@ -39,6 +44,7 @@ agents receive the same deterministic ordering.
 **Response:**
 ```json
 {
+  "schema_version": "1",
   "available_tasks": [
     {
       "id": 101,
