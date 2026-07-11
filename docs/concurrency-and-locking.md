@@ -9,7 +9,8 @@ To prevent binary corruption during concurrent writes, `terminal-todo` employs *
 ### The Locking Protocol
 - **Shared Lock (SH):** Acquired during `status`, `next`, `cat`, and `export`. Multiple agents can read the task graph simultaneously.
 - **Exclusive Lock (EX):** Acquired during `add`, `done`, `claim`, `decompose`, and `rm`. This blocks all other readers and writers.
-- **Timeout Strategy:** CLI calls will attempt to acquire the lock for a maximum of 500ms before failing with `Error: database locked by another agent`.
+- **Contention Strategy:** CLI calls wait for the current transaction to finish. A
+  bounded lock timeout is planned but is not part of the current local protocol.
 
 ### Failure Atomicity
 All writes are performed via **Rename-Swap**:
@@ -52,15 +53,17 @@ If an agent claims a task and then crashes, the task would remain `In-Progress` 
 
 - **Automatic Reclamation:** The `todo next` and `todo status` commands treat any task with `LeaseExpires < now` as `Pending`.
 - **Preemption:** If an agent attempts to `claim` a task with an expired lease, the CLI transparently re-assigns the `Owner`.
-- **Agent Heartbeats:** Agents executing long-running tasks (>15m) are responsible for calling `todo claim <id> --refresh` to extend their lease.
+- **Agent Heartbeats:** Agents executing long-running tasks (>15m) refresh the
+  lease by claiming it again with the same owner and a new `--ttl` value.
 
-## 4. Cross-Repo Consistency
+## 4. Future: Cross-Repo Consistency
 
-When Repo A depends on a task in Repo B:
+Cross-repository URIs are accepted but remain blocked in the current release.
+When repository resolution is implemented, Repo A depending on Repo B will use:
 - **Lock Propagation:** When checking the status of `todo://repo-b/50`, the Repo A CLI must acquire a **Shared Lock** on Repo B's `tasks.bin`.
 - **Lazy Validation:** Repo A does not receive push notifications from Repo B. Instead, it re-validates the state of external dependencies only when `todo next` or `todo status` is called in the context of Repo A.
 
-## 5. Distributed Deadlock Prevention
+## 5. Future: Distributed Deadlock Prevention
 
 Cross-repo cycles (Repo A -> Repo B -> Repo A) can stall an entire swarm.
 - **Inter-repo DFS:** The `todo link` command and any `todo add --after [URI]` call must perform a recursive DAG traversal across all linked repositories to ensure no global cycles are introduced.

@@ -168,6 +168,42 @@ func TestCLI_ClaimedTaskRequiresOwnerToCompleteOrRelease(t *testing.T) {
 	assert.Contains(t, string(out), "Released task 1")
 }
 
+func TestCLI_ConcurrentClaimsHaveSingleWinner(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+	cmd := exec.Command(todo, "add", "Contended task")
+	cmd.Dir = tmpDir
+	assert.NoError(t, cmd.Run())
+
+	type result struct {
+		output string
+		err    error
+	}
+	results := make(chan result, 2)
+	for _, owner := range []string{"agent-a", "agent-b"} {
+		go func(owner string) {
+			claim := exec.Command(todo, "claim", "1", "--as", owner)
+			claim.Dir = tmpDir
+			out, err := claim.CombinedOutput()
+			results <- result{output: string(out), err: err}
+		}(owner)
+	}
+
+	successes := 0
+	failures := 0
+	for i := 0; i < 2; i++ {
+		got := <-results
+		if got.err == nil {
+			successes++
+		} else {
+			failures++
+			assert.Contains(t, got.output, "already claimed by")
+		}
+	}
+	assert.Equal(t, 1, successes)
+	assert.Equal(t, 1, failures)
+}
+
 func TestCLI_Status(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)

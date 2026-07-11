@@ -40,7 +40,10 @@ Two agents with different skills work together without bumping into each other.
 
 ---
 
-## Example 3: The "Bridge" (Cross-Repository)
+## Future Example: The "Bridge" (Cross-Repository)
+
+> This workflow describes the distributed roadmap. `todo link` and remote task
+> resolution are not implemented yet; remote URIs currently remain blocked.
 Coordinate work between a Frontend repo and a Backend repo.
 
 1. **Backend Repo (`api-service`):**
