@@ -98,7 +98,7 @@ func printUsage() {
 
 Commands:
   init                Initialize .terminal-todo/ in current directory
-  add "<title>"       Add a new task
+  add "<title>"       Add a new task (--priority 0..1, --caps go,testing)
   add "<title>" --after <id> Add task with dependency
   done <id>           Mark task as complete
   status              Show all tasks
@@ -193,7 +193,7 @@ func extractTitle(args []string) string {
 			skipNext = false
 			continue
 		}
-		if arg == "--after" || arg == "--as" || arg == "--ttl" || arg == "--capabilities" || arg == "--into" {
+		if arg == "--after" || arg == "--as" || arg == "--ttl" || arg == "--capabilities" || arg == "--caps" || arg == "--priority" || arg == "--into" {
 			skipNext = true
 			continue
 		}

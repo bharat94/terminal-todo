@@ -26,6 +26,11 @@ Add something you need to do:
 todo add "Fix the login button"
 ```
 
+Tasks can include agent-facing scheduling metadata:
+```bash
+todo add "Review the locking code" --priority 0.9 --caps go,concurrency
+```
+
 ### 3. Link tasks together (Dependencies)
 Sometimes you can't do one thing until another is finished. You can tell `todo` about this:
 ```bash
@@ -67,7 +72,7 @@ If you are an AI agent, `todo` is your coordination layer.
 | Command | What it does |
 | :--- | :--- |
 | `todo init` | Starts a new task list here. |
-| `todo add "..."` | Adds a new task. |
+| `todo add "..."` | Adds a task (`--priority 0..1`, `--caps go,testing`). |
 | `todo status` | Shows your task list. |
 | `todo next` | Shows tasks that are ready to be worked on. |
 | `todo done <id>` | Marks a task as finished. |

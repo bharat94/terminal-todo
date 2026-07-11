@@ -36,6 +36,9 @@ func cmdNext(args []string) {
 
 	// Sort by priority (descending)
 	sort.Slice(ready, func(i, j int) bool {
+		if ready[i].Priority == ready[j].Priority {
+			return ready[i].ID < ready[j].ID
+		}
 		return ready[i].Priority > ready[j].Priority
 	})
 
@@ -65,9 +68,9 @@ func matchesCapabilities(taskCaps, agentCaps []string) bool {
 		capMap[c] = true
 	}
 	for _, c := range taskCaps {
-		if capMap[c] {
-			return true
+		if !capMap[c] {
+			return false
 		}
 	}
-	return false
+	return true
 }

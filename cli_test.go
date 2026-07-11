@@ -31,6 +31,36 @@ func TestCLI_AddTask(t *testing.T) {
 	assert.Contains(t, string(out), "Added task 1")
 }
 
+func TestCLI_AddTaskMetadata(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	cmd := exec.Command(todo, "add", "Review locking", "--priority", "0.9", "--caps", "go, concurrency")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+
+	cmd = exec.Command(todo, "cat", "1", "--json")
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"title": "Review locking"`)
+	assert.Contains(t, string(out), `"priority": 0.9`)
+	assert.Contains(t, string(out), `"capabilities": [`)
+	assert.Contains(t, string(out), `"concurrency"`)
+}
+
+func TestCLI_AddRejectsInvalidPriority(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	cmd := exec.Command(todo, "add", "Invalid", "--priority", "high")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.Error(t, err)
+	assert.Contains(t, string(out), "--priority must be between 0 and 1")
+}
+
 func TestCLI_AddWithDependency(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)
@@ -131,6 +161,12 @@ func TestCLI_NextJSON(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	assert.NoError(t, err, string(out))
 	assert.Contains(t, string(out), `"ready"`)
+}
+
+func TestMatchesCapabilitiesRequiresAllTaskCapabilities(t *testing.T) {
+	assert.True(t, matchesCapabilities([]string{"go", "testing"}, []string{"testing", "go", "docs"}))
+	assert.False(t, matchesCapabilities([]string{"go", "testing"}, []string{"go"}))
+	assert.True(t, matchesCapabilities(nil, nil))
 }
 
 func TestCLI_Cat(t *testing.T) {

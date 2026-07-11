@@ -29,6 +29,9 @@ When an agent queries `todo cat <id> --json` or `todo status --json`, the follow
 ## 2. Discovery Protocol (`todo next`)
 
 Agents use this to find work. The CLI filters tasks based on the agent's reported capabilities.
+Every capability required by a task must be present in the agent's capability list.
+Results are ordered by descending priority, then ascending task ID so independent
+agents receive the same deterministic ordering.
 
 **Request:**
 `todo next --ready --capabilities go,security --json`
