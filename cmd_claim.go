@@ -14,7 +14,11 @@ func cmdClaim(args []string) {
 	}
 
 	var owner string
-	var ttl time.Duration = 15 * time.Minute
+	cfg, err := loadConfig()
+	if err != nil {
+		fail(ErrStoreCorrupted, "loading config: %v", err)
+	}
+	ttl := parseDefaultTTL(cfg)
 
 	for i, arg := range args {
 		if arg == "--as" && i+1 < len(args) {
@@ -31,6 +35,9 @@ func cmdClaim(args []string) {
 
 	if owner == "" {
 		fail(ErrInvalidArgs, "--as <owner> is required")
+	}
+	if err := touchAgent(owner); err != nil {
+		fail(ErrStoreCorrupted, "registering agent %s: %v", owner, err)
 	}
 
 	id := ids[0]
@@ -78,20 +85,4 @@ func cmdClaim(args []string) {
 	}
 	fmt.Println(msg)
 
-	go func() {
-		updateAgentRegistry(func(r *AgentRegistry) error {
-			now := nowTimestamp()
-			if card, exists := r.Agents[owner]; exists {
-				card.LastSeen = now
-				r.Agents[owner] = card
-			} else {
-				r.Agents[owner] = AgentCard{
-					Name:      owner,
-					CreatedAt: now,
-					LastSeen:  now,
-				}
-			}
-			return nil
-		})
-	}()
 }

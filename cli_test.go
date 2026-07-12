@@ -221,6 +221,31 @@ func TestCLI_ClaimedTaskRequiresOwnerToCompleteOrRelease(t *testing.T) {
 	assert.Contains(t, string(out), "Released task 1")
 }
 
+func TestCLI_ClaimUsesConfiguredTTLAndRegistersAgent(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	for _, args := range [][]string{{"config", "default_ttl=2h"}, {"add", "Configured lease"}} {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, string(out))
+	}
+
+	cmd := exec.Command(todo, "claim", "1", "--as", "agent-config")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), "expires in 2h0m0s")
+
+	cmd = exec.Command(todo, "agent-card", "--as", "agent-config", "--json")
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"name": "agent-config"`)
+	assert.Contains(t, string(out), `"current_load": 1`)
+}
+
 func TestCLI_NumericOwnerIsNotParsedAsTaskID(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)

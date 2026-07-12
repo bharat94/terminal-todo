@@ -81,14 +81,14 @@ type catParams struct {
 }
 
 type updateParams struct {
-	ID           uint64              `json:"id"`
-	Title        *string             `json:"title,omitempty"`
-	Priority     *float32            `json:"priority,omitempty"`
-	Capabilities []string            `json:"capabilities,omitempty"`
-	Actor        string              `json:"actor,omitempty"`
-	Extra        map[string]string   `json:"extra,omitempty"`
-	AddDeps      []string            `json:"addDeps,omitempty"`
-	RemoveDeps   []string            `json:"removeDeps,omitempty"`
+	ID           uint64            `json:"id"`
+	Title        *string           `json:"title,omitempty"`
+	Priority     *float32          `json:"priority,omitempty"`
+	Capabilities []string          `json:"capabilities,omitempty"`
+	Actor        string            `json:"actor,omitempty"`
+	Extra        map[string]string `json:"extra,omitempty"`
+	AddDeps      []string          `json:"addDeps,omitempty"`
+	RemoveDeps   []string          `json:"removeDeps,omitempty"`
 }
 
 type claimParams struct {
@@ -234,9 +234,9 @@ type dependentsEntry struct {
 }
 
 type dependentsResult struct {
-	TaskID     uint64             `json:"task_id"`
-	TaskTitle  string             `json:"task_title"`
-	Dependents []dependentsEntry  `json:"dependents"`
+	TaskID     uint64            `json:"task_id"`
+	TaskTitle  string            `json:"task_title"`
+	Dependents []dependentsEntry `json:"dependents"`
 }
 
 type decomposeResult struct {
@@ -950,13 +950,20 @@ func (srv *server) handleClaim(params json.RawMessage) (interface{}, *rpcError) 
 		return nil, err
 	}
 
-	ttl := 15 * time.Minute
+	cfg, cfgErr := loadConfig()
+	if cfgErr != nil {
+		return nil, rpcErrorf(rpcStoreCorrupted, "loading config: %v", cfgErr)
+	}
+	ttl := parseDefaultTTL(cfg)
 	if p.TTL != "" {
 		t, err := time.ParseDuration(p.TTL)
 		if err != nil || t <= 0 {
 			return nil, rpcErrorf(rpcInvalidParams, "ttl must be a positive duration")
 		}
 		ttl = t
+	}
+	if err := touchAgent(p.Actor); err != nil {
+		return nil, rpcErrorf(rpcStoreCorrupted, "registering agent %s: %v", p.Actor, err)
 	}
 
 	preflight, err := loadStoreSafe()

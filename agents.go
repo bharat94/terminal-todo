@@ -21,8 +21,8 @@ type AgentCard struct {
 }
 
 type AgentRegistry struct {
-	SchemaVersion string                `json:"schema_version"`
-	Agents        map[string]AgentCard  `json:"agents"`
+	SchemaVersion string               `json:"schema_version"`
+	Agents        map[string]AgentCard `json:"agents"`
 }
 
 func agentsPath() string {
@@ -120,4 +120,17 @@ func computeAgentLoad(s *store.TaskStore, agentName string) int {
 
 func nowTimestamp() string {
 	return time.Now().UTC().Format(time.RFC3339Nano)
+}
+
+func touchAgent(agentName string) error {
+	return updateAgentRegistry(func(r *AgentRegistry) error {
+		now := nowTimestamp()
+		card, exists := r.Agents[agentName]
+		if !exists {
+			card = AgentCard{Name: agentName, CreatedAt: now}
+		}
+		card.LastSeen = now
+		r.Agents[agentName] = card
+		return nil
+	})
 }
