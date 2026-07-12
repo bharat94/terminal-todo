@@ -17,7 +17,6 @@ func cmdMy(args []string) {
 	s := loadStore()
 	tasks := s.GetAllTasks()
 
-	// Filter by owner
 	var mine []*store.Task
 	for _, t := range tasks {
 		if t.Owner == owner {
@@ -31,6 +30,15 @@ func cmdMy(args []string) {
 		}
 		return mine[i].ID < mine[j].ID
 	})
+
+	if hasFlag(args, "--json") {
+		protocolTasks := make([]protocolTask, 0, len(mine))
+		for _, task := range mine {
+			protocolTasks = append(protocolTasks, newProtocolTask(task))
+		}
+		writeJSON(tasksEnvelope{SchemaVersion: protocolVersion, Tasks: protocolTasks})
+		return
+	}
 
 	if len(mine) == 0 {
 		fmt.Printf("No tasks claimed by %s\n", owner)

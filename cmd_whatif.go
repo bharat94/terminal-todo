@@ -7,6 +7,28 @@ import (
 	"terminal-todo/store"
 )
 
+type whatifItem struct {
+	ID    uint64 `json:"id"`
+	Title string `json:"title"`
+}
+
+type whatifDone struct {
+	WouldUnblock []whatifItem `json:"would_unblock"`
+	StillBlocked int          `json:"still_blocked"`
+}
+
+type whatifBlocked struct {
+	WouldBlock int `json:"would_block"`
+}
+
+type whatifEnvelope struct {
+	SchemaVersion string         `json:"schema_version"`
+	TaskID        uint64         `json:"task_id"`
+	Title         string         `json:"title"`
+	IfDone        *whatifDone    `json:"if_done,omitempty"`
+	IfBlocked     *whatifBlocked `json:"if_blocked,omitempty"`
+}
+
 func cmdWhatIf(args []string) {
 	ids := parseIDs(args)
 	if len(ids) == 0 {
@@ -26,10 +48,9 @@ func cmdWhatIf(args []string) {
 		fail(ErrTaskNotFound, "task %d not found", ids[0])
 	}
 
-	fmt.Printf("What-if analysis for task %d: %s\n\n", task.ID, task.Title)
-
+	var newlyReady []*store.Task
+	stillBlocked := 0
 	if filter == "" || filter == "done" {
-		fmt.Println("If marked DONE:")
 		d := dag.NewDAG()
 		d.BuildFromTasks(s.Tasks)
 
@@ -49,22 +70,54 @@ func cmdWhatIf(args []string) {
 		resolver := dependencyResolver()
 		ready := d.GetReadyTasksWithResolver(simTasks, resolver)
 		blocked := d.GetBlockedTasksWithResolver(simTasks, resolver)
-
 		beforeBlocked := d.GetBlockedTasksWithResolver(s.Tasks, resolver)
-		var newlyReady []*store.Task
+
 		for _, t := range ready {
 			if _, wasBlocked := beforeBlocked[t.ID]; wasBlocked {
 				newlyReady = append(newlyReady, t)
 			}
 		}
+		stillBlocked = len(blocked)
+	}
 
+	wouldBlock := 0
+	if filter == "" || filter == "block" {
+		wouldBlock = countDependents(s.Tasks, ids[0])
+	}
+
+	if hasFlag(args, "--json") {
+		var ifDone *whatifDone
+		var ifBlocked *whatifBlocked
+		if filter == "" || filter == "done" {
+			items := make([]whatifItem, 0, len(newlyReady))
+			for _, t := range newlyReady {
+				items = append(items, whatifItem{ID: t.ID, Title: t.Title})
+			}
+			ifDone = &whatifDone{WouldUnblock: items, StillBlocked: stillBlocked}
+		}
+		if filter == "" || filter == "block" {
+			ifBlocked = &whatifBlocked{WouldBlock: wouldBlock}
+		}
+		writeJSON(whatifEnvelope{
+			SchemaVersion: protocolVersion,
+			TaskID:        task.ID,
+			Title:         task.Title,
+			IfDone:        ifDone,
+			IfBlocked:     ifBlocked,
+		})
+		return
+	}
+
+	fmt.Printf("What-if analysis for task %d: %s\n\n", task.ID, task.Title)
+
+	if filter == "" || filter == "done" {
+		fmt.Println("If marked DONE:")
 		if len(newlyReady) > 0 {
 			fmt.Printf("  Would unblock %d task(s):\n", len(newlyReady))
 			for _, t := range newlyReady {
 				fmt.Printf("    - %d: %s\n", t.ID, t.Title)
 			}
 		} else {
-			stillBlocked := len(blocked)
 			if stillBlocked > 0 {
 				fmt.Printf("  No tasks would be unblocked (%d task(s) still blocked)\n", stillBlocked)
 			} else {
@@ -76,7 +129,7 @@ func cmdWhatIf(args []string) {
 	if filter == "" || filter == "block" {
 		fmt.Println()
 		fmt.Println("If BLOCKED:")
-		fmt.Printf("  Would block %d dependent(s)\n", countDependents(s.Tasks, ids[0]))
+		fmt.Printf("  Would block %d dependent(s)\n", wouldBlock)
 	}
 }
 

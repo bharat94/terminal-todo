@@ -10,6 +10,21 @@ import (
 
 const protocolVersion = "1"
 
+type protocolLogEntry struct {
+	Timestamp string `json:"timestamp"`
+	Agent     string `json:"agent"`
+	Message   string `json:"message"`
+}
+
+type protocolEvent struct {
+	ID        uint64            `json:"id"`
+	Timestamp string            `json:"timestamp"`
+	Type      store.EventType   `json:"type"`
+	TaskID    uint64            `json:"task_id"`
+	Actor     string            `json:"actor"`
+	Data      map[string]string `json:"data"`
+}
+
 type protocolMetadata struct {
 	Capabilities []string            `json:"capabilities"`
 	Owner        string              `json:"owner,omitempty"`
@@ -19,7 +34,7 @@ type protocolMetadata struct {
 	Tags         []string            `json:"tags"`
 	RetryCount   uint32              `json:"retry_count"`
 	LastError    string              `json:"last_error,omitempty"`
-	Log          []store.LogEntry    `json:"log"`
+	Log          []protocolLogEntry   `json:"log"`
 	Extra        map[string]string   `json:"extra"`
 }
 
@@ -66,7 +81,10 @@ func newProtocolTask(task *store.Task) protocolTask {
 	capabilities := append([]string(nil), task.Capabilities...)
 	depends := append([]string(nil), task.Depends...)
 	tags := append([]string(nil), task.Tags...)
-	logEntries := append([]store.LogEntry(nil), task.Log...)
+	logEntries := make([]protocolLogEntry, len(task.Log))
+	for i, e := range task.Log {
+		logEntries[i] = newProtocolLogEntry(e)
+	}
 	if capabilities == nil {
 		capabilities = []string{}
 	}
@@ -75,9 +93,6 @@ func newProtocolTask(task *store.Task) protocolTask {
 	}
 	if tags == nil {
 		tags = []string{}
-	}
-	if logEntries == nil {
-		logEntries = []store.LogEntry{}
 	}
 	extra := task.Extra
 	if extra == nil {
@@ -130,6 +145,29 @@ func statusName(status store.TaskStatus) string {
 
 func formatTimestamp(milliseconds uint64) string {
 	return time.UnixMilli(int64(milliseconds)).UTC().Format(time.RFC3339Nano)
+}
+
+func newProtocolLogEntry(e store.LogEntry) protocolLogEntry {
+	return protocolLogEntry{
+		Timestamp: formatTimestamp(e.Timestamp),
+		Agent:     e.Agent,
+		Message:   e.Message,
+	}
+}
+
+func newProtocolEvent(e store.Event) protocolEvent {
+	data := e.Data
+	if data == nil {
+		data = map[string]string{}
+	}
+	return protocolEvent{
+		ID:        e.ID,
+		Timestamp: formatTimestamp(e.Timestamp),
+		Type:      e.Type,
+		TaskID:    e.TaskID,
+		Actor:     e.Actor,
+		Data:      data,
+	}
 }
 
 func newBlockedSummary(tasks map[uint64]*store.Task) blockedSummary {

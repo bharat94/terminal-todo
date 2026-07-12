@@ -19,9 +19,13 @@ func cmdEvents(args []string) {
 	events := s.EventsSince(since)
 
 	if hasFlag(args, "--json") {
+		protocolEvents := make([]protocolEvent, len(events))
+		for i, e := range events {
+			protocolEvents[i] = newProtocolEvent(e)
+		}
 		writeJSON(map[string]interface{}{
 			"schema_version": protocolVersion,
-			"events":         events,
+			"events":         protocolEvents,
 		})
 		return
 	}

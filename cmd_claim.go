@@ -77,4 +77,21 @@ func cmdClaim(args []string) {
 		msg += fmt.Sprintf(" (previous error: %s)", lastError)
 	}
 	fmt.Println(msg)
+
+	go func() {
+		updateAgentRegistry(func(r *AgentRegistry) error {
+			now := nowTimestamp()
+			if card, exists := r.Agents[owner]; exists {
+				card.LastSeen = now
+				r.Agents[owner] = card
+			} else {
+				r.Agents[owner] = AgentCard{
+					Name:      owner,
+					CreatedAt: now,
+					LastSeen:  now,
+				}
+			}
+			return nil
+		})
+	}()
 }

@@ -46,7 +46,7 @@ func main() {
 
 	root, err := findProjectRoot()
 	if err != nil {
-		if os.Args[1] == "init" {
+		if os.Args[1] == "init" || os.Args[1] == "serve" {
 			projectRoot, _ = os.Getwd()
 		} else {
 			fail(ErrNotInitialized, "%s", err)
@@ -108,10 +108,16 @@ func main() {
 		cmdWatch(args)
 	case "my":
 		cmdMy(args)
+	case "agent-card":
+		cmdAgentCard(args)
+	case "caps":
+		cmdCaps(args)
 	case "graph":
 		cmdGraph(args)
 	case "search":
 		cmdSearch(args)
+	case "serve":
+		cmdServe(args)
 	case "backup":
 		cmdBackup(args)
 	case "restore":
@@ -150,11 +156,13 @@ Task Management:
   search <query>      Search tasks by title or tag
 
 Agent Operations:
-  claim <id> --as <n> Secure an exclusive execution lease (--ttl)
+  claim <id> --as <n>  Secure an exclusive execution lease (--ttl)
   release <id> --as <n> Yield an owned lease back to the pool (--error)
-  my --as <owner>     Show tasks claimed by you
-  block <id>          Mark a task as blocked (--reason, --as)
-  unblock <id>        Unblock a task (--as)
+  my --as <owner>      Show tasks claimed by you
+  agent-card [--as <n>] Register or query agent identity (--caps, --desc, --max-load)
+  caps [--all]          Show capability demand across all tasks
+  block <id>           Mark a task as blocked (--reason, --as)
+  unblock <id>         Unblock a task (--as)
 
 DAG & Dependency:
   depends <id>        Show what this task depends on
@@ -252,7 +260,9 @@ func validateCommandArgs(command string, args []string) error {
 		"update":    {"--title": true, "--priority": true, "--caps": true, "--set": true, "--as": true, "--add-dep": true, "--remove-dep": true},
 		"status":    {"--tag": true, "--as": true},
 		"watch":     {"--poll": true},
-		"my":        {"--as": true},
+		"my":         {"--as": true},
+		"agent-card": {"--as": true, "--caps": true, "--desc": true, "--max-load": true},
+		"caps":       {"--as": true},
 	}
 	booleanFlags := map[string]map[string]bool{
 		"cat":      {"--json": true},
@@ -264,8 +274,15 @@ func validateCommandArgs(command string, args []string) error {
 		"graph":    {"--dot": true, "--json": true},
 		"events":   {"--json": true},
 		"doctor":   {"--fix": true},
-		"what-if":  {"--done": true, "--claim": true, "--block": true},
-		"whatif":   {"--done": true, "--claim": true, "--block": true},
+		"what-if":  {"--done": true, "--claim": true, "--block": true, "--json": true},
+		"whatif":   {"--done": true, "--claim": true, "--block": true, "--json": true},
+		"depends":    {"--json": true},
+		"dependents": {"--json": true},
+		"search":     {"--json": true},
+		"my":         {"--json": true},
+		"agent-card": {"--json": true},
+		"caps":       {"--json": true, "--all": true},
+		"serve":      {"--stdio": true},
 	}
 	knownCommands := map[string]bool{
 		"init": true, "add": true, "done": true, "status": true,
@@ -275,7 +292,7 @@ func validateCommandArgs(command string, args []string) error {
 		"config": true, "link": true, "unlink": true, "block": true, "unblock": true,
 		"log": true, "search": true, "doctor": true, "backup": true,
 		"restore": true, "what-if": true, "whatif": true, "events": true,
-		"watch": true, "my": true, "graph": true,
+		"watch": true, "my": true, "graph": true, "serve": true,
 	}
 	if !knownCommands[command] {
 		return nil

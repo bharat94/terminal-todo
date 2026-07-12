@@ -8,7 +8,13 @@ import (
 )
 
 func cmdSearch(args []string) {
-	query := strings.Join(args, " ")
+	queryArgs := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg != "--json" {
+			queryArgs = append(queryArgs, arg)
+		}
+	}
+	query := strings.Join(queryArgs, " ")
 	if query == "" {
 		fail(ErrInvalidArgs, "search query required")
 	}
@@ -29,6 +35,15 @@ func cmdSearch(args []string) {
 				break
 			}
 		}
+	}
+
+	if hasFlag(args, "--json") {
+		protocolTasks := make([]protocolTask, 0, len(results))
+		for _, task := range results {
+			protocolTasks = append(protocolTasks, newProtocolTask(task))
+		}
+		writeJSON(tasksEnvelope{SchemaVersion: protocolVersion, Tasks: protocolTasks})
+		return
 	}
 
 	if len(results) == 0 {
