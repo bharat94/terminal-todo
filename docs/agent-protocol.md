@@ -74,6 +74,7 @@ for tasks in linked repositories.
 - `tags`: arbitrary classification tags
 - `retry_count`: how many times the task has been released with an error
 - `last_error`: the most recent error message (empty if none)
+- `block_reason`: structured reason for a manual block (empty unless blocked)
 - `log`: ordered audit trail of agent actions
 - `extra`: free-form key-value store for context sharing between agents
 
@@ -398,7 +399,7 @@ structured via the error envelope when `--json` is present.
 | Command | Args | Effect |
 |---------|------|--------|
 | `add "<title>" [--priority N] [--caps a,b] [--tag x,y] [--after <id>]` | Create task | Emits `created` event |
-| `done <id> [--as <owner>]` | Mark complete | Auto-unblocks dependents, emits `completed` + `unblocked` events |
+| `done <id> [--as <owner>]` | Mark complete | Makes pending dependents eligible and emits `completed`; manual blocks remain until `unblock` |
 | `rm <id>` | Remove task | Emits `removed` event |
 | `update <id> [--title] [--priority] [--caps] [--set k=v] [--add-dep] [--remove-dep] [--as]` | Modify task | Emits `updated`/`dep_added`/`dep_removed` events |
 | `claim <id> --as <owner> [--ttl <duration>]` | Acquire lease | Emits `claimed` event |

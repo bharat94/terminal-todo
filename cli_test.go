@@ -195,6 +195,37 @@ func TestCLI_Done(t *testing.T) {
 	assert.Contains(t, string(out), "Marked task 1 as done")
 }
 
+func TestCLI_DependencyCompletionDoesNotEraseManualBlock(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	commands := [][]string{
+		{"add", "Dependency"},
+		{"add", "Manually blocked", "--after", "1"},
+		{"block", "2", "--reason", "waiting for approval"},
+		{"done", "1"},
+	}
+	for _, args := range commands {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, string(out))
+	}
+
+	cmd := exec.Command(todo, "cat", "2", "--json")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"status": "blocked"`)
+	assert.Contains(t, string(out), `"block_reason": "waiting for approval"`)
+
+	cmd = exec.Command(todo, "next", "--json")
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.NotContains(t, string(out), `"title": "Manually blocked"`)
+}
+
 func TestCLI_ClaimedTaskRequiresOwnerToCompleteOrRelease(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)

@@ -24,15 +24,15 @@ const (
 type EventType string
 
 const (
-	EventTaskCreated    EventType = "created"
-	EventTaskCompleted  EventType = "completed"
-	EventTaskClaimed    EventType = "claimed"
-	EventTaskReleased   EventType = "released"
-	EventTaskBlocked    EventType = "blocked"
-	EventTaskUnblocked  EventType = "unblocked"
-	EventTaskUpdated    EventType = "updated"
-	EventTaskDecomposed EventType = "decomposed"
-	EventTaskRemoved    EventType = "removed"
+	EventTaskCreated       EventType = "created"
+	EventTaskCompleted     EventType = "completed"
+	EventTaskClaimed       EventType = "claimed"
+	EventTaskReleased      EventType = "released"
+	EventTaskBlocked       EventType = "blocked"
+	EventTaskUnblocked     EventType = "unblocked"
+	EventTaskUpdated       EventType = "updated"
+	EventTaskDecomposed    EventType = "decomposed"
+	EventTaskRemoved       EventType = "removed"
 	EventDependencyAdded   EventType = "dep_added"
 	EventDependencyRemoved EventType = "dep_removed"
 )
@@ -67,11 +67,12 @@ type Task struct {
 	Tags         []string          `msgpack:"tags" json:"tags"`
 	RetryCount   uint32            `msgpack:"retry_count" json:"retry_count"`
 	LastError    string            `msgpack:"last_error" json:"last_error"`
+	BlockReason  string            `msgpack:"block_reason" json:"block_reason"`
 	Log          []LogEntry        `msgpack:"log" json:"log"`
 	Extra        map[string]string `msgpack:"extra" json:"extra"`
 }
 
-const CurrentSchemaVersion uint32 = 2
+const CurrentSchemaVersion uint32 = 3
 
 type TaskStore struct {
 	SchemaVersion uint32           `msgpack:"schema_version"`
@@ -109,6 +110,10 @@ var migrations = map[uint32]migrationFunc{
 		}
 		s.NextEventID = 1
 		s.SchemaVersion = 2
+		return nil
+	},
+	2: func(s *TaskStore) error {
+		s.SchemaVersion = 3
 		return nil
 	},
 }

@@ -11,7 +11,7 @@ import (
 func TestNewProtocolTaskUsesStableAgentTypes(t *testing.T) {
 	task := &store.Task{
 		ID: 7, Title: "Coordinate agents", Status: store.StatusInProgress,
-		Created: 0, LeaseExpires: 1_000, Priority: 0.75,
+		Created: 0, LeaseExpires: 1_000, Priority: 0.75, BlockReason: "approval",
 	}
 
 	got := newProtocolTask(task)
@@ -23,6 +23,7 @@ func TestNewProtocolTaskUsesStableAgentTypes(t *testing.T) {
 	assert.Empty(t, got.Depends)
 	assert.Empty(t, got.Metadata.Capabilities)
 	assert.NotNil(t, got.Metadata.Extra)
+	assert.Equal(t, "approval", got.Metadata.BlockReason)
 }
 
 func TestNewBlockedSummaryIsDeterministicAndCountsExplicitBlocks(t *testing.T) {

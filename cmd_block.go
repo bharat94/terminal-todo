@@ -31,6 +31,7 @@ func cmdBlock(args []string) {
 			return fmt.Errorf("task %d is claimed by %s; use --as %s", ids[0], task.Owner, task.Owner)
 		}
 		task.Status = store.StatusBlocked
+		task.BlockReason = reason
 		s.AddLog(ids[0], owner, fmt.Sprintf("blocked: %s", reason))
 		s.AddEvent(store.EventTaskBlocked, ids[0], owner, map[string]string{"reason": reason})
 		return nil

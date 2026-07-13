@@ -26,16 +26,17 @@ type protocolEvent struct {
 }
 
 type protocolMetadata struct {
-	Capabilities []string            `json:"capabilities"`
-	Owner        string              `json:"owner,omitempty"`
-	LeaseExpires *string             `json:"lease_expires,omitempty"`
-	Priority     float32             `json:"priority"`
-	Lineage      string              `json:"lineage,omitempty"`
-	Tags         []string            `json:"tags"`
-	RetryCount   uint32              `json:"retry_count"`
-	LastError    string              `json:"last_error,omitempty"`
-	Log          []protocolLogEntry   `json:"log"`
-	Extra        map[string]string   `json:"extra"`
+	Capabilities []string           `json:"capabilities"`
+	Owner        string             `json:"owner,omitempty"`
+	LeaseExpires *string            `json:"lease_expires,omitempty"`
+	Priority     float32            `json:"priority"`
+	Lineage      string             `json:"lineage,omitempty"`
+	Tags         []string           `json:"tags"`
+	RetryCount   uint32             `json:"retry_count"`
+	LastError    string             `json:"last_error,omitempty"`
+	BlockReason  string             `json:"block_reason,omitempty"`
+	Log          []protocolLogEntry `json:"log"`
+	Extra        map[string]string  `json:"extra"`
 }
 
 type protocolTask struct {
@@ -113,6 +114,7 @@ func newProtocolTask(task *store.Task) protocolTask {
 			Tags:         tags,
 			RetryCount:   task.RetryCount,
 			LastError:    task.LastError,
+			BlockReason:  task.BlockReason,
 			Log:          logEntries,
 			Extra:        extra,
 		},

@@ -93,7 +93,7 @@ func TestStore_AddTask(t *testing.T) {
 	assert.Equal(t, []string{"todo://local/1", "todo://local/2"}, task.Depends)
 }
 
-func TestStore_MigrationV0toV2(t *testing.T) {
+func TestStore_MigrationV0ToCurrent(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "tasks.bin")
 
@@ -129,7 +129,7 @@ func TestStore_MigrationV0toV2(t *testing.T) {
 	s, err := loadUnlocked(path)
 	assert.NoError(t, err)
 
-	assert.Equal(t, uint32(2), s.SchemaVersion)
+	assert.Equal(t, CurrentSchemaVersion, s.SchemaVersion)
 	assert.Equal(t, 1, len(s.Tasks))
 	assert.NotNil(t, s.Tasks)
 
@@ -145,7 +145,7 @@ func TestStore_MigrationV0toV2(t *testing.T) {
 	assert.Equal(t, uint64(2), s.NextID)
 }
 
-func TestStore_MigrationV1toV2(t *testing.T) {
+func TestStore_MigrationV1ToCurrent(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "tasks.bin")
 
@@ -170,7 +170,7 @@ func TestStore_MigrationV1toV2(t *testing.T) {
 	s, err := loadUnlocked(path)
 	assert.NoError(t, err)
 
-	assert.Equal(t, uint32(2), s.SchemaVersion)
+	assert.Equal(t, CurrentSchemaVersion, s.SchemaVersion)
 	assert.NotNil(t, s.Events)
 	assert.Equal(t, 0, len(s.Events))
 	assert.Equal(t, uint64(1), s.NextEventID)

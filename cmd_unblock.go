@@ -26,6 +26,7 @@ func cmdUnblock(args []string) {
 			return fmt.Errorf("task %d is claimed by %s; use --as %s", ids[0], task.Owner, task.Owner)
 		}
 		task.Status = store.StatusPending
+		task.BlockReason = ""
 		s.AddLog(ids[0], owner, "unblocked")
 		s.AddEvent(store.EventTaskUnblocked, ids[0], owner, nil)
 		return nil

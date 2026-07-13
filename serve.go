@@ -649,7 +649,6 @@ func (srv *server) handleDone(params json.RawMessage) (interface{}, *rpcError) {
 	resolver := snapshotDependencyResolver(remoteTasks)
 
 	var completed []uint64
-	var unblocked []uint64
 	_, err = updateStoreSafe(func(s *store.TaskStore) error {
 		for _, id := range p.IDs {
 			task, ok := s.GetTask(id)
@@ -666,23 +665,9 @@ func (srv *server) handleDone(params json.RawMessage) (interface{}, *rpcError) {
 			task.Completed = uint64(time.Now().UnixMilli())
 			task.Owner = ""
 			task.LeaseExpires = 0
+			task.BlockReason = ""
 			s.AddEvent(store.EventTaskCompleted, id, p.Actor, nil)
 			completed = append(completed, id)
-
-			for _, depTask := range s.Tasks {
-				if depTask.Status != store.StatusBlocked {
-					continue
-				}
-				for _, depURI := range depTask.Depends {
-					depID, local := dag.ParseLocalID(depURI)
-					if local && depID == id && dag.DependenciesCompleteWithResolver(depTask, s.Tasks, resolver) {
-						depTask.Status = store.StatusPending
-						s.AddEvent(store.EventTaskUnblocked, depTask.ID, p.Actor, nil)
-						unblocked = append(unblocked, depTask.ID)
-						break
-					}
-				}
-			}
 		}
 		return nil
 	})
@@ -701,7 +686,7 @@ func (srv *server) handleDone(params json.RawMessage) (interface{}, *rpcError) {
 
 	return map[string]interface{}{
 		"completed": completed,
-		"unblocked": unblocked,
+		"unblocked": []uint64{},
 	}, nil
 }
 
@@ -1114,6 +1099,7 @@ func (srv *server) handleBlock(params json.RawMessage) (interface{}, *rpcError) 
 		}
 
 		task.Status = store.StatusBlocked
+		task.BlockReason = p.Reason
 		s.AddLog(p.ID, p.Actor, fmt.Sprintf("blocked: %s", p.Reason))
 		s.AddEvent(store.EventTaskBlocked, p.ID, p.Actor, map[string]string{"reason": p.Reason})
 		return nil
@@ -1157,6 +1143,7 @@ func (srv *server) handleUnblock(params json.RawMessage) (interface{}, *rpcError
 		}
 
 		task.Status = store.StatusPending
+		task.BlockReason = ""
 		s.AddLog(p.ID, p.Actor, "unblocked")
 		s.AddEvent(store.EventTaskUnblocked, p.ID, p.Actor, nil)
 		return nil
