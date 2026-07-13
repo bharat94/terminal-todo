@@ -86,6 +86,8 @@ func main() {
 		cmdPrune(args)
 	case "claim":
 		cmdClaim(args)
+	case "acquire":
+		cmdAcquire(args)
 	case "release":
 		cmdRelease(args)
 	case "decompose":
@@ -157,6 +159,7 @@ Task Management:
 
 Agent Operations:
   claim <id> --as <n>  Secure an exclusive execution lease (--ttl)
+  acquire --as <n>     Atomically select and claim ready work
   release <id> --as <n> Yield an owned lease back to the pool (--error)
   my --as <owner>      Show tasks claimed by you
   agent-card [--as <n>] Register or query agent identity (--caps, --desc, --max-load)
@@ -251,6 +254,7 @@ func validateCommandArgs(command string, args []string) error {
 		"backup":     {"--output": true},
 		"block":      {"--reason": true, "--as": true},
 		"claim":      {"--as": true, "--ttl": true},
+		"acquire":    {"--as": true, "--ttl": true, "--capabilities": true},
 		"decompose":  {"--into": true},
 		"done":       {"--as": true},
 		"log":        {"--msg": true, "--as": true},
@@ -267,6 +271,7 @@ func validateCommandArgs(command string, args []string) error {
 	booleanFlags := map[string]map[string]bool{
 		"add":        {"--json": true},
 		"claim":      {"--json": true},
+		"acquire":    {"--json": true},
 		"done":       {"--json": true},
 		"release":    {"--json": true},
 		"cat":        {"--json": true},
@@ -291,7 +296,7 @@ func validateCommandArgs(command string, args []string) error {
 	knownCommands := map[string]bool{
 		"init": true, "add": true, "done": true, "status": true,
 		"cat": true, "rm": true, "depends": true, "dependents": true,
-		"next": true, "export": true, "prune": true, "claim": true,
+		"next": true, "export": true, "prune": true, "claim": true, "acquire": true,
 		"release": true, "decompose": true, "lineage": true, "update": true,
 		"config": true, "link": true, "unlink": true, "block": true, "unblock": true,
 		"log": true, "search": true, "doctor": true, "backup": true,

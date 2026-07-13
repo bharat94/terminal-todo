@@ -3,19 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
-	"terminal-todo/dag"
-	"terminal-todo/store"
 )
 
 func cmdNext(args []string) {
 	s := loadStore()
-	d := dag.NewDAG()
-	d.BuildFromTasks(s.Tasks)
-
 	resolver := dependencyResolver()
-	ready := d.GetReadyTasksWithResolver(s.Tasks, resolver)
 
 	// Filter by capabilities if requested
 	var caps []string
@@ -25,23 +18,7 @@ func cmdNext(args []string) {
 		}
 	}
 
-	if len(caps) > 0 {
-		var filtered []*store.Task
-		for _, t := range ready {
-			if matchesCapabilities(t.Capabilities, caps) {
-				filtered = append(filtered, t)
-			}
-		}
-		ready = filtered
-	}
-
-	// Sort by priority (descending)
-	sort.Slice(ready, func(i, j int) bool {
-		if ready[i].Priority == ready[j].Priority {
-			return ready[i].ID < ready[j].ID
-		}
-		return ready[i].Priority > ready[j].Priority
-	})
+	ready := rankedReadyTasks(s, resolver, caps, len(caps) > 0)
 
 	if hasFlag(args, "--json") {
 		available := make([]availableTask, 0, len(ready))

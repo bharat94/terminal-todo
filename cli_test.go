@@ -370,6 +370,62 @@ func TestCLI_ConcurrentClaimsHaveSingleWinner(t *testing.T) {
 	assert.Equal(t, 1, failures)
 }
 
+func TestCLI_AcquireAtomicallySelectsCompatibleWorkAndEnforcesCapacity(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+	commands := [][]string{
+		{"agent-card", "--as", "allocator", "--caps", "go", "--max-load", "1"},
+		{"add", "Low priority", "--priority", "0.2", "--caps", "go"},
+		{"add", "High priority", "--priority", "0.9", "--caps", "go"},
+		{"add", "Wrong capability", "--priority", "1", "--caps", "python"},
+	}
+	for _, args := range commands {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, string(out))
+	}
+
+	cmd := exec.Command(todo, "acquire", "--as", "allocator", "--json")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"title": "High priority"`)
+	assert.Contains(t, string(out), `"owner": "allocator"`)
+
+	cmd = exec.Command(todo, "acquire", "--as", "allocator", "--json")
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	assert.Error(t, err)
+	assert.Contains(t, string(out), "reached max load 1")
+}
+
+func TestCLI_ConcurrentAcquireHasSingleWinner(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+	cmd := exec.Command(todo, "add", "Only task")
+	cmd.Dir = tmpDir
+	assert.NoError(t, cmd.Run())
+
+	type acquireResult struct{ err error }
+	results := make(chan acquireResult, 2)
+	for _, actor := range []string{"agent-a", "agent-b"} {
+		go func(actor string) {
+			acquire := exec.Command(todo, "acquire", "--as", actor, "--json")
+			acquire.Dir = tmpDir
+			_, err := acquire.CombinedOutput()
+			results <- acquireResult{err: err}
+		}(actor)
+	}
+	successes := 0
+	for i := 0; i < 2; i++ {
+		if (<-results).err == nil {
+			successes++
+		}
+	}
+	assert.Equal(t, 1, successes)
+}
+
 func TestCLI_Status(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)

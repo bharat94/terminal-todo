@@ -406,6 +406,7 @@ envelope when `--json` is present.
 | `rm <id>` | Remove task | Emits `removed` event |
 | `update <id> [--title] [--priority] [--caps] [--set k=v] [--add-dep] [--remove-dep] [--as]` | Modify task | Emits `updated`/`dep_added`/`dep_removed` events |
 | `claim <id> --as <owner> [--ttl <duration>]` | Acquire lease | Emits `claimed` event |
+| `acquire --as <owner> [--capabilities a,b] [--ttl <duration>]` | Atomically select and claim the highest-priority compatible task | Enforces agent `max_load`, emits `claimed` event |
 | `release <id> --as <owner> [--error <msg>]` | Yield lease | Increments retry_count, emits `released` event |
 | `block <id> --reason <text> [--as <owner>]` | Mark blocked | Emits `blocked` event |
 | `unblock <id> [--as <owner>]` | Mark pending | Emits `unblocked` event |
@@ -517,6 +518,7 @@ All methods are namespaced `todo.<command>`. Params are named objects.
 | `todo.cat` | `{id}` | `protocolTask` |
 | `todo.update` | `{id, title?, priority?, capabilities?, actor?, extra?, addDeps?, removeDeps?}` | `protocolTask` |
 | `todo.claim` | `{id, actor, ttl?}` | `{id, owner, expires, retryCount, lastError}` |
+| `todo.acquire` | `{actor, ttl?, capabilities?}` | Versioned task envelope for the atomically selected task |
 | `todo.release` | `{id, actor, error?}` | `{id, status}` |
 | `todo.block` | `{id, reason, actor?}` | `{id, status}` |
 | `todo.unblock` | `{id, actor?}` | `{id, status}` |

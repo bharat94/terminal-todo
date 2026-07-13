@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -95,6 +96,12 @@ type claimParams struct {
 	ID    uint64 `json:"id"`
 	Actor string `json:"actor"`
 	TTL   string `json:"ttl,omitempty"`
+}
+
+type acquireParams struct {
+	Actor        string   `json:"actor"`
+	TTL          string   `json:"ttl,omitempty"`
+	Capabilities []string `json:"capabilities,omitempty"`
 }
 
 type releaseParams struct {
@@ -457,6 +464,8 @@ func (srv *server) dispatch(method string, params json.RawMessage) (interface{},
 		return srv.handleUpdate(params)
 	case "todo.claim":
 		return srv.handleClaim(params)
+	case "todo.acquire":
+		return srv.handleAcquire(params)
 	case "todo.release":
 		return srv.handleRelease(params)
 	case "todo.block":
@@ -1012,6 +1021,64 @@ func (srv *server) handleClaim(params json.RawMessage) (interface{}, *rpcError) 
 	}
 
 	return result, nil
+}
+
+func (srv *server) handleAcquire(params json.RawMessage) (interface{}, *rpcError) {
+	var p acquireParams
+	if err := unmarshalParams(params, &p); err != nil {
+		return nil, err
+	}
+	if p.Actor == "" {
+		return nil, rpcErrorf(rpcInvalidParams, "actor is required")
+	}
+	if err := srv.ensureInitialized(); err != nil {
+		return nil, err
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, rpcErrorf(rpcStoreCorrupted, "loading config: %v", err)
+	}
+	ttl := parseDefaultTTL(cfg)
+	if p.TTL != "" {
+		ttl, err = time.ParseDuration(p.TTL)
+		if err != nil || ttl <= 0 {
+			return nil, rpcErrorf(rpcInvalidParams, "ttl must be a positive duration")
+		}
+	}
+	if err := touchAgent(p.Actor); err != nil {
+		return nil, rpcErrorf(rpcStoreCorrupted, "registering agent %s: %v", p.Actor, err)
+	}
+	var explicitCapabilities []string
+	if p.Capabilities != nil {
+		explicitCapabilities = normalizeCapabilities(strings.Join(p.Capabilities, ","))
+	}
+	capabilities, maxLoad, err := agentAllocationProfile(p.Actor, explicitCapabilities)
+	if err != nil {
+		return nil, rpcErrorf(rpcStoreCorrupted, "loading agent profile: %v", err)
+	}
+	preflight, err := loadStoreSafe()
+	if err != nil {
+		return nil, rpcErrorf(rpcStoreCorrupted, "loading store: %v", err)
+	}
+	resolver := snapshotDependencyResolver(preflight.GetAllTasks())
+
+	var acquired *store.Task
+	_, err = updateStoreSafe(func(s *store.TaskStore) error {
+		var acquireErr error
+		acquired, acquireErr = acquireFromStore(s, p.Actor, ttl, capabilities, maxLoad, resolver)
+		return acquireErr
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, errNoReadyTasks):
+			return nil, rpcErrorf(rpcDependency, "%v", err)
+		case errors.Is(err, errAgentAtCapacity):
+			return nil, rpcErrorf(rpcAlreadyClaimed, "%v", err)
+		default:
+			return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
+		}
+	}
+	return taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(acquired)}, nil
 }
 
 func (srv *server) handleRelease(params json.RawMessage) (interface{}, *rpcError) {
