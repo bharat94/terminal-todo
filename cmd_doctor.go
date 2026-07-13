@@ -42,9 +42,9 @@ func cmdDoctor(args []string) {
 	fmt.Printf("  repositories.json %s\n", checkFile("repos.json", reposJSON, false))
 	fmt.Printf("  config.json       %s\n", checkFile("config.json", configJSON, false))
 
-	// Check for stale lock files
+	// Lock sidecars are stable synchronization inodes and intentionally persist.
 	fmt.Println()
-	fmt.Println("Stale lock files:")
+	fmt.Println("Lock files (persistent):")
 	entries, err := os.ReadDir(ttDir)
 	if err != nil {
 		fmt.Printf("  ERROR reading .terminal-todo: %v\n", err)
@@ -52,27 +52,14 @@ func cmdDoctor(args []string) {
 	}
 
 	now := time.Now()
-	foundStale := false
+	foundLocks := false
 	for _, entry := range entries {
 		if filepath.Ext(entry.Name()) == ".lock" {
-			info, err := entry.Info()
-			if err != nil {
-				continue
-			}
-			age := now.Sub(info.ModTime())
-			fmt.Printf("  %s (%s old)\n", entry.Name(), formatDuration(age))
-			if age > 5*time.Minute && fix {
-				path := filepath.Join(ttDir, entry.Name())
-				if err := os.Remove(path); err != nil {
-					fmt.Printf("    ERROR removing: %v\n", err)
-				} else {
-					fmt.Printf("    removed\n")
-				}
-			}
-			foundStale = true
+			fmt.Printf("  %s (ok)\n", entry.Name())
+			foundLocks = true
 		}
 	}
-	if !foundStale {
+	if !foundLocks {
 		fmt.Println("  none found")
 	}
 
@@ -81,8 +68,8 @@ func cmdDoctor(args []string) {
 	fmt.Println("Orphaned temp files:")
 	foundTemp := false
 	for _, entry := range entries {
-		if len(entry.Name()) > 4 && entry.Name()[0] == '.' && 
-		   (len(entry.Name()) > 5 && entry.Name()[len(entry.Name())-4:] == ".tmp") {
+		if len(entry.Name()) > 4 && entry.Name()[0] == '.' &&
+			(len(entry.Name()) > 5 && entry.Name()[len(entry.Name())-4:] == ".tmp") {
 			info, err := entry.Info()
 			if err != nil {
 				continue
@@ -133,7 +120,7 @@ func cmdDoctor(args []string) {
 
 	if !fix {
 		fmt.Println()
-		fmt.Println("Run with --fix to remove stale locks and orphaned temp files.")
+		fmt.Println("Run with --fix to remove orphaned temp files.")
 	}
 }
 

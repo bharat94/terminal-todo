@@ -42,6 +42,20 @@ func TestCLI_InitDoesNotOverwriteExistingTasks(t *testing.T) {
 	assert.Contains(t, string(out), "Keep me")
 }
 
+func TestCLI_DoctorFixPreservesStableLockFile(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+	lockPath := filepath.Join(tmpDir, ".terminal-todo", "tasks.bin.lock")
+	assert.FileExists(t, lockPath)
+
+	cmd := exec.Command(todo, "doctor", "--fix")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), "Lock files (persistent)")
+	assert.FileExists(t, lockPath)
+}
+
 func TestCLI_AddTask(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)
