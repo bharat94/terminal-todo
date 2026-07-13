@@ -19,12 +19,14 @@ const (
 	ErrStoreCorrupted  ErrorCode = "STORE_CORRUPTED"
 	ErrLockContention  ErrorCode = "LOCK_CONTENTION"
 	ErrSchemaVersion   ErrorCode = "SCHEMA_VERSION"
+	ErrNoWork          ErrorCode = "NO_WORK"
+	ErrAgentAtCapacity ErrorCode = "AGENT_AT_CAPACITY"
 )
 
 type ErrorResponse struct {
 	Code    ErrorCode `json:"code"`
-	Message string   `json:"message"`
-	Details string   `json:"details,omitempty"`
+	Message string    `json:"message"`
+	Details string    `json:"details,omitempty"`
 }
 
 type errorEnvelope struct {
@@ -75,6 +77,10 @@ func exitCode(code ErrorCode) int {
 		return 4
 	case ErrAlreadyClaimed:
 		return 5
+	case ErrNoWork:
+		return 6
+	case ErrAgentAtCapacity:
+		return 7
 	default:
 		return 1
 	}

@@ -48,9 +48,9 @@ func cmdAcquire(args []string) {
 	if err != nil {
 		switch {
 		case errors.Is(err, errNoReadyTasks):
-			fail(ErrDependency, "%v", err)
+			fail(ErrNoWork, "%v", err)
 		case errors.Is(err, errAgentAtCapacity):
-			fail(ErrAlreadyClaimed, "%v", err)
+			fail(ErrAgentAtCapacity, "%v", err)
 		default:
 			fail(ErrStoreCorrupted, "acquiring task: %v", err)
 		}

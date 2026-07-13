@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -397,6 +398,10 @@ func TestCLI_AcquireAtomicallySelectsCompatibleWorkAndEnforcesCapacity(t *testin
 	cmd.Dir = tmpDir
 	out, err = cmd.CombinedOutput()
 	assert.Error(t, err)
+	var exitErr *exec.ExitError
+	assert.True(t, errors.As(err, &exitErr))
+	assert.Equal(t, 7, exitErr.ExitCode())
+	assert.Contains(t, string(out), `"code": "AGENT_AT_CAPACITY"`)
 	assert.Contains(t, string(out), "reached max load 1")
 }
 
@@ -407,23 +412,35 @@ func TestCLI_ConcurrentAcquireHasSingleWinner(t *testing.T) {
 	cmd.Dir = tmpDir
 	assert.NoError(t, cmd.Run())
 
-	type acquireResult struct{ err error }
+	type acquireResult struct {
+		err error
+		out []byte
+	}
 	results := make(chan acquireResult, 2)
 	for _, actor := range []string{"agent-a", "agent-b"} {
 		go func(actor string) {
 			acquire := exec.Command(todo, "acquire", "--as", actor, "--json")
 			acquire.Dir = tmpDir
-			_, err := acquire.CombinedOutput()
-			results <- acquireResult{err: err}
+			out, err := acquire.CombinedOutput()
+			results <- acquireResult{err: err, out: out}
 		}(actor)
 	}
 	successes := 0
+	failures := 0
 	for i := 0; i < 2; i++ {
-		if (<-results).err == nil {
+		result := <-results
+		if result.err == nil {
 			successes++
+			continue
 		}
+		failures++
+		var exitErr *exec.ExitError
+		assert.True(t, errors.As(result.err, &exitErr))
+		assert.Equal(t, 6, exitErr.ExitCode())
+		assert.Contains(t, string(result.out), `"code": "NO_WORK"`)
 	}
 	assert.Equal(t, 1, successes)
+	assert.Equal(t, 1, failures)
 }
 
 func TestCLI_Status(t *testing.T) {

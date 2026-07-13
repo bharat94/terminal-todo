@@ -51,6 +51,8 @@ const (
 	rpcStoreCorrupted = -32007
 	rpcLockContention = -32008
 	rpcSchemaVersion  = -32009
+	rpcNoWork         = -32010
+	rpcAgentCapacity  = -32011
 )
 
 type server struct {
@@ -1071,9 +1073,9 @@ func (srv *server) handleAcquire(params json.RawMessage) (interface{}, *rpcError
 	if err != nil {
 		switch {
 		case errors.Is(err, errNoReadyTasks):
-			return nil, rpcErrorf(rpcDependency, "%v", err)
+			return nil, rpcErrorf(rpcNoWork, "%v", err)
 		case errors.Is(err, errAgentAtCapacity):
-			return nil, rpcErrorf(rpcAlreadyClaimed, "%v", err)
+			return nil, rpcErrorf(rpcAgentCapacity, "%v", err)
 		default:
 			return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 		}

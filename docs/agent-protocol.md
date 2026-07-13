@@ -363,6 +363,8 @@ The error envelope is:
 | `STORE_CORRUPTED` | Task store or config file is corrupted | 2 |
 | `LOCK_CONTENTION` | Another process holds the file lock | 3 |
 | `SCHEMA_VERSION` | Store was created by a newer binary | 2 |
+| `NO_WORK` | No compatible ready task is currently available | 6 |
+| `AGENT_AT_CAPACITY` | Agent has reached its registered `max_load` | 7 |
 
 ---
 
@@ -563,6 +565,15 @@ All methods are namespaced `todo.<command>`. Params are named objects.
 | `STORE_CORRUPTED` | -32007 |
 | `LOCK_CONTENTION` | -32008 |
 | `SCHEMA_VERSION` | -32009 |
+| `NO_WORK` | -32010 |
+| `AGENT_AT_CAPACITY` | -32011 |
+
+Error identifiers and numeric codes are append-only protocol values. `NO_WORK`
+is a normal, retryable scheduler outcome: clients should wait for a task or
+dependency event and use backoff before trying again. `AGENT_AT_CAPACITY`
+means the actor must finish or release active work before retrying. Capacity is
+checked before queue availability, so an at-capacity actor receives
+`AGENT_AT_CAPACITY` even when no compatible work is ready.
 
 ---
 
