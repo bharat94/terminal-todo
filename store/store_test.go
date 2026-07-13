@@ -167,6 +167,7 @@ func TestStore_MigrationV0ToCurrent(t *testing.T) {
 	assert.Equal(t, 0, len(s.Events))
 	assert.Equal(t, uint64(1), s.NextEventID)
 	assert.Equal(t, uint64(2), s.NextID)
+	assert.NotNil(t, s.Acquisitions)
 }
 
 func TestStore_MigrationV1ToCurrent(t *testing.T) {
@@ -199,6 +200,7 @@ func TestStore_MigrationV1ToCurrent(t *testing.T) {
 	assert.Equal(t, 0, len(s.Events))
 	assert.Equal(t, uint64(1), s.NextEventID)
 	assert.Equal(t, uint64(2), s.NextID)
+	assert.NotNil(t, s.Acquisitions)
 }
 
 func TestStore_SchemaVersionTooNew(t *testing.T) {

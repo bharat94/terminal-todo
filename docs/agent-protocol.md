@@ -365,6 +365,7 @@ The error envelope is:
 | `SCHEMA_VERSION` | Store was created by a newer binary | 2 |
 | `NO_WORK` | No compatible ready task is currently available | 6 |
 | `AGENT_AT_CAPACITY` | Agent has reached its registered `max_load` | 7 |
+| `IDEMPOTENCY_CONFLICT` | Request ID was already used with different acquire parameters | 8 |
 
 ---
 
@@ -408,7 +409,7 @@ envelope when `--json` is present.
 | `rm <id>` | Remove task | Emits `removed` event |
 | `update <id> [--title] [--priority] [--caps] [--set k=v] [--add-dep] [--remove-dep] [--as]` | Modify task | Emits `updated`/`dep_added`/`dep_removed` events |
 | `claim <id> --as <owner> [--ttl <duration>]` | Acquire lease | Emits `claimed` event |
-| `acquire --as <owner> [--capabilities a,b] [--ttl <duration>]` | Atomically select and claim the highest-priority compatible task | Enforces agent `max_load`, emits `claimed` event |
+| `acquire --as <owner> --request-id <id> [--capabilities a,b] [--ttl <duration>]` | Atomically select and claim the highest-priority compatible task | Durable request IDs make retries idempotent; enforces agent `max_load`, emits `claimed` event |
 | `release <id> --as <owner> [--error <msg>]` | Yield lease | Increments retry_count, emits `released` event |
 | `block <id> --reason <text> [--as <owner>]` | Mark blocked | Emits `blocked` event |
 | `unblock <id> [--as <owner>]` | Mark pending | Emits `unblocked` event |
@@ -520,7 +521,7 @@ All methods are namespaced `todo.<command>`. Params are named objects.
 | `todo.cat` | `{id}` | `protocolTask` |
 | `todo.update` | `{id, title?, priority?, capabilities?, actor?, extra?, addDeps?, removeDeps?}` | `protocolTask` |
 | `todo.claim` | `{id, actor, ttl?}` | `{id, owner, expires, retryCount, lastError}` |
-| `todo.acquire` | `{actor, ttl?, capabilities?}` | Versioned task envelope for the atomically selected task |
+| `todo.acquire` | `{actor, requestId, ttl?, capabilities?}` | Versioned task envelope for the atomically selected task; repeated request IDs return the original result |
 | `todo.release` | `{id, actor, error?}` | `{id, status}` |
 | `todo.block` | `{id, reason, actor?}` | `{id, status}` |
 | `todo.unblock` | `{id, actor?}` | `{id, status}` |
@@ -567,6 +568,7 @@ All methods are namespaced `todo.<command>`. Params are named objects.
 | `SCHEMA_VERSION` | -32009 |
 | `NO_WORK` | -32010 |
 | `AGENT_AT_CAPACITY` | -32011 |
+| `IDEMPOTENCY_CONFLICT` | -32012 |
 
 Error identifiers and numeric codes are append-only protocol values. `NO_WORK`
 is a normal, retryable scheduler outcome: clients should wait for a task or
@@ -574,6 +576,15 @@ dependency event and use backoff before trying again. `AGENT_AT_CAPACITY`
 means the actor must finish or release active work before retrying. Capacity is
 checked before queue availability, so an at-capacity actor receives
 `AGENT_AT_CAPACITY` even when no compatible work is ready.
+
+Acquire request IDs are opaque, project-wide identifiers of 1–128 bytes; a
+UUID or ULID is recommended. A successful acquisition stores its request
+fingerprint and immutable result in `tasks.bin` in the same transaction as the
+claim. Repeating the same actor, TTL mode, and capability mode returns that
+original task with `replayed: true` without extending its lease or emitting a
+second claim event. Reusing the ID with different parameters returns
+`IDEMPOTENCY_CONFLICT`. Failed attempts do not consume the ID, and task removal
+or pruning does not remove a successful receipt.
 
 ---
 

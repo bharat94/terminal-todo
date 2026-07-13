@@ -37,22 +37,23 @@ type rpcError struct {
 }
 
 const (
-	rpcParse          = -32700
-	rpcInvalidRequest = -32600
-	rpcMethodNotFound = -32601
-	rpcInvalidParams  = -32602
-	rpcInternal       = -32603
-	rpcTaskNotFound   = -32001
-	rpcNotInitialized = -32002
-	rpcCycleDetected  = -32003
-	rpcAlreadyClaimed = -32004
-	rpcNotOwner       = -32005
-	rpcDependency     = -32006
-	rpcStoreCorrupted = -32007
-	rpcLockContention = -32008
-	rpcSchemaVersion  = -32009
-	rpcNoWork         = -32010
-	rpcAgentCapacity  = -32011
+	rpcParse               = -32700
+	rpcInvalidRequest      = -32600
+	rpcMethodNotFound      = -32601
+	rpcInvalidParams       = -32602
+	rpcInternal            = -32603
+	rpcTaskNotFound        = -32001
+	rpcNotInitialized      = -32002
+	rpcCycleDetected       = -32003
+	rpcAlreadyClaimed      = -32004
+	rpcNotOwner            = -32005
+	rpcDependency          = -32006
+	rpcStoreCorrupted      = -32007
+	rpcLockContention      = -32008
+	rpcSchemaVersion       = -32009
+	rpcNoWork              = -32010
+	rpcAgentCapacity       = -32011
+	rpcIdempotencyConflict = -32012
 )
 
 type server struct {
@@ -102,6 +103,7 @@ type claimParams struct {
 
 type acquireParams struct {
 	Actor        string   `json:"actor"`
+	RequestID    string   `json:"requestId"`
 	TTL          string   `json:"ttl,omitempty"`
 	Capabilities []string `json:"capabilities,omitempty"`
 }
@@ -941,7 +943,6 @@ func (srv *server) handleClaim(params json.RawMessage) (interface{}, *rpcError) 
 	if p.Actor == "" {
 		return nil, rpcErrorf(rpcInvalidParams, "actor is required")
 	}
-
 	if err := srv.ensureInitialized(); err != nil {
 		return nil, err
 	}
@@ -1033,6 +1034,9 @@ func (srv *server) handleAcquire(params json.RawMessage) (interface{}, *rpcError
 	if p.Actor == "" {
 		return nil, rpcErrorf(rpcInvalidParams, "actor is required")
 	}
+	if err := validateAcquireRequestID(p.RequestID); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "requestId: %v", err)
+	}
 	if err := srv.ensureInitialized(); err != nil {
 		return nil, err
 	}
@@ -1041,18 +1045,25 @@ func (srv *server) handleAcquire(params json.RawMessage) (interface{}, *rpcError
 		return nil, rpcErrorf(rpcStoreCorrupted, "loading config: %v", err)
 	}
 	ttl := parseDefaultTTL(cfg)
+	ttlMode := "default"
 	if p.TTL != "" {
 		ttl, err = time.ParseDuration(p.TTL)
 		if err != nil || ttl <= 0 {
 			return nil, rpcErrorf(rpcInvalidParams, "ttl must be a positive duration")
 		}
+		ttlMode = "explicit:" + ttl.String()
 	}
 	if err := touchAgent(p.Actor); err != nil {
 		return nil, rpcErrorf(rpcStoreCorrupted, "registering agent %s: %v", p.Actor, err)
 	}
 	var explicitCapabilities []string
+	capabilitiesMode := "registered"
 	if p.Capabilities != nil {
 		explicitCapabilities = normalizeCapabilities(strings.Join(p.Capabilities, ","))
+		if explicitCapabilities == nil {
+			explicitCapabilities = []string{}
+		}
+		capabilitiesMode = "explicit"
 	}
 	capabilities, maxLoad, err := agentAllocationProfile(p.Actor, explicitCapabilities)
 	if err != nil {
@@ -1063,11 +1074,13 @@ func (srv *server) handleAcquire(params json.RawMessage) (interface{}, *rpcError
 		return nil, rpcErrorf(rpcStoreCorrupted, "loading store: %v", err)
 	}
 	resolver := snapshotDependencyResolver(preflight.GetAllTasks())
+	fingerprint := acquireFingerprint(p.Actor, ttlMode, capabilitiesMode, explicitCapabilities)
 
 	var acquired *store.Task
+	var replayed bool
 	_, err = updateStoreSafe(func(s *store.TaskStore) error {
 		var acquireErr error
-		acquired, acquireErr = acquireFromStore(s, p.Actor, ttl, capabilities, maxLoad, resolver)
+		acquired, replayed, acquireErr = acquireFromStore(s, p.Actor, p.RequestID, fingerprint, ttl, capabilities, maxLoad, resolver)
 		return acquireErr
 	})
 	if err != nil {
@@ -1076,11 +1089,13 @@ func (srv *server) handleAcquire(params json.RawMessage) (interface{}, *rpcError
 			return nil, rpcErrorf(rpcNoWork, "%v", err)
 		case errors.Is(err, errAgentAtCapacity):
 			return nil, rpcErrorf(rpcAgentCapacity, "%v", err)
+		case errors.Is(err, errAcquireRequestConflict):
+			return nil, rpcErrorf(rpcIdempotencyConflict, "%v", err)
 		default:
 			return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 		}
 	}
-	return taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(acquired)}, nil
+	return acquireEnvelope{SchemaVersion: protocolVersion, RequestID: p.RequestID, Replayed: replayed, Task: newProtocolTask(acquired)}, nil
 }
 
 func (srv *server) handleRelease(params json.RawMessage) (interface{}, *rpcError) {

@@ -9,18 +9,19 @@ import (
 type ErrorCode string
 
 const (
-	ErrTaskNotFound    ErrorCode = "TASK_NOT_FOUND"
-	ErrNotInitialized  ErrorCode = "NOT_INITIALIZED"
-	ErrInvalidArgs     ErrorCode = "INVALID_ARGS"
-	ErrCycleDetected   ErrorCode = "CYCLE_DETECTED"
-	ErrAlreadyClaimed  ErrorCode = "ALREADY_CLAIMED"
-	ErrNotOwner        ErrorCode = "NOT_OWNER"
-	ErrDependency      ErrorCode = "DEPENDENCY_ERROR"
-	ErrStoreCorrupted  ErrorCode = "STORE_CORRUPTED"
-	ErrLockContention  ErrorCode = "LOCK_CONTENTION"
-	ErrSchemaVersion   ErrorCode = "SCHEMA_VERSION"
-	ErrNoWork          ErrorCode = "NO_WORK"
-	ErrAgentAtCapacity ErrorCode = "AGENT_AT_CAPACITY"
+	ErrTaskNotFound        ErrorCode = "TASK_NOT_FOUND"
+	ErrNotInitialized      ErrorCode = "NOT_INITIALIZED"
+	ErrInvalidArgs         ErrorCode = "INVALID_ARGS"
+	ErrCycleDetected       ErrorCode = "CYCLE_DETECTED"
+	ErrAlreadyClaimed      ErrorCode = "ALREADY_CLAIMED"
+	ErrNotOwner            ErrorCode = "NOT_OWNER"
+	ErrDependency          ErrorCode = "DEPENDENCY_ERROR"
+	ErrStoreCorrupted      ErrorCode = "STORE_CORRUPTED"
+	ErrLockContention      ErrorCode = "LOCK_CONTENTION"
+	ErrSchemaVersion       ErrorCode = "SCHEMA_VERSION"
+	ErrNoWork              ErrorCode = "NO_WORK"
+	ErrAgentAtCapacity     ErrorCode = "AGENT_AT_CAPACITY"
+	ErrIdempotencyConflict ErrorCode = "IDEMPOTENCY_CONFLICT"
 )
 
 type ErrorResponse struct {
@@ -81,6 +82,8 @@ func exitCode(code ErrorCode) int {
 		return 6
 	case ErrAgentAtCapacity:
 		return 7
+	case ErrIdempotencyConflict:
+		return 8
 	default:
 		return 1
 	}

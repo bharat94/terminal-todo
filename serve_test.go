@@ -21,15 +21,32 @@ func TestServerAcquireUsesSharedAtomicAllocator(t *testing.T) {
 	assert.NoError(t, s.Save(path))
 
 	srv := &server{initialized: true}
-	params := json.RawMessage(`{"actor":"rpc-agent"}`)
+	params := json.RawMessage(`{"actor":"rpc-agent","requestId":"rpc-request-1"}`)
 	result, rpcErr := srv.dispatch("todo.acquire", params)
 	assert.Nil(t, rpcErr)
-	envelope, ok := result.(taskEnvelope)
+	envelope, ok := result.(acquireEnvelope)
 	assert.True(t, ok)
+	assert.False(t, envelope.Replayed)
+	assert.Equal(t, "rpc-request-1", envelope.RequestID)
 	assert.Equal(t, "RPC work", envelope.Task.Title)
 	assert.Equal(t, "rpc-agent", envelope.Task.Metadata.Owner)
 
-	_, rpcErr = srv.dispatch("todo.acquire", params)
+	replayed, rpcErr := srv.dispatch("todo.acquire", params)
+	assert.Nil(t, rpcErr)
+	replayEnvelope, ok := replayed.(acquireEnvelope)
+	assert.True(t, ok)
+	assert.True(t, replayEnvelope.Replayed)
+	assert.Equal(t, envelope.Task, replayEnvelope.Task)
+
+	_, rpcErr = srv.dispatch("todo.acquire", json.RawMessage(`{"actor":"rpc-agent","requestId":"rpc-request-1","ttl":"2h"}`))
+	assert.NotNil(t, rpcErr)
+	assert.Equal(t, rpcIdempotencyConflict, rpcErr.Code)
+
+	_, rpcErr = srv.dispatch("todo.acquire", json.RawMessage(`{"actor":"rpc-agent"}`))
+	assert.NotNil(t, rpcErr)
+	assert.Equal(t, rpcInvalidParams, rpcErr.Code)
+
+	_, rpcErr = srv.dispatch("todo.acquire", json.RawMessage(`{"actor":"rpc-agent","requestId":"rpc-request-2"}`))
 	assert.NotNil(t, rpcErr)
 	assert.Equal(t, rpcNoWork, rpcErr.Code)
 }
@@ -54,7 +71,7 @@ func TestServerAcquireReportsAgentCapacity(t *testing.T) {
 	}))
 
 	srv := &server{initialized: true}
-	_, rpcErr := srv.dispatch("todo.acquire", json.RawMessage(`{"actor":"busy-agent"}`))
+	_, rpcErr := srv.dispatch("todo.acquire", json.RawMessage(`{"actor":"busy-agent","requestId":"busy-request"}`))
 	assert.NotNil(t, rpcErr)
 	assert.Equal(t, rpcAgentCapacity, rpcErr.Code)
 	assert.Equal(t, -32011, rpcErr.Code)

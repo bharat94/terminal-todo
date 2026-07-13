@@ -54,6 +54,13 @@ type taskEnvelope struct {
 	Task          protocolTask `json:"task"`
 }
 
+type acquireEnvelope struct {
+	SchemaVersion string       `json:"schema_version"`
+	RequestID     string       `json:"request_id"`
+	Replayed      bool         `json:"replayed"`
+	Task          protocolTask `json:"task"`
+}
+
 type tasksEnvelope struct {
 	SchemaVersion string         `json:"schema_version"`
 	Tasks         []protocolTask `json:"tasks"`

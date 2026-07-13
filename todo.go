@@ -159,7 +159,8 @@ Task Management:
 
 Agent Operations:
   claim <id> --as <n>  Secure an exclusive execution lease (--ttl)
-  acquire --as <n>     Atomically select and claim ready work
+  acquire --as <n> --request-id <id>
+                       Atomically select and claim ready work
   release <id> --as <n> Yield an owned lease back to the pool (--error)
   my --as <owner>      Show tasks claimed by you
   agent-card [--as <n>] Register or query agent identity (--caps, --desc, --max-load)
@@ -254,7 +255,7 @@ func validateCommandArgs(command string, args []string) error {
 		"backup":     {"--output": true},
 		"block":      {"--reason": true, "--as": true},
 		"claim":      {"--as": true, "--ttl": true},
-		"acquire":    {"--as": true, "--ttl": true, "--capabilities": true},
+		"acquire":    {"--as": true, "--request-id": true, "--ttl": true, "--capabilities": true},
 		"decompose":  {"--into": true},
 		"done":       {"--as": true},
 		"log":        {"--msg": true, "--as": true},

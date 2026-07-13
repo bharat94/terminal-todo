@@ -73,15 +73,25 @@ type Task struct {
 	Extra        map[string]string `msgpack:"extra" json:"extra"`
 }
 
-const CurrentSchemaVersion uint32 = 3
+type AcquisitionReceipt struct {
+	RequestID   string `msgpack:"request_id" json:"request_id"`
+	Operation   string `msgpack:"operation" json:"operation"`
+	Fingerprint string `msgpack:"fingerprint" json:"fingerprint"`
+	Actor       string `msgpack:"actor" json:"actor"`
+	Created     uint64 `msgpack:"created" json:"created"`
+	Task        Task   `msgpack:"task" json:"task"`
+}
+
+const CurrentSchemaVersion uint32 = 4
 
 type TaskStore struct {
-	SchemaVersion uint32           `msgpack:"schema_version"`
-	Tasks         map[uint64]*Task `msgpack:"tasks"`
-	NextID        uint64           `msgpack:"next_id"`
-	LastModified  uint64           `msgpack:"last_modified"`
-	NextEventID   uint64           `msgpack:"next_event_id"`
-	Events        []Event          `msgpack:"events"`
+	SchemaVersion uint32                        `msgpack:"schema_version"`
+	Tasks         map[uint64]*Task              `msgpack:"tasks"`
+	NextID        uint64                        `msgpack:"next_id"`
+	LastModified  uint64                        `msgpack:"last_modified"`
+	NextEventID   uint64                        `msgpack:"next_event_id"`
+	Events        []Event                       `msgpack:"events"`
+	Acquisitions  map[string]AcquisitionReceipt `msgpack:"acquisitions"`
 }
 
 type migrationFunc func(*TaskStore) error
@@ -117,6 +127,11 @@ var migrations = map[uint32]migrationFunc{
 		s.SchemaVersion = 3
 		return nil
 	},
+	3: func(s *TaskStore) error {
+		s.Acquisitions = make(map[string]AcquisitionReceipt)
+		s.SchemaVersion = 4
+		return nil
+	},
 }
 
 func runMigrations(s *TaskStore) error {
@@ -139,6 +154,7 @@ func NewTaskStore() *TaskStore {
 		NextID:        1,
 		NextEventID:   1,
 		Events:        make([]Event, 0),
+		Acquisitions:  make(map[string]AcquisitionReceipt),
 	}
 }
 
@@ -387,6 +403,9 @@ func loadUnlocked(path string) (*TaskStore, error) {
 		}
 	} else if store.SchemaVersion > CurrentSchemaVersion {
 		return nil, fmt.Errorf("store schema version %d is newer than this binary (max %d); upgrade todo", store.SchemaVersion, CurrentSchemaVersion)
+	}
+	if store.Acquisitions == nil {
+		store.Acquisitions = make(map[string]AcquisitionReceipt)
 	}
 	return &store, nil
 }

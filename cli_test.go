@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"terminal-todo/store"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -387,14 +389,32 @@ func TestCLI_AcquireAtomicallySelectsCompatibleWorkAndEnforcesCapacity(t *testin
 		assert.NoError(t, err, string(out))
 	}
 
-	cmd := exec.Command(todo, "acquire", "--as", "allocator", "--json")
+	cmd := exec.Command(todo, "acquire", "--as", "allocator", "--request-id", "allocation-1", "--json")
 	cmd.Dir = tmpDir
 	out, err := cmd.CombinedOutput()
 	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"request_id": "allocation-1"`)
+	assert.Contains(t, string(out), `"replayed": false`)
 	assert.Contains(t, string(out), `"title": "High priority"`)
 	assert.Contains(t, string(out), `"owner": "allocator"`)
 
-	cmd = exec.Command(todo, "acquire", "--as", "allocator", "--json")
+	cmd = exec.Command(todo, "acquire", "--as", "allocator", "--request-id", "allocation-1", "--json")
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"replayed": true`)
+	assert.Contains(t, string(out), `"title": "High priority"`)
+
+	cmd = exec.Command(todo, "acquire", "--as", "allocator", "--request-id", "allocation-1", "--ttl", "2h", "--json")
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	assert.Error(t, err)
+	var conflictExit *exec.ExitError
+	assert.True(t, errors.As(err, &conflictExit))
+	assert.Equal(t, 8, conflictExit.ExitCode())
+	assert.Contains(t, string(out), `"code": "IDEMPOTENCY_CONFLICT"`)
+
+	cmd = exec.Command(todo, "acquire", "--as", "allocator", "--request-id", "allocation-2", "--json")
 	cmd.Dir = tmpDir
 	out, err = cmd.CombinedOutput()
 	assert.Error(t, err)
@@ -403,6 +423,17 @@ func TestCLI_AcquireAtomicallySelectsCompatibleWorkAndEnforcesCapacity(t *testin
 	assert.Equal(t, 7, exitErr.ExitCode())
 	assert.Contains(t, string(out), `"code": "AGENT_AT_CAPACITY"`)
 	assert.Contains(t, string(out), "reached max load 1")
+
+	persisted, loadErr := store.LoadCurrent(filepath.Join(tmpDir, ".terminal-todo", "tasks.bin"))
+	assert.NoError(t, loadErr)
+	assert.Len(t, persisted.Acquisitions, 1)
+	claimedEvents := 0
+	for _, event := range persisted.Events {
+		if event.Type == store.EventTaskClaimed {
+			claimedEvents++
+		}
+	}
+	assert.Equal(t, 1, claimedEvents)
 }
 
 func TestCLI_ConcurrentAcquireHasSingleWinner(t *testing.T) {
@@ -419,7 +450,7 @@ func TestCLI_ConcurrentAcquireHasSingleWinner(t *testing.T) {
 	results := make(chan acquireResult, 2)
 	for _, actor := range []string{"agent-a", "agent-b"} {
 		go func(actor string) {
-			acquire := exec.Command(todo, "acquire", "--as", actor, "--json")
+			acquire := exec.Command(todo, "acquire", "--as", actor, "--request-id", "request-"+actor, "--json")
 			acquire.Dir = tmpDir
 			out, err := acquire.CombinedOutput()
 			results <- acquireResult{err: err, out: out}
