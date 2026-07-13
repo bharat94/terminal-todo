@@ -55,7 +55,7 @@ func cmdAdd(args []string) {
 		capabilities = normalizeCapabilities(cfg.DefaultCapCaps)
 	}
 
-	var taskID uint64
+	var created *store.Task
 	updateStore(func(s *store.TaskStore) error {
 		d := dag.NewDAG()
 		d.BuildFromTasks(s.Tasks)
@@ -81,10 +81,14 @@ func cmdAdd(args []string) {
 		task.Priority = float32(priority)
 		task.Capabilities = capabilities
 		task.Tags = tags
-		taskID = task.ID
+		created = task
 		s.AddEvent(store.EventTaskCreated, task.ID, "", map[string]string{"title": title})
 		return nil
 	})
 
-	fmt.Printf("Added task %d: %s\n", taskID, title)
+	if hasFlag(args, "--json") {
+		writeJSON(taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(created)})
+		return
+	}
+	fmt.Printf("Added task %d: %s\n", created.ID, title)
 }

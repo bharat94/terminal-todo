@@ -14,6 +14,7 @@ func cmdRelease(args []string) {
 	owner := optionValue(args, "--as")
 	errorMsg := optionValue(args, "--error")
 
+	released := make([]*store.Task, 0, len(ids))
 	updateStore(func(s *store.TaskStore) error {
 		for _, id := range ids {
 			task, ok := s.GetTask(id)
@@ -39,9 +40,18 @@ func cmdRelease(args []string) {
 			s.AddEvent(store.EventTaskReleased, id, owner, data)
 			task.Owner = ""
 			task.LeaseExpires = 0
+			released = append(released, task)
 		}
 		return nil
 	})
+	if hasFlag(args, "--json") {
+		protocolTasks := make([]protocolTask, 0, len(released))
+		for _, task := range released {
+			protocolTasks = append(protocolTasks, newProtocolTask(task))
+		}
+		writeJSON(tasksEnvelope{SchemaVersion: protocolVersion, Tasks: protocolTasks})
+		return
+	}
 	for _, id := range ids {
 		fmt.Printf("Released task %d\n", id)
 	}

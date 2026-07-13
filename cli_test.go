@@ -291,6 +291,31 @@ func TestCLI_ClaimUsesConfiguredTTLAndRegistersAgent(t *testing.T) {
 	assert.Contains(t, string(out), `"current_load": 1`)
 }
 
+func TestCLI_CoreMutationsReturnVersionedJSON(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	commands := []struct {
+		args   []string
+		checks []string
+	}{
+		{[]string{"add", "Machine task", "--json"}, []string{`"schema_version": "1"`, `"status": "pending"`}},
+		{[]string{"claim", "1", "--as", "json-agent", "--json"}, []string{`"status": "in_progress"`, `"owner": "json-agent"`}},
+		{[]string{"release", "1", "--as", "json-agent", "--error", "retry me", "--json"}, []string{`"status": "pending"`, `"retry_count": 1`, `"last_error": "retry me"`}},
+		{[]string{"claim", "1", "--as", "json-agent", "--json"}, []string{`"status": "in_progress"`}},
+		{[]string{"done", "1", "--as", "json-agent", "--json"}, []string{`"status": "completed"`}},
+	}
+	for _, test := range commands {
+		cmd := exec.Command(todo, test.args...)
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, string(out))
+		for _, check := range test.checks {
+			assert.Contains(t, string(out), check)
+		}
+	}
+}
+
 func TestCLI_NumericOwnerIsNotParsedAsTaskID(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)

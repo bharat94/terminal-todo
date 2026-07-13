@@ -265,6 +265,10 @@ func validateCommandArgs(command string, args []string) error {
 		"caps":       {"--as": true},
 	}
 	booleanFlags := map[string]map[string]bool{
+		"add":        {"--json": true},
+		"claim":      {"--json": true},
+		"done":       {"--json": true},
+		"release":    {"--json": true},
 		"cat":        {"--json": true},
 		"status":     {"--json": true, "--all": true},
 		"next":       {"--json": true, "--ready": true},

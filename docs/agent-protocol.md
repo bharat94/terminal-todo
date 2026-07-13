@@ -394,8 +394,10 @@ All query commands support `--json` for structured output.
 
 ## 5. Mutation Commands
 
-Mutation commands output human-readable text by default. All errors are
-structured via the error envelope when `--json` is present.
+Mutation commands output human-readable text by default. Core lifecycle
+mutations (`add`, `claim`, `release`, and `done`) accept `--json` and return a
+versioned task or tasks envelope. All errors are structured via the error
+envelope when `--json` is present.
 
 | Command | Args | Effect |
 |---------|------|--------|

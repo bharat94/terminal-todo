@@ -48,6 +48,7 @@ func cmdClaim(args []string) {
 	}
 	var retryCount uint32
 	var lastError string
+	var claimed *store.Task
 	updateStore(func(s *store.TaskStore) error {
 		task, ok := s.GetTask(id)
 		if !ok {
@@ -73,8 +74,13 @@ func cmdClaim(args []string) {
 		task.LeaseExpires = now + uint64(ttl.Milliseconds())
 		s.AddLog(id, owner, "claimed")
 		s.AddEvent(store.EventTaskClaimed, id, owner, map[string]string{"ttl": ttl.String()})
+		claimed = task
 		return nil
 	})
+	if hasFlag(args, "--json") {
+		writeJSON(taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(claimed)})
+		return
+	}
 
 	msg := fmt.Sprintf("Task %d claimed by %s (expires in %s)", id, owner, ttl)
 	if retryCount > 0 {

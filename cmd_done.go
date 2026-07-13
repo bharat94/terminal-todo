@@ -22,6 +22,7 @@ func cmdDone(args []string) {
 	}
 	resolver := snapshotDependencyResolver(remoteTasks)
 
+	completed := make([]*store.Task, 0, len(ids))
 	updateStore(func(s *store.TaskStore) error {
 		for _, id := range ids {
 			task, ok := s.GetTask(id)
@@ -40,9 +41,18 @@ func cmdDone(args []string) {
 			task.LeaseExpires = 0
 			task.BlockReason = ""
 			s.AddEvent(store.EventTaskCompleted, id, owner, nil)
+			completed = append(completed, task)
 		}
 		return nil
 	})
+	if hasFlag(args, "--json") {
+		protocolTasks := make([]protocolTask, 0, len(completed))
+		for _, task := range completed {
+			protocolTasks = append(protocolTasks, newProtocolTask(task))
+		}
+		writeJSON(tasksEnvelope{SchemaVersion: protocolVersion, Tasks: protocolTasks})
+		return
+	}
 	for _, id := range ids {
 		fmt.Printf("Marked task %d as done\n", id)
 	}
