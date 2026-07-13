@@ -353,7 +353,7 @@ func unmarshalParams(params json.RawMessage, target interface{}) *rpcError {
 }
 
 func loadStoreSafe() (*store.TaskStore, error) {
-	return store.Load(tasksBinPath())
+	return store.LoadCurrent(tasksBinPath())
 }
 
 func updateStoreSafe(mutate func(*store.TaskStore) error) (*store.TaskStore, error) {
@@ -749,7 +749,7 @@ func (srv *server) handleStatusAll() (interface{}, *rpcError) {
 			if !filepath.IsAbs(resolvedPath) {
 				resolvedPath = filepath.Join(projectRoot, resolvedPath)
 			}
-			linkedStore, err := store.Load(filepath.Join(filepath.Clean(resolvedPath), ".terminal-todo", "tasks.bin"))
+			linkedStore, err := store.LoadCurrent(filepath.Join(filepath.Clean(resolvedPath), ".terminal-todo", "tasks.bin"))
 			if err != nil {
 				projects = append(projects, projectStatus{Alias: alias, Path: path, Available: false, Error: err.Error(), Tasks: []protocolTask{}})
 				continue

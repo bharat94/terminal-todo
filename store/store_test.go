@@ -76,11 +76,35 @@ func TestStore_LeaseExpiration(t *testing.T) {
 	task.Owner = "agent-1"
 	task.LeaseExpires = uint64(time.Now().UnixMilli()) - 1000 // Expired 1s ago
 
-	// GetTask should clean it up
+	// Reads are pure; expiration requires an explicit state transition.
 	t1, ok := s.GetTask(1)
 	assert.True(t, ok)
-	assert.Equal(t, StatusPending, t1.Status)
-	assert.Equal(t, "", t1.Owner)
+	assert.Equal(t, StatusInProgress, t1.Status)
+	assert.Equal(t, "agent-1", t1.Owner)
+}
+
+func TestStore_LoadCurrentPersistsLeaseExpirationEvent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tasks.bin")
+	s := NewTaskStore()
+	task := s.AddTask("expired work", nil)
+	task.Status = StatusInProgress
+	task.Owner = "agent-crashed"
+	task.LeaseExpires = uint64(time.Now().Add(-time.Minute).UnixMilli())
+	assert.NoError(t, s.Save(path))
+
+	current, err := LoadCurrent(path)
+	assert.NoError(t, err)
+	assert.Equal(t, StatusPending, current.Tasks[1].Status)
+	assert.Empty(t, current.Tasks[1].Owner)
+	assert.Len(t, current.Events, 1)
+	assert.Equal(t, EventLeaseExpired, current.Events[0].Type)
+	assert.Equal(t, "agent-crashed", current.Events[0].Actor)
+	assert.Equal(t, "agent-crashed", current.Events[0].Data["owner"])
+
+	reloaded, err := Load(path)
+	assert.NoError(t, err)
+	assert.Equal(t, StatusPending, reloaded.Tasks[1].Status)
+	assert.Len(t, reloaded.Events, 1)
 }
 
 func TestStore_AddTask(t *testing.T) {
@@ -223,4 +247,6 @@ func TestStore_CleanExpiredLeases(t *testing.T) {
 	assert.Equal(t, "agent-1", t1.Owner)
 
 	assert.Equal(t, StatusPending, t3.Status)
+	assert.Len(t, s.Events, 1)
+	assert.Equal(t, EventLeaseExpired, s.Events[0].Type)
 }

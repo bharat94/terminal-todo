@@ -15,12 +15,12 @@ type capabilityDemand struct {
 }
 
 type capsEnvelope struct {
-	SchemaVersion         string              `json:"schema_version"`
-	RequiredCapabilities  []capabilityDemand  `json:"required_capabilities"`
-	TotalUnclaimedTasks   int                 `json:"total_unclaimed_tasks"`
-	TasksWithoutCaps      int                 `json:"tasks_without_caps"`
-	RegisteredAgents      int                 `json:"registered_agents"`
-	UnmatchedCapabilities []string            `json:"unmatched_capabilities"`
+	SchemaVersion         string             `json:"schema_version"`
+	RequiredCapabilities  []capabilityDemand `json:"required_capabilities"`
+	TotalUnclaimedTasks   int                `json:"total_unclaimed_tasks"`
+	TasksWithoutCaps      int                `json:"tasks_without_caps"`
+	RegisteredAgents      int                `json:"registered_agents"`
+	UnmatchedCapabilities []string           `json:"unmatched_capabilities"`
 }
 
 func cmdCaps(args []string) {
@@ -40,7 +40,7 @@ func cmdCaps(args []string) {
 				if !filepath.IsAbs(linkedPath) {
 					linkedPath = filepath.Join(projectRoot, linkedPath)
 				}
-				linkedStore, err := store.Load(filepath.Join(filepath.Clean(linkedPath), ".terminal-todo", "tasks.bin"))
+				linkedStore, err := store.LoadCurrent(filepath.Join(filepath.Clean(linkedPath), ".terminal-todo", "tasks.bin"))
 				if err == nil {
 					allTasks = append(allTasks, linkedStore.GetAllTasks()...)
 				}

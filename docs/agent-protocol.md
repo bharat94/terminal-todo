@@ -255,8 +255,9 @@ Used by: `events --json`
 }
 ```
 
-Event types: `created`, `completed`, `claimed`, `released`, `blocked`,
-`unblocked`, `updated`, `decomposed`, `removed`, `dep_added`, `dep_removed`.
+Event types: `created`, `completed`, `claimed`, `released`, `lease_expired`,
+`blocked`, `unblocked`, `updated`, `decomposed`, `removed`, `dep_added`,
+`dep_removed`.
 
 ### Graph Envelope
 

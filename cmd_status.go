@@ -181,7 +181,7 @@ func cmdStatusAll(args []string) {
 		if !filepath.IsAbs(resolvedPath) {
 			resolvedPath = filepath.Join(projectRoot, resolvedPath)
 		}
-		s, err := store.Load(filepath.Join(filepath.Clean(resolvedPath), ".terminal-todo", "tasks.bin"))
+		s, err := store.LoadCurrent(filepath.Join(filepath.Clean(resolvedPath), ".terminal-todo", "tasks.bin"))
 		if err != nil {
 			projects = append(projects, projectStatus{Alias: alias, Path: path, Available: false, Error: err.Error(), Tasks: []protocolTask{}})
 			continue

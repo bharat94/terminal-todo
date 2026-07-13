@@ -198,7 +198,7 @@ Examples:
 }
 
 func loadStore() *store.TaskStore {
-	s, err := store.Load(tasksBinPath())
+	s, err := store.LoadCurrent(tasksBinPath())
 	if err != nil {
 		fail(ErrStoreCorrupted, "loading store: %v", err)
 	}
@@ -247,35 +247,35 @@ func parseIDs(args []string) []uint64 {
 
 func validateCommandArgs(command string, args []string) error {
 	valueFlags := map[string]map[string]bool{
-		"add":       {"--after": true, "--priority": true, "--caps": true, "--tag": true},
-		"backup":    {"--output": true},
-		"block":     {"--reason": true, "--as": true},
-		"claim":     {"--as": true, "--ttl": true},
-		"decompose": {"--into": true},
-		"done":      {"--as": true},
-		"log":       {"--msg": true, "--as": true},
-		"next":      {"--capabilities": true},
-		"release":   {"--as": true, "--error": true},
-		"unblock":   {"--as": true},
-		"update":    {"--title": true, "--priority": true, "--caps": true, "--set": true, "--as": true, "--add-dep": true, "--remove-dep": true},
-		"status":    {"--tag": true, "--as": true},
-		"watch":     {"--poll": true},
+		"add":        {"--after": true, "--priority": true, "--caps": true, "--tag": true},
+		"backup":     {"--output": true},
+		"block":      {"--reason": true, "--as": true},
+		"claim":      {"--as": true, "--ttl": true},
+		"decompose":  {"--into": true},
+		"done":       {"--as": true},
+		"log":        {"--msg": true, "--as": true},
+		"next":       {"--capabilities": true},
+		"release":    {"--as": true, "--error": true},
+		"unblock":    {"--as": true},
+		"update":     {"--title": true, "--priority": true, "--caps": true, "--set": true, "--as": true, "--add-dep": true, "--remove-dep": true},
+		"status":     {"--tag": true, "--as": true},
+		"watch":      {"--poll": true},
 		"my":         {"--as": true},
 		"agent-card": {"--as": true, "--caps": true, "--desc": true, "--max-load": true},
 		"caps":       {"--as": true},
 	}
 	booleanFlags := map[string]map[string]bool{
-		"cat":      {"--json": true},
-		"status":   {"--json": true, "--all": true},
-		"next":     {"--json": true, "--ready": true},
-		"lineage":  {"--json": true},
-		"update":   {"--json": true},
-		"export":   {"--markdown": true},
-		"graph":    {"--dot": true, "--json": true},
-		"events":   {"--json": true},
-		"doctor":   {"--fix": true},
-		"what-if":  {"--done": true, "--claim": true, "--block": true, "--json": true},
-		"whatif":   {"--done": true, "--claim": true, "--block": true, "--json": true},
+		"cat":        {"--json": true},
+		"status":     {"--json": true, "--all": true},
+		"next":       {"--json": true, "--ready": true},
+		"lineage":    {"--json": true},
+		"update":     {"--json": true},
+		"export":     {"--markdown": true},
+		"graph":      {"--dot": true, "--json": true},
+		"events":     {"--json": true},
+		"doctor":     {"--fix": true},
+		"what-if":    {"--done": true, "--claim": true, "--block": true, "--json": true},
+		"whatif":     {"--done": true, "--claim": true, "--block": true, "--json": true},
 		"depends":    {"--json": true},
 		"dependents": {"--json": true},
 		"search":     {"--json": true},

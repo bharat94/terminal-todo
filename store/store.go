@@ -35,6 +35,7 @@ const (
 	EventTaskRemoved       EventType = "removed"
 	EventDependencyAdded   EventType = "dep_added"
 	EventDependencyRemoved EventType = "dep_removed"
+	EventLeaseExpired      EventType = "lease_expired"
 )
 
 type Event struct {
@@ -163,12 +164,6 @@ func (s *TaskStore) GetTask(id uint64) (*Task, bool) {
 	if !ok {
 		return nil, false
 	}
-	// Check for expired lease
-	if task.Status == StatusInProgress && task.LeaseExpires > 0 && task.LeaseExpires < uint64(time.Now().UnixMilli()) {
-		task.Status = StatusPending
-		task.Owner = ""
-		task.LeaseExpires = 0
-	}
 	return task, true
 }
 
@@ -231,14 +226,7 @@ func (s *TaskStore) RemoveTask(id uint64) bool {
 
 func (s *TaskStore) GetAllTasks() []*Task {
 	tasks := make([]*Task, 0, len(s.Tasks))
-	now := uint64(time.Now().UnixMilli())
 	for _, task := range s.Tasks {
-		// Clean up expired leases on the fly
-		if task.Status == StatusInProgress && task.LeaseExpires > 0 && task.LeaseExpires < now {
-			task.Status = StatusPending
-			task.Owner = ""
-			task.LeaseExpires = 0
-		}
 		tasks = append(tasks, task)
 	}
 	return tasks
@@ -251,9 +239,11 @@ func (s *TaskStore) CleanExpiredLeases() int {
 	cleaned := 0
 	for _, task := range s.Tasks {
 		if task.Status == StatusInProgress && task.LeaseExpires > 0 && task.LeaseExpires < now {
+			owner := task.Owner
 			task.Status = StatusPending
 			task.Owner = ""
 			task.LeaseExpires = 0
+			s.AddEvent(EventLeaseExpired, task.ID, owner, map[string]string{"owner": owner})
 			cleaned++
 		}
 	}
@@ -294,6 +284,50 @@ func Load(path string) (*TaskStore, error) {
 	return loadUnlocked(path)
 }
 
+// LoadCurrent returns a store after durably reclaiming expired leases. Lease
+// expiration is an explicit write transition rather than a side effect of a
+// read, and emits one lease_expired event per reclaimed task.
+func LoadCurrent(path string) (*TaskStore, error) {
+	snapshot, err := Load(path)
+	if err != nil {
+		return nil, err
+	}
+	if !snapshot.HasExpiredLeases() {
+		return snapshot, nil
+	}
+
+	lk, err := lock.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer lk.Close()
+	if err := lk.Acquire(lock.Write); err != nil {
+		return nil, err
+	}
+	defer lk.Release()
+
+	s, err := loadUnlocked(path)
+	if err != nil {
+		return nil, err
+	}
+	if s.CleanExpiredLeases() > 0 {
+		if err := writeStore(path, s); err != nil {
+			return nil, err
+		}
+	}
+	return s, nil
+}
+
+func (s *TaskStore) HasExpiredLeases() bool {
+	now := uint64(time.Now().UnixMilli())
+	for _, task := range s.Tasks {
+		if task.Status == StatusInProgress && task.LeaseExpires > 0 && task.LeaseExpires < now {
+			return true
+		}
+	}
+	return false
+}
+
 // Update serializes a complete read-modify-write operation. The callback runs
 // while holding a lock so replacing tasks.bin cannot invalidate the lock and
 // concurrent processes cannot overwrite newer state.
@@ -315,8 +349,13 @@ func Update(path string, mutate func(*TaskStore) error) (*TaskStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.CleanExpiredLeases()
+	cleaned := s.CleanExpiredLeases()
 	if err := mutate(s); err != nil {
+		if cleaned > 0 {
+			if writeErr := writeStore(path, s); writeErr != nil {
+				return nil, fmt.Errorf("mutation failed: %v; persisting lease expiration: %w", err, writeErr)
+			}
+		}
 		return nil, err
 	}
 	if err := writeStore(path, s); err != nil {

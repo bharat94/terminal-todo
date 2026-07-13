@@ -113,7 +113,7 @@ func dependencyResolver() dag.DependencyResolver {
 		if !filepath.IsAbs(linkedPath) {
 			linkedPath = filepath.Join(projectRoot, linkedPath)
 		}
-		s, err := store.Load(filepath.Join(filepath.Clean(linkedPath), ".terminal-todo", "tasks.bin"))
+		s, err := store.LoadCurrent(filepath.Join(filepath.Clean(linkedPath), ".terminal-todo", "tasks.bin"))
 		if err != nil {
 			return false
 		}
