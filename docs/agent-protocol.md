@@ -512,6 +512,8 @@ dependency.
 All methods are namespaced `todo.<command>`. Params are named objects.
 Parameter objects are decoded strictly: unknown fields and trailing JSON data
 return `-32602 Invalid params` instead of being ignored.
+Valid requests without an `id` are JSON-RPC notifications: the operation is
+processed but no response is written. Stdio requests may be up to 4 MiB.
 
 | Method | Params | Result |
 |--------|--------|--------|

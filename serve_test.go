@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,6 +51,31 @@ func TestServerAcquireUsesSharedAtomicAllocator(t *testing.T) {
 	_, rpcErr = srv.dispatch("todo.acquire", json.RawMessage(`{"actor":"rpc-agent","requestId":"rpc-request-2"}`))
 	assert.NotNil(t, rpcErr)
 	assert.Equal(t, rpcNoWork, rpcErr.Code)
+}
+
+func TestServerNotificationDoesNotEmitResponse(t *testing.T) {
+	var output bytes.Buffer
+	srv := &server{initialized: true, encoder: json.NewEncoder(&output)}
+	input := strings.NewReader("{\"jsonrpc\":\"2.0\",\"method\":\"todo.ping\",\"params\":{}}\n")
+	assert.NoError(t, srv.readRequests(input))
+	assert.Empty(t, output.String())
+}
+
+func TestServerRejectsUnknownTopLevelRequestFields(t *testing.T) {
+	var output bytes.Buffer
+	srv := &server{initialized: true, encoder: json.NewEncoder(&output)}
+	input := strings.NewReader("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"todo.ping\",\"extra\":true}\n")
+	assert.NoError(t, srv.readRequests(input))
+	assert.Contains(t, output.String(), `"code":-32600`)
+}
+
+func TestServerAcceptsRequestsLargerThanDefaultScannerLimit(t *testing.T) {
+	var output bytes.Buffer
+	srv := &server{initialized: true, encoder: json.NewEncoder(&output)}
+	padding := strings.Repeat("x", 70*1024)
+	input := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"todo.ping","params":{"unknown":"` + padding + `"}}` + "\n")
+	assert.NoError(t, srv.readRequests(input))
+	assert.Contains(t, output.String(), `"code":-32602`)
 }
 
 func TestServerAcquireReportsAgentCapacity(t *testing.T) {

@@ -425,25 +425,42 @@ func cmdServe(args []string) {
 }
 
 func (srv *server) loop() {
-	scanner := bufio.NewScanner(os.Stdin)
+	if err := srv.readRequests(os.Stdin); err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func (srv *server) readRequests(input io.Reader) error {
+	scanner := bufio.NewScanner(input)
+	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
 			continue
 		}
 
-		var req rpcRequest
-		if err := json.Unmarshal(line, &req); err != nil {
+		if !json.Valid(line) {
 			srv.writeError(nil, rpcParse, "Parse error", nil)
 			continue
 		}
+		var req rpcRequest
+		decoder := json.NewDecoder(bytes.NewReader(line))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&req); err != nil {
+			srv.writeError(nil, rpcInvalidRequest, "Invalid Request", nil)
+			continue
+		}
 
-		if req.JSONRPC != "2.0" {
-			srv.writeError(req.ID, rpcInvalidRequest, "Invalid JSON-RPC version", nil)
+		if req.JSONRPC != "2.0" || req.Method == "" {
+			srv.writeError(req.ID, rpcInvalidRequest, "Invalid Request", nil)
 			continue
 		}
 
 		result, rpcErr := srv.dispatch(req.Method, req.Params)
+		if len(req.ID) == 0 {
+			continue
+		}
 		if rpcErr != nil {
 			srv.writeError(req.ID, rpcErr.Code, rpcErr.Message, rpcErr.Data)
 		} else {
@@ -451,10 +468,7 @@ func (srv *server) loop() {
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading stdin: %v\n", err)
-		os.Exit(1)
-	}
+	return scanner.Err()
 }
 
 func (srv *server) dispatch(method string, params json.RawMessage) (interface{}, *rpcError) {
