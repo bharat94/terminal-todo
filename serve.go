@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -357,8 +359,13 @@ func unmarshalParams(params json.RawMessage, target interface{}) *rpcError {
 	if len(params) == 0 {
 		return nil
 	}
-	if err := json.Unmarshal(params, target); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(params))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
 		return rpcErrorf(rpcInvalidParams, "Invalid params: %v", err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return rpcErrorf(rpcInvalidParams, "Invalid params: trailing JSON data")
 	}
 	return nil
 }

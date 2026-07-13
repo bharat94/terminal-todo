@@ -76,3 +76,17 @@ func TestServerAcquireReportsAgentCapacity(t *testing.T) {
 	assert.Equal(t, rpcAgentCapacity, rpcErr.Code)
 	assert.Equal(t, -32011, rpcErr.Code)
 }
+
+func TestServerRejectsUnknownAndTrailingParams(t *testing.T) {
+	srv := &server{initialized: true}
+
+	_, rpcErr := srv.dispatch("todo.acquire", json.RawMessage(`{"actor":"agent","requestId":"request-1","capabilites":["go"]}`))
+	assert.NotNil(t, rpcErr)
+	assert.Equal(t, rpcInvalidParams, rpcErr.Code)
+	assert.Contains(t, rpcErr.Message, "unknown field")
+
+	_, rpcErr = srv.dispatch("todo.acquire", json.RawMessage(`{"actor":"agent","requestId":"request-1"} {}`))
+	assert.NotNil(t, rpcErr)
+	assert.Equal(t, rpcInvalidParams, rpcErr.Code)
+	assert.Contains(t, rpcErr.Message, "trailing JSON data")
+}

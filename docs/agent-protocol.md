@@ -510,6 +510,8 @@ dependency.
 ### Methods
 
 All methods are namespaced `todo.<command>`. Params are named objects.
+Parameter objects are decoded strictly: unknown fields and trailing JSON data
+return `-32602 Invalid params` instead of being ignored.
 
 | Method | Params | Result |
 |--------|--------|--------|
