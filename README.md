@@ -305,6 +305,32 @@ hide the rest of the workspace.
 
 ## Integrate with any agent runtime
 
+### Reusable agent skill
+
+The repository includes a canonical
+[`terminal-todo` skill](integrations/skills/terminal-todo/SKILL.md) for agents
+that support the open `SKILL.md` format. It teaches the complete coordination
+workflow: inspect existing state, acquire work atomically, maintain leases,
+record durable findings, decompose discoveries, and complete or release work
+without abandoning ownership.
+
+For local authoring, copy or symlink the skill into the location used by your
+agent runtime:
+
+```bash
+# Codex, available to all repositories
+mkdir -p "$HOME/.agents/skills"
+cp -R integrations/skills/terminal-todo "$HOME/.agents/skills/"
+
+# Claude Code, available to all repositories
+mkdir -p "$HOME/.claude/skills"
+cp -R integrations/skills/terminal-todo "$HOME/.claude/skills/"
+```
+
+An upcoming `todo integrate` command will automate project-scoped skill and
+tool configuration. The CLI remains the source of truth; the skill supplies
+the reliable operating procedure.
+
 ### Versioned CLI JSON
 
 Add `--json` to queries and core lifecycle mutations:
