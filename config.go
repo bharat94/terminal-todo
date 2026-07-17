@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"terminal-todo/fsutil"
 	"terminal-todo/lock"
 )
 
@@ -68,12 +69,7 @@ func saveConfig(cfg *ProjectConfig) error {
 	if err := os.Rename(tmpPath, configPath()); err != nil {
 		return err
 	}
-	dir, err := os.Open(filepath.Dir(configPath()))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
+	return fsutil.SyncDir(filepath.Dir(configPath()))
 }
 
 func updateConfig(mutate func(*ProjectConfig) error) error {

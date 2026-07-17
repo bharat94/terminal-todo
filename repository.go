@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"terminal-todo/dag"
+	"terminal-todo/fsutil"
 	"terminal-todo/lock"
 	"terminal-todo/store"
 )
@@ -63,12 +64,7 @@ func saveRepositoryRegistry(registry *repositoryRegistry) error {
 	if err := os.Rename(tmpPath, registryPath()); err != nil {
 		return err
 	}
-	dir, err := os.Open(filepath.Dir(registryPath()))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
+	return fsutil.SyncDir(filepath.Dir(registryPath()))
 }
 
 func updateRepositoryRegistry(mutate func(*repositoryRegistry) error) error {

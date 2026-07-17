@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"terminal-todo/fsutil"
 	"terminal-todo/lock"
 	"terminal-todo/store"
 )
@@ -79,12 +80,7 @@ func saveAgentRegistry(registry *AgentRegistry) error {
 	if err := os.Rename(tmpPath, agentsPath()); err != nil {
 		return err
 	}
-	dir, err := os.Open(filepath.Dir(agentsPath()))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
+	return fsutil.SyncDir(filepath.Dir(agentsPath()))
 }
 
 func updateAgentRegistry(mutate func(*AgentRegistry) error) error {

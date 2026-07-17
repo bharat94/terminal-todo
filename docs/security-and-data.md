@@ -123,8 +123,11 @@ restores periodically; an untested backup is only a hypothesis.
 
 Mutations serialize under a stable sidecar lock. Updated state is written to a
 private temporary file, flushed, atomically renamed over `tasks.bin`, and
-followed by a directory flush. A process failure before rename leaves the
-previous store intact; a failure after rename leaves the new complete store.
+followed by a directory flush where the operating system exposes that
+operation. A process failure before rename leaves the previous store intact; a
+failure after rename leaves the new complete store. On Windows, a sudden power
+loss may leave either complete version because Go cannot explicitly flush the
+containing directory.
 
 Expired leases are durably reclaimed and recorded as events. Orphaned
 temporary files can be inspected and removed with `todo doctor --fix`.

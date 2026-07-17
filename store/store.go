@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"terminal-todo/fsutil"
 	"terminal-todo/lock"
 
 	"github.com/vmihailenco/msgpack/v5"
@@ -445,10 +446,5 @@ func writeStore(path string, s *TaskStore) error {
 		return err
 	}
 
-	dir, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
+	return fsutil.SyncDir(filepath.Dir(path))
 }

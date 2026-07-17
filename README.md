@@ -463,7 +463,8 @@ therefore treats every mutation as a complete read-modify-write transaction:
 4. validate and apply the transition;
 5. write and `fsync` a temporary file;
 6. atomically rename it into place;
-7. `fsync` the containing directory.
+7. `fsync` the containing directory where the operating system exposes that
+   operation.
 
 This design provides:
 
@@ -471,7 +472,8 @@ This design provides:
 - no lost updates between competing processes;
 - one winner for concurrent claims and acquisitions;
 - durable, observable lease expiration;
-- power-loss-safe store replacement;
+- complete-file store replacement, with the strongest flush semantics each
+  supported operating system exposes;
 - schema migration on load;
 - cycle detection before dependency changes commit.
 

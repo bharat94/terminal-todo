@@ -1042,7 +1042,11 @@ func TestCLI_RmRefusesDanglingDependency(t *testing.T) {
 
 func buildTodo(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "todo")
+	name := "todo"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	path := filepath.Join(t.TempDir(), name)
 	cmd := exec.Command("go", "build", "-o", path, ".")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("failed to build todo: %v\n%s", err, out)
