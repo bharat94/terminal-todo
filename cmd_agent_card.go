@@ -18,13 +18,13 @@ type agentDetail struct {
 }
 
 type agentEnvelope struct {
-	SchemaVersion string       `json:"schema_version"`
-	Agent         agentDetail  `json:"agent"`
+	SchemaVersion string      `json:"schema_version"`
+	Agent         agentDetail `json:"agent"`
 }
 
 type agentsEnvelope struct {
-	SchemaVersion string                `json:"schema_version"`
-	Agents        map[string]AgentCard  `json:"agents"`
+	SchemaVersion string               `json:"schema_version"`
+	Agents        map[string]AgentCard `json:"agents"`
 }
 
 func cmdAgentCard(args []string) {

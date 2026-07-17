@@ -563,8 +563,10 @@ go vet ./...
 
 The test suite includes CLI integration tests, concurrent process tests,
 storage migration coverage, cross-platform locking code, DAG semantics, and
-JSON-RPC protocol tests. CI runs builds, race-enabled tests, and `go vet` on
-Linux and macOS.
+MCP/JSON-RPC protocol tests. CI runs trimmed builds, race-enabled tests,
+process-level MCP and integration smoke tests, and `go vet` on Linux, macOS,
+and Windows. It also validates release configuration and scans reachable code
+against the Go vulnerability database.
 
 Before opening a pull request:
 
@@ -585,6 +587,7 @@ the [Agent Protocol](docs/agent-protocol.md).
 - [System design](docs/design.md) — storage, allocation, and orchestration model
 - [Agent protocol](docs/agent-protocol.md) — stable JSON and JSON-RPC contract
 - [Concurrency and locking](docs/concurrency-and-locking.md) — safety invariants
+- [Compatibility contract](docs/compatibility.md) — supported platforms, filesystems, schemas, and CI evidence
 - [Security and data lifecycle](docs/security-and-data.md) — trust boundary, permissions, retention, and recovery
 - [Agent integrations](docs/integrations.md) — Codex, Claude Code, skills, and MCP
 - [Releasing](docs/releasing.md) — verified artifacts and maintainer workflow

@@ -11,9 +11,9 @@ import (
 )
 
 type ProjectConfig struct {
-	DefaultTTL       string  `json:"default_ttl"`
-	DefaultPriority  float32 `json:"default_priority"`
-	DefaultCapCaps   string  `json:"default_caps"`
+	DefaultTTL      string  `json:"default_ttl"`
+	DefaultPriority float32 `json:"default_priority"`
+	DefaultCapCaps  string  `json:"default_caps"`
 }
 
 func configPath() string {
