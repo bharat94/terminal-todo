@@ -1,88 +1,87 @@
-# Vision: Distributed Multi-Agent Task Orchestration (DMATO)
+# Vision
 
-## Core Vision
-
-`terminal-todo` is not just a todo list; it is a **Distributed Multi-Agent Task
-Orchestration (DMATO)** layer. It provides a decentralized, user-owned
-execution graph for autonomous agents, humans, and scripts to coordinate,
-decompose, and execute complex objectives across heterogeneous environments
-and repositories.
-
-In the era of distributed inference, where multiple specialized agents (LLMs, SLMs, and traditional scripts) collaborate in real-time, `terminal-todo` acts as the **source of truth for progress, ownership, and state**.
+`terminal-todo` is a user-owned coordination control plane for a fleet of
+humans, agents, scripts, sessions, and repositories.
 
 > Goals tell an agent what outcome to pursue. `terminal-todo` tells a fleet who
 > should do what, in what order, and what has already happened.
 
-Agent-native goals, memories, and thread persistence are complementary. A goal
-can own the overarching objective while `terminal-todo` operationalizes it as
-a shared execution DAG. For one agent in one thread, a goal may be sufficient.
-`terminal-todo` is designed for the point where multiple workers, vendors,
-tools, sessions, worktrees, or repositories must coordinate.
+Goals, memories, and thread persistence are complementary. A goal can preserve
+one worker's overarching intent while `terminal-todo` operationalizes that
+intent as shared work. One agent in one thread may need nothing more. The
+coordination graph becomes valuable when work crosses workers, vendors, tools,
+sessions, worktrees, or repositories.
 
-## Key Principles
+Persistence is part of the product: the graph, leases, findings, handoffs, and
+audit history survive individual processes and conversations. Its larger
+differentiator is that this durable state is portable, structured, and shared
+across a fleet rather than owned by one agent runtime.
 
-1. **Decentralized Coordination** — No central server; task state is shared via the filesystem (and eventually peer-to-peer protocols), enabling cross-repo and cross-machine collaboration.
-2. **Portable, User-Owned State** — Agents can observe and update the shared
-   task graph without making any vendor's thread or memory system the
-   coordination authority.
-3. **Durable Execution History** — The graph, ownership transitions, findings,
-   and audit trail persist across agent restarts, process crashes, and context
-   resets.
-4. **Agentic Task Autonomy** — Every task is an autonomous unit with its own metadata, retry logic, and ownership, adhering to a global DAG structure.
-5. **Submodular Optimization** — Task allocation uses distributed greedy algorithms to ensure conflict-free execution with minimal computational overhead.
-6. **Universal Cognition Interface** — A standardized CLI and binary protocol that allows any agentic system to leverage shared coordination knowledge.
+## Principles
 
-## High-Level Architecture
+1. **User-owned state.** The user chooses where coordination state lives and
+   can inspect, back up, export, and move it.
+2. **Vendor-neutral coordination.** A human, Codex, Claude, another MCP host,
+   or a script can participate without becoming the system of record.
+3. **Explicit execution graphs.** Dependencies and lineage are data, not
+   assumptions buried in a transcript.
+4. **Conflict-free acquisition.** Selection and leasing happen atomically, so
+   two workers do not receive the same work.
+5. **Recoverable ownership.** Leases, heartbeats, retries, blocking, and
+   release make crashes and handoffs normal lifecycle events.
+6. **Structured history.** Findings, receipts, and events explain what
+   happened without replaying private conversations.
+7. **Honest boundaries.** Filesystem coordination is not a distributed
+   consensus protocol. Guarantees are documented and tested at their real
+   boundary.
 
-### The "Agentic Task" Model
-Beyond simple titles, tasks are rich objects containing:
-- **Capabilities Required:** Semantic tags describing the skills needed (e.g., `golang`, `k8s-deploy`).
-- **Owner/Lease:** Identifiers for the agent currently executing the task to prevent duplicate work.
-- **Priority & Utility:** Dynamic values used for submodular task allocation.
-- **Lineage:** Proof of decomposition from a higher-level objective.
+## What exists now
 
-### Distributed DAG Semantics
-- **Cross-Repo Dependencies:** A task in Repo A can depend on a task in Repo B via URI-based referencing (`todo://repo-b/task-42`).
-- **Dynamic Re-graphing:** Agents can inject, prune, or split tasks as the objective evolves during execution.
+The current product provides:
 
-## The Problem It Solves
+- a durable local DAG with local and linked-repository dependencies;
+- atomic `acquire`, explicit `claim`, leases, heartbeats, retries, and recovery;
+- capability-aware deterministic allocation and per-agent load limits;
+- structured findings, lifecycle events, mutation receipts, backup, export,
+  doctor, prune, and compaction;
+- human CLI output, stable CLI JSON, native JSON-RPC, and an MCP server;
+- reusable Codex and Claude integration material; and
+- cross-platform builds and an auditable release pipeline.
 
-### 1. The Fleet Coordination Boundary
-Agent goals preserve intent for an individual worker. They do not assign
-conflict-free work across independent agents, vendors, humans, scripts,
-worktrees, and repositories. `terminal-todo` provides the shared execution
-control plane.
+All live participants must operate on the same lock-capable filesystem.
+Cross-repository aliases point to other stores visible from that workspace.
 
-### 2. Multi-Agent Race Conditions
-In a shared environment, multiple agents might attempt the same task. `terminal-todo` provides **Lease-based Concurrency Control**.
+## What comes next
 
-### 3. Decomposition Blindness
-Complex goals require breaking down into atomic, dependent steps. `terminal-todo` enforces **DAG-based Structural Planning**.
+Near-term work should make the existing control plane easier to operate:
 
-### 4. Opaque Handoffs
-Chat transcripts and private memories do not provide a portable operational
-record. `terminal-todo` preserves structured findings, ownership transitions,
-retries, blockers, and audit history in state controlled by the user.
+- explain precisely why no work was allocated;
+- provide a compact session/bootstrap view for a newly arrived worker;
+- expose richer health and invariant diagnostics;
+- improve host UI treatment of background heartbeats and coordination calls;
+- validate the first public prerelease and installation paths on real hosts;
+- expand integration and crash-recovery testing; and
+- document patterns for worktrees and multi-repository workspaces.
 
-## Success Criteria
+## Later possibilities
 
-- **Autonomous Handoff:** Agent A completes Task 1, and Agent B automatically picks up Task 2 based on capability match.
-- **Global Visibility:** A "manager" agent can visualize the entire multi-repo progress by aggregating local DAGs.
-- **Resilience:** The task graph survives agent crashes, context window expirations, and network partitions.
+An optional service-backed coordination layer could support workers that cannot
+share a filesystem. That would require authentication, authorization,
+network-partition semantics, conflict resolution, migrations, and operational
+ownership. It should extend the local model rather than blur its guarantees.
 
-## Roadmap: Toward Distributed Inference
+Likewise, richer scheduling may eventually consider fairness, cost, affinity,
+or deadlines. Today allocation intentionally stays understandable:
+capability-compatible ready tasks are ordered by priority and task ID.
 
-| Phase | Goal | Key Innovation |
-|-------|------|----------------|
-| **Current** | Local DAG | MessagePack storage, cycle detection, basic CLI. |
-| **Orchestration** | Agentic Metadata | Ownership leases, capability tags, priority scoring. |
-| **Distributed** | Cross-Repo Linking | URI-based dependencies, multi-root aggregation. |
-| **Autonomous** | Dynamic Planning | Agents re-architecting the DAG in-flight. |
-| **Production** | Global Sync | Gossip-based synchronization or shared ledger backends. |
+## Success looks like
 
-## References & Inspiration
-
-- **DeMAC (2025):** Dynamic DAGs for multi-agent feedback loops.
-- **Flint Engine:** Task-as-an-agent distributed execution.
-- **DGBA Algorithm:** Distributed Greedy Bundles for conflict-free allocation.
-- **MDI-LLM:** Model-distributed inference architectures.
+- Two independent workers cannot atomically acquire the same task.
+- A crashed worker's task becomes recoverable after its lease expires.
+- A replacement worker can understand the handoff from structured state.
+- Dependencies make execution order visible across linked repositories.
+- A user can move or archive the coordination record without a vendor export.
+- Normal coordination remains quiet in the conversation while full structured
+  detail remains available to tools and operators.
+- Every production claim has a test, a documented boundary, or an explicit
+  roadmap item.

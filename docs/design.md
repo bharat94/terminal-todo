@@ -1,135 +1,131 @@
-# Design: Distributed Task Orchestration System
+# Design
 
-## Storage Layer
+`terminal-todo` is a user-owned coordination control plane for humans, agents,
+and scripts. It stores an explicit execution graph, allocates ready work
+atomically, and records lifecycle history without requiring a hosted service.
 
-### Location
+> Goals tell an agent what outcome to pursue. `terminal-todo` tells a fleet who
+> should do what, in what order, and what has already happened.
 
-Local State: `<project>/.terminal-todo/tasks.bin`
-Repository Registry: `<project>/.terminal-todo/repositories.json`
+## Product boundary
 
-### Format: Enhanced Binary (MessagePack)
+The current coordination boundary is a filesystem shared by cooperating
+processes. Every participant must see the same files through a filesystem that
+preserves advisory locks and atomic replacement. Copying or asynchronously
+syncing `.terminal-todo` transfers state; it does not provide live consensus.
 
-We use an extensible MessagePack schema to support production-grade metadata without sacrificing performance.
+The project does not currently provide a network service, peer-to-peer
+replication, distributed transactions, or conflict resolution between
+independently modified copies.
 
-**Agentic Task Schema:**
-```go
-type Task struct {
-    ID           uint64            `msgpack:"id"`
-    Title        string            `msgpack:"title"`
-    Status       uint8             // 0=Pending, 1=In-Progress, 2=Completed, 3=Blocked
-    Depends      []TaskURI         `msgpack:"depends"`     // Support for cross-repo URI
-    Created      uint64            `msgpack:"created"`     // Unix ms
-    Completed    uint64            `msgpack:"completed"`   // Unix ms
-    
-    // Agentic Metadata
-    Capabilities []string          `msgpack:"caps"`        // e.g., ["go", "refactor"]
-    Owner        string            `msgpack:"owner"`       // Agent ID or UUID
-    LeaseExpires uint64            `msgpack:"lease_exp"`   // Expiration for ownership
-    Priority     float32           `msgpack:"priority"`    // Task utility for allocation
-    Lineage      string            `msgpack:"lineage"`     // Parent Goal ID
-    Extra        map[string]string `msgpack:"extra"`       // Extensible KV for agents
-}
+## Surfaces
 
-type TaskURI string // Format: todo://[repo-id]/[task-id]
-```
+The same coordination model is available through:
 
----
+- a human-readable CLI;
+- stable CLI JSON envelopes for scripts;
+- an MCP server for Codex, Claude, and other MCP hosts; and
+- newline-delimited JSON-RPC for native process integrations.
 
-## Distributed Coordination Protocol
+The CLI, MCP server, and native protocol all operate on the same local store.
+MCP and JSON-RPC integrations keep machine-oriented coordination out of normal
+agent narration while preserving structured results for the host.
 
-### Task URI & Cross-Repo Referencing
+## State model
 
-To coordinate across repositories, `terminal-todo` uses a URI-based scheme:
-- `todo://local/101` -> Task 101 in the current repository.
-- `todo://infra-repo/50` -> Task 50 in a known repository named `infra-repo`.
+Project state lives under `.terminal-todo/`:
 
-**Resolution Strategy:**
-Agents resolve `infra-repo` from the current project's checked-in or shared
-`.terminal-todo/repositories.json`. Paths are stored relative to the current
-project when possible, keeping a workspace self-describing across machines.
+- `tasks.bin` contains the MessagePack task collection, append-only audit
+  events, and idempotent mutation receipts;
+- `agents.json` stores reusable agent profiles;
+- `config.json` stores project defaults;
+- `repositories.json` maps cross-repository aliases to paths; and
+- sibling `.lock` files provide stable lock identities across atomic replaces.
 
-### Inference-Time Ownership (Lease Management)
+Backups and compacted state use the same schemas. State is deliberately
+portable and controlled by the user.
 
-To prevent race conditions, agents must acquire a **Lease** before working on a task:
-1. **Request:** `todo claim <id> --as <agent-name> --ttl 30m`
-2. **Success:** `terminal-todo` updates `Owner` and `LeaseExpires`.
-3. **Heartbeat:** Long-running agents periodically run
-   `todo heartbeat <id> --as <agent-name> --ttl 30m`.
-4. **Failure/Timeout:** If the lease expires, the task returns to `Pending`.
+A task contains an ID, title, status, dependencies, timestamps, capability
+requirements, priority, lineage, findings, retry metadata, and optional
+ownership lease. Local dependencies use numeric IDs. Cross-repository
+dependencies use `todo://<alias>/<id>`, where the alias is resolved through
+`repositories.json`.
 
-### Submodular Allocation (Distributed Greedy)
+## Transactions and durability
 
-When an agent is idle:
-1. It queries `todo next --ready --capabilities go`.
-2. It receives a list of tasks it is capable of performing, sorted by `Priority`.
-3. It claims the top task.
+Mutations run under an exclusive advisory lock and commit through a temporary
+file, file flush, atomic replacement, and directory flush where the operating
+system exposes one. Reads normally use shared locks. A read that discovers an
+expired lease may upgrade through the store's exclusive update path to reclaim
+it safely.
 
----
+This provides serializable state transitions between cooperating local
+processes and crash-safe replacement within the documented filesystem and
+platform boundary. See [Concurrency and locking](concurrency-and-locking.md)
+and [Compatibility](compatibility.md).
 
-## CLI Infrastructure (The "Orchestration Interface")
+## DAG semantics
 
-The CLI is designed for **deterministic agent interaction**.
+A task is ready when it is pending and all local and resolvable
+cross-repository dependencies are complete. Local graph mutations reject
+cycles before commit. Cross-repository dependencies are
+resolved lazily, so a cycle spanning independent stores can remain unready and
+must be diagnosed at the workspace level.
 
-### Orchestration Commands
+Decomposition creates child tasks and makes the parent depend on them. Sibling
+children are parallel unless dependencies are added between them explicitly.
 
-| Command | Args | Description |
-|---------|------|-------------|
-| `todo claim` | `<id> --as <name>` | Secure an exclusive execution lease |
-| `todo heartbeat` | `<id> --as <name>` | Renew an active lease owned by the agent |
-| `todo release` | `<id>` | Yield a lease back to the pool |
-| `todo decompose` | `<id> --into "<json>"` | Split a task into sub-tasks (DAG injection) |
-| `todo link` | `<repo-alias> <path>` | Register a remote repo for cross-repo deps |
-| `todo sync` | | (Future) Propagate task state to peers |
+## Work allocation
 
-### Advanced Queries for Agents
+`acquire` is the safe worker primitive. Under one exclusive transaction it:
 
-- `todo next --ready --capabilities [caps]` -> Returns JSON of actionable tasks matching agent skills.
-- `todo lineage <goal-id>` -> Shows the progress of a specific high-level objective.
+1. reclaims expired leases;
+2. filters pending, ready work by the worker's capabilities;
+3. orders candidates by priority descending, then task ID ascending;
+4. checks the worker's active-load limit;
+5. marks the selected task in progress with an ownership lease; and
+6. records the result against an idempotency request ID.
 
----
+This avoids the race inherent in querying `next` and then separately calling
+`claim`. `next` remains useful for inspection; `claim` remains useful when a
+specific task was deliberately assigned.
 
-## Orchestration Flow
+Capabilities and load limits can be supplied per request or registered in an
+agent card. Allocation is deterministic priority ordering, not an optimization
+or fairness algorithm.
 
-1. **Manager Initiation:** A "Manager" agent initializes the project objective and decomposes it into primary tasks (`todo add ...`).
-2. **Worker Discovery:** Worker agents query `todo next` and filter by their specific capabilities.
-3. **Execution Lease:** Workers `claim` tasks. Other agents now see the task as `In-Progress`.
-4. **Dynamic Re-Planning:** If a worker discovers a blocker, it uses `todo decompose` to inject new sub-tasks into the DAG or updates `Extra` metadata with findings.
-5. **Completion:** On `todo done`, the DAG automatically unblocks dependent tasks.
+## Lifecycle
 
----
+- `claim` leases a specific ready task.
+- `acquire` selects and leases the next compatible ready task atomically.
+- `heartbeat` renews an active lease owned by the caller.
+- `release` yields work, optionally recording an error and incrementing the
+  attempt count. Callers that need backoff wait before acquiring again.
+- `block` records a blocker and releases ownership so recovery is not tied to
+  a dead worker.
+- `unblock` returns blocked work to pending and repairs legacy stale ownership.
+- `done` completes owned work; findings can be attached first through task
+  metadata or the task log.
+- `decompose` injects child work while preserving lineage.
 
-## Concurrency & Resilience
+Expired in-progress leases are reclaimed during store updates and relevant
+queries. Mutation receipts make retried calls safe when clients lose a
+response.
 
-To support high-frequency interaction from multiple agents, `terminal-todo` implements a multi-layered safety architecture. See [Concurrency, Locking, and Race Conditions](concurrency-and-locking.md) for full details.
+## History and retention
 
-### Multi-Reader Single-Writer Locking
-The system uses advisory file locking to allow concurrent read operations while ensuring write operations are strictly serialized. This prevents binary corruption when multiple agents query `todo next` while another agent is `claiming` a task.
+Task state answers what is true now. Events answer what happened. Receipts
+answer whether a mutation already committed. Handoffs and findings stay with
+the task graph rather than a vendor-specific chat transcript.
 
-### Atomic State Transitions
-Task updates follow a Compare-And-Swap (CAS) pattern. A `claim` or `done` operation will only succeed if the underlying state matches the agent's expectation at the moment of the write lock.
+`prune` removes eligible completed task records. `compact` applies the explicit
+retention policy to history and receipts. Neither command promises a fixed file
+size; retention is intentional and inspectable.
 
-### Fault Tolerance
-- **Atomic Rename:** New state is flushed to a temporary file and renamed, so
-  readers observe a complete `tasks.bin`; directory metadata is additionally
-  flushed where the operating system exposes that operation.
-- **Lease Timeout:** Long-running agents must maintain "heartbeat" leases. If an agent crashes, its claimed tasks are automatically reclaimed by the pool after the TTL expires.
+## Trust model
 
----
-
-## Error Handling & Reliability
-
-### State Consistency
-- **Atomic Writes:** Uses file-level locking during binary updates to prevent corruption from concurrent agent CLI calls.
-- **Cycle Detection:** Recursive DFS validation on every `add` or `link`.
-
-### Distributed Edge Cases
-- **Stale Leases:** Automatically detected on `todo next` or `todo status` calls.
-- **Disconnected Repos:** Cross-repo dependencies are marked as "Unknown/Stale" if the target repo is inaccessible.
-
----
-
-## Reference Implementation Details
-
-- **Concurrency:** Go's `flock` or equivalent for file-level mutual exclusion.
-- **Serialization:** `msgpack` with custom type resolvers for `TaskURI`.
-- **Validation:** JSON Schema validation for the `Extra` metadata field to ensure agent interoperability.
+All writers are trusted collaborators with filesystem access. Advisory locks
+coordinate well-behaved clients but are not an authorization boundary.
+`terminal-todo` validates lifecycle transitions, dependency topology, finite
+priorities, ownership, leases, and protocol inputs; it does not sandbox workers
+or authenticate local users.

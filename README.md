@@ -73,17 +73,18 @@ boundary:
 
 ### 1. Install
 
-Download the archive for your platform from
+For tagged versions, download the archive for your platform from
 [GitHub Releases](https://github.com/bharat94/terminal-todo/releases), verify
-it against `checksums.txt`, and place `todo` on your `PATH`.
+it against `checksums.txt`, and place `todo` on your `PATH`. If no tagged
+release is available yet, build the current release candidate from source.
 
-To build from source, install Go 1.26 or newer:
+To build from source, install Go 1.26.1 or newer:
 
 ```bash
 git clone https://github.com/bharat94/terminal-todo.git
 cd terminal-todo
 make build
-sudo make install
+sudo install -m 755 todo /usr/local/bin/todo
 ```
 
 To install without writing to `/usr/local/bin`, build the binary and copy it
@@ -95,9 +96,13 @@ mkdir -p "$HOME/.local/bin"
 install -m 755 todo "$HOME/.local/bin/todo"
 ```
 
-Release archives cover Linux, macOS, and Windows on amd64 and arm64 and include
-SHA-256 checksums, SPDX SBOMs, and GitHub provenance attestations. See
-[Releasing](docs/releasing.md) for verification and maintainer procedures.
+The release workflow is configured for Linux, macOS, and Windows on amd64 and
+arm64, with SHA-256 checksums, SPDX SBOMs, and GitHub provenance attestations.
+See [Releasing](docs/releasing.md) for the validation status, verification,
+and maintainer procedures.
+Release archives are the canonical binary distribution for the beta. The Go
+module has a public import path, but a supported `go install .../cmd/todo`
+layout is future work.
 
 ### 2. Initialize a project
 
@@ -297,8 +302,9 @@ todo add "Integrate profile endpoint" --after todo://api/42
 ```
 
 `todo next` keeps that task blocked until `api-service` task `42` is complete.
-Linked stores are read under shared locks, and the repository path is stored
-relative to the current project when possible.
+Linked stores are normally read under shared locks. A read that finds an
+expired lease may enter an exclusive update to persist reclamation safely.
+Repository paths are stored relative to the current project when possible.
 
 Managers can inspect the entire linked workspace:
 
@@ -543,20 +549,28 @@ features are used:
 
 ```text
 .terminal-todo/
-├── tasks.bin          # versioned MessagePack task graph and event stream
+├── tasks.bin          # task graph, events, and idempotency receipts
 ├── tasks.bin.lock     # stable advisory lock sidecar
 ├── agents.json        # advertised agent capabilities and load limits
 ├── agents.json.lock   # agent registry lock sidecar
 ├── repositories.json  # linked repository aliases
-└── config.json        # project defaults
+├── repositories.json.lock
+├── config.json        # project defaults
+├── config.json.lock
+└── backup-*.bin       # snapshots created by `todo backup`
 ```
 
 `.terminal-todo/` is ignored by this repository because it is live,
-project-specific state. Choose whether to ignore, share, or synchronize it
-according to your own workflow. The directory is private to the creating OS
-user by default.
+project-specific state. Live sharing requires one filesystem that preserves
+the documented advisory-lock and atomic-replace semantics for every worker.
+Copying or asynchronously synchronizing the directory is useful for transfer
+or backup, but is not live consensus. The directory is private to the creating
+OS user by default.
 
 ## Development
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a substantial change.
+Security reports follow the private process in [SECURITY.md](SECURITY.md).
 
 ```bash
 git clone https://github.com/bharat94/terminal-todo.git
@@ -578,7 +592,7 @@ against the Go vulnerability database.
 Before opening a pull request:
 
 ```bash
-gofmt -w *.go dag/*.go lock/*.go store/*.go
+gofmt -w .
 go test ./... -race -count=1 -timeout 120s
 go vet ./...
 ```
@@ -598,7 +612,16 @@ the [Agent Protocol](docs/agent-protocol.md).
 - [Security and data lifecycle](docs/security-and-data.md) — trust boundary, permissions, retention, and recovery
 - [Agent integrations](docs/integrations.md) — Codex, Claude Code, skills, and MCP
 - [Releasing](docs/releasing.md) — verified artifacts and maintainer workflow
+- [Production readiness](docs/production-readiness.md) — evidence, release gate, and known boundaries
+- [Dogfooding retrospective](docs/dogfooding-retrospective.md) — observed UX friction and improvement plan
 - [Examples](docs/examples.md) — human and multi-agent workflows
+
+## Community
+
+- [Contributing](CONTRIBUTING.md)
+- [Support](SUPPORT.md)
+- [Security policy](SECURITY.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
 
 ## Direction
 

@@ -3,9 +3,11 @@
 **Protocol Version:** `1` (stable)
 **Last Updated:** 2026-07-16
 
-This document defines the stable CLI/JSON interface for agent-to-agent and
-agent-to-CLI communication via `terminal-todo`. Every JSON response includes
-`"schema_version": "1"` at the top level.
+This document defines the stable machine interfaces for agent-to-agent and
+agent-to-CLI communication via `terminal-todo`. CLI `--json` responses use a
+top-level `"schema_version": "1"` envelope. MCP follows its negotiated
+protocol, while native JSON-RPC follows JSON-RPC 2.0 and reports the
+terminal-todo protocol version through `todo.ping`.
 
 ## Table of Contents
 
@@ -36,7 +38,6 @@ RFC3339Nano strings. See section 11 for details.
   "status": "in_progress",
   "depends": ["todo://local/100"],
   "created": "2026-04-04T14:00:00Z",
-  "completed": null,
   "metadata": {
     "capabilities": ["go", "security"],
     "owner": "agent-alpha-4",
@@ -66,10 +67,13 @@ RFC3339Nano strings. See section 11 for details.
 **Dependency URIs:** `todo://local/<id>` for local tasks, `todo://<alias>/<id>`
 for tasks in linked repositories.
 
+Fields with no value are generally omitted. For example, pending work omits
+`completed`, and unowned work omits `owner` and `lease_expires`.
+
 **Metadata fields:**
 - `capabilities`: what the task requires (matching via `todo next --capabilities`)
-- `owner`: which agent holds the lease (empty if unclaimed)
-- `lease_expires`: when the lease expires (null if unclaimed)
+- `owner`: which agent holds the lease (omitted if unclaimed)
+- `lease_expires`: when the lease expires (omitted if unclaimed)
 - `priority`: 0.0–1.0 float, higher = more important
 - `lineage`: parent task URI if this is a subtask
 - `tags`: arbitrary classification tags
@@ -83,8 +87,8 @@ for tasks in linked repositories.
 
 ## 2. Envelopes
 
-All JSON responses wrap data in a versioned envelope. The envelope type
-depends on the command.
+All CLI `--json` responses wrap data in a versioned envelope. The envelope
+type depends on the command.
 
 ### Task Envelope (single task)
 
@@ -414,8 +418,8 @@ the error envelope when `--json` is present.
 | `acquire --as <owner> --request-id <id> [--capabilities a,b] [--ttl <duration>] [--wait <duration>]` | Atomically select and claim the highest-priority compatible task | Durable request IDs make retries idempotent; optional bounded waiting retries `NO_WORK`; enforces agent `max_load`, emits `claimed` event |
 | `heartbeat <id> --as <owner> [--ttl <duration>]` | Renew an owned active lease from the current time | Emits `lease_renewed`; stale leases cannot be revived |
 | `release <id> --as <owner> [--error <msg>]` | Yield lease | Increments retry_count, emits `released` event |
-| `block <id> --reason <text> [--as <owner>]` | Mark blocked | Emits `blocked` event |
-| `unblock <id> [--as <owner>]` | Mark pending | Emits `unblocked` event |
+| `block <id> --reason <text> [--as <owner>]` | Mark blocked | Releases any active lease and emits `blocked` event |
+| `unblock <id> [--as <owner>]` | Mark pending | Clears legacy lease fields and emits `unblocked` event |
 | `log <id> --msg <text> --as <owner>` | Append to trail | Appends to task.Log |
 | `decompose <id> --into <json> [--as]` | Split into subtasks | Releases the parent lease, clears a manual block, and emits `decomposed` |
 | `prune` | Remove completed tasks | Rewrites dependency lists |
@@ -599,7 +603,7 @@ processed but no response is written. Stdio requests may be up to 4 MiB.
 | `todo.backup` | `{output?}` | `{path, taskCount}` |
 | `todo.restore` | `{path}` | `{taskCount}`; replaces tasks, event sequence/history, and acquisition receipts |
 | `todo.doctor` | `{fix?}` | diagnostic map |
-| `todo.agentCard` | `{actor?, caps?, desc?, maxLoad?}` | `agentCardEnvelope` |
+| `todo.agentCard` | `{actor, caps?, desc?, maxLoad?}` | Persist or query an agent card and return its computed current load |
 | `todo.caps` | `{actor?, all?}` | `capsEnvelope` |
 
 ### JSON-RPC Error Codes
@@ -686,8 +690,8 @@ converts to RFC3339Nano on JSON output.
 
 ## 12. Versioning Policy
 
-The protocol version is a single string field (`"schema_version"`) present in
-every JSON response.
+The CLI JSON protocol version is the string field `"schema_version"` present
+in every CLI `--json` response.
 
 - **`"1"`**: Initial stable release. All fields documented above are stable.
   Fields will not be removed; new fields may be added as optional.
@@ -698,9 +702,10 @@ every JSON response.
 The protocol version is independent of the internal store schema version
 (currently `4`) and the CLI tool version. They evolve independently.
 
-To discover the protocol version at runtime:
+To discover the applicable protocol version at runtime:
 
-- Parse `schema_version` from any JSON response
+- Parse `schema_version` from any CLI `--json` response
 - `todo agent-card --json` returns a versioned envelope
 - `todo serve --stdio`'s `todo.ping` returns `protocol_version` and supported
   capabilities
+- MCP clients negotiate an MCP protocol version during `initialize`

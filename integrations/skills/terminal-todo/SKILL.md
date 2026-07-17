@@ -166,8 +166,9 @@ todo block <id> --as <actor> --reason "waiting for API credentials"
 ```
 
 Prefer `release` for retryable execution failures and `block` for durable
-external blockers. Never leave owned work silently in progress when ending a
-session.
+external blockers. Blocking releases the active lease so another worker can
+unblock and reacquire the task later. Never leave owned work silently in
+progress when ending a session.
 
 ## Preserve invariants
 

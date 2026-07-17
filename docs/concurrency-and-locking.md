@@ -7,7 +7,10 @@ In a distributed multi-agent system, `terminal-todo` must guarantee state integr
 To prevent binary corruption during concurrent writes, `terminal-todo` employs **Advisory File Locking** (`flock` on POSIX, `LockFileEx` on Windows).
 
 ### The Locking Protocol
-- **Shared Lock (SH):** Acquired during `status`, `next`, `cat`, and `export`. Multiple agents can read the task graph simultaneously.
+- **Shared Lock (SH):** Normally acquired during `status`, `next`, `cat`, and
+  `export`. Multiple agents can read the task graph simultaneously. A query
+  that discovers expired ownership can enter the exclusive update path to
+  persist lease reclamation safely.
 - **Exclusive Lock (EX):** Acquired during `add`, `done`, `claim`, `decompose`, and `rm`. This blocks all other readers and writers.
 - **Contention Strategy:** CLI calls retry the non-blocking OS primitive until
   they acquire the lock. Internal callers can supply a bounded timeout.
@@ -26,34 +29,17 @@ Windows flushes the complete temporary file before the atomic replace but
 cannot explicitly flush a directory through Go; see the
 [compatibility contract](compatibility.md) for the resulting boundary.
 
-## 2. Logic-Level: The "Claim" Race Condition
+## 2. Logic-Level: Ownership Races
 
-A classic race condition occurs when two agents attempt to `claim` the same `Pending` task simultaneously. 
+A classic race occurs when two agents attempt to own the same pending task.
+`claim` validates and updates a chosen task under one exclusive lock. For
+worker scheduling, `acquire` is stronger: it selects the next compatible ready
+task and creates its lease in the same transaction.
 
-### Atomic Compare-And-Swap (CAS)
-The `todo claim` command is implemented as a CAS operation within an exclusive file lock:
-
-```go
-func (s *TaskStore) ClaimTask(id uint64, agentID string, ttl duration) error {
-    // 1. Enter EX lock (guarantees serializability)
-    s.LockFile() 
-    defer s.UnlockFile()
-
-    task := s.Get(id)
-    now := time.Now()
-
-    // 2. Check current state (The "Compare" step)
-    if task.Owner != "" && task.LeaseExpires > now {
-        return fmt.Errorf("task already owned by %s", task.Owner)
-    }
-
-    // 3. Update state (The "Swap" step)
-    task.Owner = agentID
-    task.LeaseExpires = now.Add(ttl)
-    
-    return s.Save()
-}
-```
+Within that transaction the store reclaims expired leases, checks readiness
+and ownership, mutates the selected task, appends its event, records the
+idempotency receipt, and atomically replaces the affected files. A second
+writer observes the committed state rather than the pre-mutation candidate.
 
 ## 3. Distributed Resilience: The "Zombie Agent" Problem
 
@@ -69,7 +55,9 @@ If an agent claims a task and then crashes, the task would remain `In-Progress` 
 
 Linked repositories are resolved lazily when readiness or lifecycle transitions
 are evaluated. Repo A depending on Repo B uses:
-- **Lock Propagation:** When checking the status of `todo://repo-b/50`, the Repo A CLI must acquire a **Shared Lock** on Repo B's `tasks.bin`.
+- **Lock propagation:** When checking `todo://repo-b/50`, Repo A normally
+  acquires a shared lock on Repo B. If Repo B contains an expired lease that
+  must be reclaimed, its store may safely enter an exclusive update.
 - **Lazy Validation:** Repo A does not receive push notifications from Repo B. Instead, it re-validates the state of external dependencies only when `todo next` or `todo status` is called in the context of Repo A.
 
 ## 5. Cross-repository cycle boundaries
@@ -88,4 +76,4 @@ transaction or global-cycle guarantee.
 | **Double Claim** | Exclusive Lock + CAS Logic | Application |
 | **Agent Crash** | TTL-based Leases | Logic |
 | **Stale Remote State** | Just-in-time Read-locking | Distributed |
-| **Circular Dependencies** | Recursive DFS + Depth Limit | Topology |
+| **Local circular dependencies** | Cycle detection before commit | Topology |
