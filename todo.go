@@ -262,7 +262,7 @@ func validateCommandArgs(command string, args []string) error {
 		"claim":      {"--as": true, "--ttl": true},
 		"acquire":    {"--as": true, "--request-id": true, "--ttl": true, "--capabilities": true, "--wait": true},
 		"heartbeat":  {"--as": true, "--ttl": true},
-		"decompose":  {"--into": true},
+		"decompose":  {"--into": true, "--as": true},
 		"done":       {"--as": true},
 		"log":        {"--msg": true, "--as": true},
 		"next":       {"--capabilities": true},

@@ -416,7 +416,7 @@ the error envelope when `--json` is present.
 | `block <id> --reason <text> [--as <owner>]` | Mark blocked | Emits `blocked` event |
 | `unblock <id> [--as <owner>]` | Mark pending | Emits `unblocked` event |
 | `log <id> --msg <text> --as <owner>` | Append to trail | Appends to task.Log |
-| `decompose <id> --into <json> [--as]` | Split into subtasks | Emits `decomposed` event |
+| `decompose <id> --into <json> [--as]` | Split into subtasks | Releases the parent lease, clears a manual block, and emits `decomposed` |
 | `prune` | Remove completed tasks | Rewrites dependency lists |
 
 ---

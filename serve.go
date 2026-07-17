@@ -1640,13 +1640,10 @@ func (srv *server) handleDecompose(params json.RawMessage) (interface{}, *rpcErr
 		}
 
 		parentTask.Status = store.StatusPending
-		if p.Actor != "" {
-			parentTask.Owner = p.Actor
-		} else {
-			parentTask.Owner = ""
-		}
+		parentTask.Owner = ""
 		parentTask.LeaseExpires = 0
-		s.AddEvent(store.EventTaskDecomposed, p.ID, "", map[string]string{"count": fmt.Sprintf("%d", len(p.Subtasks))})
+		parentTask.BlockReason = ""
+		s.AddEvent(store.EventTaskDecomposed, p.ID, p.Actor, map[string]string{"count": fmt.Sprintf("%d", len(p.Subtasks))})
 
 		parentProtocol = newProtocolTask(parentTask)
 		subtaskProtocols = make([]protocolTask, 0, len(added))

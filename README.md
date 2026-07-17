@@ -227,7 +227,7 @@ Plans change as agents learn. The graph can change with them.
 Split an objective into independently claimable work:
 
 ```bash
-todo decompose 10 --into '{
+todo decompose 10 --as planner --into '{
   "subtasks": [
     {"title": "Reproduce the race", "caps": ["go", "testing"]},
     {"title": "Design the locking fix", "caps": ["go", "concurrency"]},
@@ -235,6 +235,10 @@ todo decompose 10 --into '{
   ]
 }'
 ```
+
+Decomposition releases any lease on the parent. The parent returns to
+`pending`, blocked by its new subtasks, so workers can acquire the finer-grained
+work independently.
 
 Record a finding where the next session will see it:
 

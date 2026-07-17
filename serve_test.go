@@ -95,6 +95,40 @@ func TestServerHeartbeatRenewsOnlyTheOwnersActiveLease(t *testing.T) {
 	assert.Equal(t, rpcLeaseNotActive, rpcErr.Code)
 }
 
+func TestServerDecomposeReleasesParentLeaseAndAttributesActor(t *testing.T) {
+	oldRoot := projectRoot
+	projectRoot = t.TempDir()
+	defer func() { projectRoot = oldRoot }()
+	path := filepath.Join(projectRoot, ".terminal-todo", "tasks.bin")
+	s := store.NewTaskStore()
+	task := s.AddTask("Owned RPC objective", nil)
+	task.Status = store.StatusInProgress
+	task.Owner = "planner"
+	task.LeaseExpires = uint64(time.Now().Add(time.Hour).UnixMilli())
+	task.BlockReason = "stale manual blocker"
+	assert.NoError(t, s.Save(path))
+
+	srv := &server{initialized: true}
+	_, rpcErr := srv.dispatch("todo.decompose", json.RawMessage(`{"id":1,"actor":"other-agent","subtasks":[{"title":"Unauthorized"}]}`))
+	assert.NotNil(t, rpcErr)
+	assert.Equal(t, rpcNotOwner, rpcErr.Code)
+
+	result, rpcErr := srv.dispatch("todo.decompose", json.RawMessage(`{"id":1,"actor":"planner","subtasks":[{"title":"Build"}]}`))
+	assert.Nil(t, rpcErr)
+	decomposed, ok := result.(decomposeResult)
+	assert.True(t, ok)
+	assert.Equal(t, "pending", decomposed.Parent.Status)
+	assert.Empty(t, decomposed.Parent.Metadata.Owner)
+	assert.Nil(t, decomposed.Parent.Metadata.LeaseExpires)
+	assert.Empty(t, decomposed.Parent.Metadata.BlockReason)
+
+	persisted, err := store.LoadCurrent(path)
+	assert.NoError(t, err)
+	event := persisted.Events[len(persisted.Events)-1]
+	assert.Equal(t, store.EventTaskDecomposed, event.Type)
+	assert.Equal(t, "planner", event.Actor)
+}
+
 func TestServerNotificationDoesNotEmitResponse(t *testing.T) {
 	var output bytes.Buffer
 	srv := &server{initialized: true, encoder: json.NewEncoder(&output)}

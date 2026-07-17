@@ -742,6 +742,46 @@ func TestCLI_LineageReportsRecursiveProgress(t *testing.T) {
 	assert.Contains(t, string(out), `"percent_complete": 50`)
 }
 
+func TestCLI_DecomposeAuthorizesOwnerAndReleasesParentLease(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+	for _, args := range [][]string{
+		{"add", "Owned objective"},
+		{"claim", "1", "--as", "planner", "--ttl", "1h"},
+	} {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, string(out))
+	}
+
+	cmd := exec.Command(todo, "decompose", "1", "--as", "other-agent", "--into", `{"subtasks":[{"title":"Unauthorized"}]}`)
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.Error(t, err)
+	assert.Contains(t, string(out), "claimed by planner")
+
+	cmd = exec.Command(todo, "decompose", "1", "--as", "planner", "--into", `{"subtasks":[{"title":"Build"},{"title":"Test"}]}`)
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+
+	cmd = exec.Command(todo, "cat", "1", "--json")
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"status": "pending"`)
+	assert.NotContains(t, string(out), `"owner"`)
+	assert.NotContains(t, string(out), `"lease_expires"`)
+
+	cmd = exec.Command(todo, "events", "--json")
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"type": "decomposed"`)
+	assert.Contains(t, string(out), `"actor": "planner"`)
+}
+
 func TestCLI_LinkResolvesCrossRepositoryDependency(t *testing.T) {
 	todo := buildTodo(t)
 	frontend := t.TempDir()

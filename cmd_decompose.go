@@ -73,13 +73,10 @@ func cmdDecompose(args []string) {
 			return fmt.Errorf("decompose would create a cycle: %w", err)
 		}
 		parentTask.Status = store.StatusPending
-		if agent != "" {
-			parentTask.Owner = agent
-		} else {
-			parentTask.Owner = ""
-		}
+		parentTask.Owner = ""
 		parentTask.LeaseExpires = 0
-		s.AddEvent(store.EventTaskDecomposed, parentID, "", map[string]string{"count": fmt.Sprintf("%d", len(payload.Subtasks))})
+		parentTask.BlockReason = ""
+		s.AddEvent(store.EventTaskDecomposed, parentID, agent, map[string]string{"count": fmt.Sprintf("%d", len(payload.Subtasks))})
 		return nil
 	})
 	fmt.Printf("Decomposing task %d into %d subtasks...\n", parentID, len(payload.Subtasks))
