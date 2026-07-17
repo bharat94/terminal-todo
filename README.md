@@ -305,6 +305,33 @@ hide the rest of the workspace.
 
 ## Integrate with any agent runtime
 
+Install project-scoped Codex and Claude Code integrations in one command:
+
+```bash
+todo integrate
+```
+
+This installs the bundled skill and MCP configuration while preserving
+unrelated client settings:
+
+| Client | Skill | MCP configuration |
+|--------|-------|-------------------|
+| Codex | `.agents/skills/terminal-todo/` | `.codex/config.toml` |
+| Claude Code | `.claude/skills/terminal-todo/` | `.mcp.json` |
+
+Target one client with `todo integrate codex` or `todo integrate claude`.
+`todo integrate --check` is a read-only drift check suitable for CI.
+Existing terminal-todo settings or modified skill files are never overwritten
+silently; inspect them, then use `--force` if replacement is intentional.
+If the binary is not named `todo`, set the MCP launch command explicitly:
+
+```bash
+todo integrate --command /absolute/path/to/todo
+```
+
+See [Agent integrations](docs/integrations.md) for lifecycle details,
+generated files, and troubleshooting.
+
 ### Reusable agent skill
 
 The repository includes a canonical
@@ -327,9 +354,10 @@ mkdir -p "$HOME/.claude/skills"
 cp -R integrations/skills/terminal-todo "$HOME/.claude/skills/"
 ```
 
-An upcoming `todo integrate` command will automate project-scoped skill and
-tool configuration. The CLI remains the source of truth; the skill supplies
-the reliable operating procedure.
+The automated project integration above is recommended for teams. These
+global copies are useful for agents that should discover the workflow in every
+repository. The CLI remains the source of truth; the skill supplies the
+reliable operating procedure.
 
 ### Model Context Protocol
 

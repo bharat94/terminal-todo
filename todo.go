@@ -46,7 +46,7 @@ func main() {
 
 	root, err := findProjectRoot()
 	if err != nil {
-		if os.Args[1] == "init" || os.Args[1] == "serve" || os.Args[1] == "mcp" {
+		if os.Args[1] == "init" || os.Args[1] == "serve" || os.Args[1] == "mcp" || os.Args[1] == "integrate" {
 			projectRoot, _ = os.Getwd()
 		} else {
 			fail(ErrNotInitialized, "%s", err)
@@ -124,6 +124,8 @@ func main() {
 		cmdServe(args)
 	case "mcp":
 		cmdMCP(args)
+	case "integrate":
+		cmdIntegrate(args)
 	case "backup":
 		cmdBackup(args)
 	case "restore":
@@ -189,6 +191,7 @@ Reactivity:
 Integrations:
   mcp --stdio         Start the Model Context Protocol server
   serve --stdio       Start the native JSON-RPC server
+  integrate [target]  Install Codex/Claude project integration (--check)
 
 Project:
   config [key=value]  View or set project configuration
@@ -280,6 +283,7 @@ func validateCommandArgs(command string, args []string) error {
 		"my":         {"--as": true},
 		"agent-card": {"--as": true, "--caps": true, "--desc": true, "--max-load": true},
 		"caps":       {"--as": true},
+		"integrate":  {"--command": true},
 	}
 	booleanFlags := map[string]map[string]bool{
 		"add":        {"--json": true},
@@ -307,6 +311,7 @@ func validateCommandArgs(command string, args []string) error {
 		"caps":       {"--json": true, "--all": true},
 		"serve":      {"--stdio": true},
 		"mcp":        {"--stdio": true},
+		"integrate":  {"--force": true, "--check": true},
 	}
 	knownCommands := map[string]bool{
 		"init": true, "add": true, "done": true, "status": true,
@@ -318,6 +323,7 @@ func validateCommandArgs(command string, args []string) error {
 		"log": true, "search": true, "doctor": true, "backup": true,
 		"restore": true, "what-if": true, "whatif": true, "events": true,
 		"watch": true, "my": true, "graph": true, "serve": true, "mcp": true,
+		"integrate": true,
 	}
 	if !knownCommands[command] {
 		return nil
