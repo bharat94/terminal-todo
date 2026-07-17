@@ -53,7 +53,8 @@ project when possible, keeping a workspace self-describing across machines.
 To prevent race conditions, agents must acquire a **Lease** before working on a task:
 1. **Request:** `todo claim <id> --as <agent-name> --ttl 30m`
 2. **Success:** `terminal-todo` updates `Owner` and `LeaseExpires`.
-3. **Heartbeat:** Long-running agents must periodically refresh the lease.
+3. **Heartbeat:** Long-running agents periodically run
+   `todo heartbeat <id> --as <agent-name> --ttl 30m`.
 4. **Failure/Timeout:** If the lease expires, the task returns to `Pending`.
 
 ### Submodular Allocation (Distributed Greedy)
@@ -74,6 +75,7 @@ The CLI is designed for **deterministic agent interaction**.
 | Command | Args | Description |
 |---------|------|-------------|
 | `todo claim` | `<id> --as <name>` | Secure an exclusive execution lease |
+| `todo heartbeat` | `<id> --as <name>` | Renew an active lease owned by the agent |
 | `todo release` | `<id>` | Yield a lease back to the pool |
 | `todo decompose` | `<id> --into "<json>"` | Split a task into sub-tasks (DAG injection) |
 | `todo link` | `<repo-alias> <path>` | Register a remote repo for cross-repo deps |

@@ -294,6 +294,62 @@ func TestCLI_ClaimUsesConfiguredTTLAndRegistersAgent(t *testing.T) {
 	assert.Contains(t, string(out), `"current_load": 1`)
 }
 
+func TestCLI_HeartbeatRenewsOnlyTheOwnersActiveLease(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	for _, args := range [][]string{
+		{"add", "Long-running task"},
+		{"claim", "1", "--as", "agent-a", "--ttl", "15m"},
+	} {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, string(out))
+	}
+
+	storePath := filepath.Join(tmpDir, ".terminal-todo", "tasks.bin")
+	before, err := store.LoadCurrent(storePath)
+	assert.NoError(t, err)
+	beforeExpiry := before.Tasks[1].LeaseExpires
+
+	cmd := exec.Command(todo, "heartbeat", "1", "--as", "agent-a", "--ttl", "2h", "--json")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"schema_version": "1"`)
+	assert.Contains(t, string(out), `"status": "in_progress"`)
+	assert.Contains(t, string(out), `"owner": "agent-a"`)
+
+	after, err := store.LoadCurrent(storePath)
+	assert.NoError(t, err)
+	assert.Greater(t, after.Tasks[1].LeaseExpires, beforeExpiry)
+	assert.Equal(t, store.EventLeaseRenewed, after.Events[len(after.Events)-1].Type)
+
+	cmd = exec.Command(todo, "heartbeat", "1", "--as", "agent-b", "--json")
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	assert.Error(t, err)
+	var ownerExit *exec.ExitError
+	assert.True(t, errors.As(err, &ownerExit))
+	assert.Equal(t, 1, ownerExit.ExitCode())
+	assert.Contains(t, string(out), `"code": "NOT_OWNER"`)
+
+	cmd = exec.Command(todo, "release", "1", "--as", "agent-a")
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+
+	cmd = exec.Command(todo, "heartbeat", "1", "--as", "agent-a", "--json")
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	assert.Error(t, err)
+	var inactiveExit *exec.ExitError
+	assert.True(t, errors.As(err, &inactiveExit))
+	assert.Equal(t, 9, inactiveExit.ExitCode())
+	assert.Contains(t, string(out), `"code": "LEASE_NOT_ACTIVE"`)
+}
+
 func TestCLI_CoreMutationsReturnVersionedJSON(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)
@@ -304,6 +360,7 @@ func TestCLI_CoreMutationsReturnVersionedJSON(t *testing.T) {
 	}{
 		{[]string{"add", "Machine task", "--json"}, []string{`"schema_version": "1"`, `"status": "pending"`}},
 		{[]string{"claim", "1", "--as", "json-agent", "--json"}, []string{`"status": "in_progress"`, `"owner": "json-agent"`}},
+		{[]string{"heartbeat", "1", "--as", "json-agent", "--json"}, []string{`"status": "in_progress"`, `"owner": "json-agent"`}},
 		{[]string{"release", "1", "--as", "json-agent", "--error", "retry me", "--json"}, []string{`"status": "pending"`, `"retry_count": 1`, `"last_error": "retry me"`}},
 		{[]string{"claim", "1", "--as", "json-agent", "--json"}, []string{`"status": "in_progress"`}},
 		{[]string{"done", "1", "--as", "json-agent", "--json"}, []string{`"status": "completed"`}},

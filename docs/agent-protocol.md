@@ -1,7 +1,7 @@
 # terminal-todo Agent Protocol
 
 **Protocol Version:** `1` (stable)
-**Last Updated:** 2026-07-11
+**Last Updated:** 2026-07-16
 
 This document defines the stable CLI/JSON interface for agent-to-agent and
 agent-to-CLI communication via `terminal-todo`. Every JSON response includes
@@ -256,8 +256,8 @@ Used by: `events --json`
 ```
 
 Event types: `created`, `completed`, `claimed`, `released`, `lease_expired`,
-`blocked`, `unblocked`, `updated`, `decomposed`, `removed`, `dep_added`,
-`dep_removed`.
+`lease_renewed`, `blocked`, `unblocked`, `updated`, `decomposed`, `removed`,
+`dep_added`, `dep_removed`.
 
 ### Graph Envelope
 
@@ -366,6 +366,7 @@ The error envelope is:
 | `NO_WORK` | No compatible ready task is currently available | 6 |
 | `AGENT_AT_CAPACITY` | Agent has reached its registered `max_load` | 7 |
 | `IDEMPOTENCY_CONFLICT` | Request ID was already used with different acquire parameters | 8 |
+| `LEASE_NOT_ACTIVE` | Task has no active lease to renew | 9 |
 
 ---
 
@@ -398,9 +399,9 @@ All query commands support `--json` for structured output.
 ## 5. Mutation Commands
 
 Mutation commands output human-readable text by default. Core lifecycle
-mutations (`add`, `claim`, `release`, and `done`) accept `--json` and return a
-versioned task or tasks envelope. All errors are structured via the error
-envelope when `--json` is present.
+mutations (`add`, `claim`, `heartbeat`, `release`, and `done`) accept `--json`
+and return a versioned task or tasks envelope. All errors are structured via
+the error envelope when `--json` is present.
 
 | Command | Args | Effect |
 |---------|------|--------|
@@ -410,6 +411,7 @@ envelope when `--json` is present.
 | `update <id> [--title] [--priority] [--caps] [--set k=v] [--add-dep] [--remove-dep] [--as]` | Modify task | Emits `updated`/`dep_added`/`dep_removed` events |
 | `claim <id> --as <owner> [--ttl <duration>]` | Acquire lease | Emits `claimed` event |
 | `acquire --as <owner> --request-id <id> [--capabilities a,b] [--ttl <duration>]` | Atomically select and claim the highest-priority compatible task | Durable request IDs make retries idempotent; enforces agent `max_load`, emits `claimed` event |
+| `heartbeat <id> --as <owner> [--ttl <duration>]` | Renew an owned active lease from the current time | Emits `lease_renewed`; stale leases cannot be revived |
 | `release <id> --as <owner> [--error <msg>]` | Yield lease | Increments retry_count, emits `released` event |
 | `block <id> --reason <text> [--as <owner>]` | Mark blocked | Emits `blocked` event |
 | `unblock <id> [--as <owner>]` | Mark pending | Emits `unblocked` event |
@@ -526,6 +528,7 @@ processed but no response is written. Stdio requests may be up to 4 MiB.
 | `todo.update` | `{id, title?, priority?, capabilities?, actor?, extra?, addDeps?, removeDeps?}` | `protocolTask` |
 | `todo.claim` | `{id, actor, ttl?}` | `{id, owner, expires, retryCount, lastError}` |
 | `todo.acquire` | `{actor, requestId, ttl?, capabilities?}` | Versioned task envelope for the atomically selected task; repeated request IDs return the original result |
+| `todo.heartbeat` | `{id, actor, ttl?}` | Versioned task envelope with the renewed lease |
 | `todo.release` | `{id, actor, error?}` | `{id, status}` |
 | `todo.block` | `{id, reason, actor?}` | `{id, status}` |
 | `todo.unblock` | `{id, actor?}` | `{id, status}` |
@@ -573,6 +576,7 @@ processed but no response is written. Stdio requests may be up to 4 MiB.
 | `NO_WORK` | -32010 |
 | `AGENT_AT_CAPACITY` | -32011 |
 | `IDEMPOTENCY_CONFLICT` | -32012 |
+| `LEASE_NOT_ACTIVE` | -32013 |
 
 Error identifiers and numeric codes are append-only protocol values. `NO_WORK`
 is a normal, retryable scheduler outcome: clients should wait for a task or
@@ -589,6 +593,11 @@ original task with `replayed: true` without extending its lease or emitting a
 second claim event. Reusing the ID with different parameters returns
 `IDEMPOTENCY_CONFLICT`. Failed attempts do not consume the ID, and task removal
 or pruning does not remove a successful receipt.
+
+Heartbeats renew a lease to `now + ttl`; they do not add time to the previous
+expiry. Only the current owner can renew a lease, and a pending task or an
+already expired lease returns `LEASE_NOT_ACTIVE`. This prevents a delayed
+worker from reviving ownership after the task has returned to the ready queue.
 
 ---
 

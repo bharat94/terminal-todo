@@ -53,6 +53,48 @@ func TestServerAcquireUsesSharedAtomicAllocator(t *testing.T) {
 	assert.Equal(t, rpcNoWork, rpcErr.Code)
 }
 
+func TestServerHeartbeatRenewsOnlyTheOwnersActiveLease(t *testing.T) {
+	oldRoot := projectRoot
+	projectRoot = t.TempDir()
+	defer func() { projectRoot = oldRoot }()
+	path := filepath.Join(projectRoot, ".terminal-todo", "tasks.bin")
+	s := store.NewTaskStore()
+	task := s.AddTask("RPC long-running work", nil)
+	task.Status = store.StatusInProgress
+	task.Owner = "rpc-agent"
+	task.LeaseExpires = uint64(time.Now().Add(15 * time.Minute).UnixMilli())
+	previousExpiry := task.LeaseExpires
+	assert.NoError(t, s.Save(path))
+
+	srv := &server{initialized: true}
+	result, rpcErr := srv.dispatch("todo.heartbeat", json.RawMessage(`{"id":1,"actor":"rpc-agent","ttl":"2h"}`))
+	assert.Nil(t, rpcErr)
+	envelope, ok := result.(taskEnvelope)
+	assert.True(t, ok)
+	assert.Equal(t, "rpc-agent", envelope.Task.Metadata.Owner)
+
+	persisted, err := store.LoadCurrent(path)
+	assert.NoError(t, err)
+	assert.Greater(t, persisted.Tasks[1].LeaseExpires, previousExpiry)
+	assert.Equal(t, store.EventLeaseRenewed, persisted.Events[len(persisted.Events)-1].Type)
+
+	_, rpcErr = srv.dispatch("todo.heartbeat", json.RawMessage(`{"id":1,"actor":"other-agent"}`))
+	assert.NotNil(t, rpcErr)
+	assert.Equal(t, rpcNotOwner, rpcErr.Code)
+
+	_, rpcErr = srv.dispatch("todo.heartbeat", json.RawMessage(`{"id":999,"actor":"rpc-agent"}`))
+	assert.NotNil(t, rpcErr)
+	assert.Equal(t, rpcTaskNotFound, rpcErr.Code)
+
+	persisted.Tasks[1].Status = store.StatusPending
+	persisted.Tasks[1].Owner = ""
+	persisted.Tasks[1].LeaseExpires = 0
+	assert.NoError(t, persisted.Save(path))
+	_, rpcErr = srv.dispatch("todo.heartbeat", json.RawMessage(`{"id":1,"actor":"rpc-agent"}`))
+	assert.NotNil(t, rpcErr)
+	assert.Equal(t, rpcLeaseNotActive, rpcErr.Code)
+}
+
 func TestServerNotificationDoesNotEmitResponse(t *testing.T) {
 	var output bytes.Buffer
 	srv := &server{initialized: true, encoder: json.NewEncoder(&output)}

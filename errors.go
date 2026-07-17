@@ -22,6 +22,7 @@ const (
 	ErrNoWork              ErrorCode = "NO_WORK"
 	ErrAgentAtCapacity     ErrorCode = "AGENT_AT_CAPACITY"
 	ErrIdempotencyConflict ErrorCode = "IDEMPOTENCY_CONFLICT"
+	ErrLeaseNotActive      ErrorCode = "LEASE_NOT_ACTIVE"
 )
 
 type ErrorResponse struct {
@@ -84,6 +85,8 @@ func exitCode(code ErrorCode) int {
 		return 7
 	case ErrIdempotencyConflict:
 		return 8
+	case ErrLeaseNotActive:
+		return 9
 	default:
 		return 1
 	}

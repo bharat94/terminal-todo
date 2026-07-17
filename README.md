@@ -169,6 +169,12 @@ When work finishes:
 todo done 7 --as go-worker-1 --json
 ```
 
+For work that runs longer than its lease, renew ownership before expiry:
+
+```bash
+todo heartbeat 7 --as go-worker-1 --ttl 30m --json
+```
+
 When work should return to the queue:
 
 ```bash
@@ -361,7 +367,7 @@ Run `todo help` for the concise built-in reference.
 | Area | Commands |
 |---|---|
 | Tasks | `add`, `status`, `cat`, `update`, `done`, `rm`, `prune`, `search` |
-| Scheduling | `next`, `claim`, `acquire`, `release`, `my` |
+| Scheduling | `next`, `claim`, `acquire`, `heartbeat`, `release`, `my` |
 | Dependencies | `depends`, `dependents`, `decompose`, `lineage`, `graph`, `what-if` |
 | Coordination | `block`, `unblock`, `log`, `events`, `watch` |
 | Agents | `agent-card`, `caps` |
@@ -443,8 +449,8 @@ re-graphing, events, and a transport-neutral protocol.
 The larger vision is **Distributed Multi-Agent Task Orchestration (DMATO)**:
 a decentralized shared memory layer that can coordinate heterogeneous agents
 across repositories, machines, and inference runtimes. The next frontier is
-making leases easier to maintain, improving reactive worker workflows, and
-eventually supporting synchronization beyond a shared filesystem.
+improving reactive worker workflows and eventually supporting synchronization
+beyond a shared filesystem.
 
 See [Vision](docs/vision.md) for the principles and roadmap.
 

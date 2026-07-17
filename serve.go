@@ -56,6 +56,7 @@ const (
 	rpcNoWork              = -32010
 	rpcAgentCapacity       = -32011
 	rpcIdempotencyConflict = -32012
+	rpcLeaseNotActive      = -32013
 )
 
 type server struct {
@@ -108,6 +109,12 @@ type acquireParams struct {
 	RequestID    string   `json:"requestId"`
 	TTL          string   `json:"ttl,omitempty"`
 	Capabilities []string `json:"capabilities,omitempty"`
+}
+
+type heartbeatParams struct {
+	ID    uint64 `json:"id"`
+	Actor string `json:"actor"`
+	TTL   string `json:"ttl,omitempty"`
 }
 
 type releaseParams struct {
@@ -491,6 +498,8 @@ func (srv *server) dispatch(method string, params json.RawMessage) (interface{},
 		return srv.handleClaim(params)
 	case "todo.acquire":
 		return srv.handleAcquire(params)
+	case "todo.heartbeat":
+		return srv.handleHeartbeat(params)
 	case "todo.release":
 		return srv.handleRelease(params)
 	case "todo.block":
@@ -1117,6 +1126,57 @@ func (srv *server) handleAcquire(params json.RawMessage) (interface{}, *rpcError
 		}
 	}
 	return acquireEnvelope{SchemaVersion: protocolVersion, RequestID: p.RequestID, Replayed: replayed, Task: newProtocolTask(acquired)}, nil
+}
+
+func (srv *server) handleHeartbeat(params json.RawMessage) (interface{}, *rpcError) {
+	var p heartbeatParams
+	if err := unmarshalParams(params, &p); err != nil {
+		return nil, err
+	}
+	if p.ID == 0 {
+		return nil, rpcErrorf(rpcInvalidParams, "id is required")
+	}
+	if p.Actor == "" {
+		return nil, rpcErrorf(rpcInvalidParams, "actor is required")
+	}
+	if err := srv.ensureInitialized(); err != nil {
+		return nil, err
+	}
+
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, rpcErrorf(rpcStoreCorrupted, "loading config: %v", err)
+	}
+	ttl := parseDefaultTTL(cfg)
+	if p.TTL != "" {
+		ttl, err = time.ParseDuration(p.TTL)
+		if err != nil || ttl <= 0 {
+			return nil, rpcErrorf(rpcInvalidParams, "ttl must be a positive duration")
+		}
+	}
+	if err := touchAgent(p.Actor); err != nil {
+		return nil, rpcErrorf(rpcStoreCorrupted, "registering agent %s: %v", p.Actor, err)
+	}
+
+	var renewed *store.Task
+	_, err = updateStoreSafe(func(s *store.TaskStore) error {
+		var renewErr error
+		renewed, renewErr = renewLease(s, p.ID, p.Actor, ttl, time.Now())
+		return renewErr
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, errLeaseTaskNotFound):
+			return nil, rpcErrorf(rpcTaskNotFound, "%v", err)
+		case errors.Is(err, errLeaseNotOwner):
+			return nil, rpcErrorf(rpcNotOwner, "%v", err)
+		case errors.Is(err, errLeaseNotActive):
+			return nil, rpcErrorf(rpcLeaseNotActive, "%v", err)
+		default:
+			return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
+		}
+	}
+	return taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(renewed)}, nil
 }
 
 func (srv *server) handleRelease(params json.RawMessage) (interface{}, *rpcError) {

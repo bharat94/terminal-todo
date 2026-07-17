@@ -36,6 +36,7 @@ const (
 	EventDependencyAdded   EventType = "dep_added"
 	EventDependencyRemoved EventType = "dep_removed"
 	EventLeaseExpired      EventType = "lease_expired"
+	EventLeaseRenewed      EventType = "lease_renewed"
 )
 
 type Event struct {
