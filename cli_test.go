@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"terminal-todo/store"
 
@@ -455,7 +456,7 @@ func TestCLI_AcquireAtomicallySelectsCompatibleWorkAndEnforcesCapacity(t *testin
 	assert.Contains(t, string(out), `"title": "High priority"`)
 	assert.Contains(t, string(out), `"owner": "allocator"`)
 
-	cmd = exec.Command(todo, "acquire", "--as", "allocator", "--request-id", "allocation-1", "--json")
+	cmd = exec.Command(todo, "acquire", "--as", "allocator", "--request-id", "allocation-1", "--wait", "1s", "--json")
 	cmd.Dir = tmpDir
 	out, err = cmd.CombinedOutput()
 	assert.NoError(t, err, string(out))
@@ -529,6 +530,54 @@ func TestCLI_ConcurrentAcquireHasSingleWinner(t *testing.T) {
 	}
 	assert.Equal(t, 1, successes)
 	assert.Equal(t, 1, failures)
+}
+
+func TestCLI_AcquireWaitsForCompatibleReadyWork(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+	cmd := exec.Command(todo, "add", "Wrong capability", "--caps", "python")
+	cmd.Dir = tmpDir
+	assert.NoError(t, cmd.Run())
+
+	type acquireResult struct {
+		err error
+		out []byte
+	}
+	result := make(chan acquireResult, 1)
+	go func() {
+		acquire := exec.Command(todo, "acquire", "--as", "waiting-agent", "--request-id", "waiting-request", "--capabilities", "go", "--wait", "3s", "--json")
+		acquire.Dir = tmpDir
+		out, err := acquire.CombinedOutput()
+		result <- acquireResult{err: err, out: out}
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+	cmd = exec.Command(todo, "add", "New Go work", "--caps", "go")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+
+	acquired := <-result
+	assert.NoError(t, acquired.err, string(acquired.out))
+	assert.Contains(t, string(acquired.out), `"title": "New Go work"`)
+	assert.Contains(t, string(acquired.out), `"owner": "waiting-agent"`)
+}
+
+func TestCLI_AcquireWaitTimesOutWithNoWork(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+	started := time.Now()
+
+	cmd := exec.Command(todo, "acquire", "--as", "waiting-agent", "--request-id", "timeout-request", "--wait", "100ms", "--json")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+
+	assert.Error(t, err)
+	assert.True(t, time.Since(started) >= 75*time.Millisecond)
+	var exitErr *exec.ExitError
+	assert.True(t, errors.As(err, &exitErr))
+	assert.Equal(t, 6, exitErr.ExitCode())
+	assert.Contains(t, string(out), `"code": "NO_WORK"`)
 }
 
 func TestCLI_Status(t *testing.T) {

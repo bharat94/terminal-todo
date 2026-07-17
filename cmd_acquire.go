@@ -30,6 +30,13 @@ func cmdAcquire(args []string) {
 		}
 		ttlMode = "explicit:" + ttl.String()
 	}
+	var wait time.Duration
+	if value := optionValue(args, "--wait"); value != "" {
+		wait, err = time.ParseDuration(value)
+		if err != nil || wait <= 0 {
+			fail(ErrInvalidArgs, "--wait must be a positive duration")
+		}
+	}
 	if err := touchAgent(actor); err != nil {
 		fail(ErrStoreCorrupted, "registering agent %s: %v", actor, err)
 	}
@@ -47,18 +54,33 @@ func cmdAcquire(args []string) {
 	if err != nil {
 		fail(ErrStoreCorrupted, "loading agent profile: %v", err)
 	}
-	preflight := loadStore()
-	resolver := snapshotDependencyResolver(preflight.GetAllTasks())
 	fingerprint := acquireFingerprint(actor, ttlMode, capabilitiesMode, explicitCapabilities)
+	deadline := time.Now().Add(wait)
 
 	var acquired *store.Task
 	var replayed bool
-	_, err = store.Update(tasksBinPath(), func(s *store.TaskStore) error {
-		var acquireErr error
-		acquired, replayed, acquireErr = acquireFromStore(s, actor, requestID, fingerprint, ttl, capabilities, maxLoad, resolver)
-		return acquireErr
-	})
-	if err != nil {
+	for {
+		preflight := loadStore()
+		resolver := snapshotDependencyResolver(preflight.GetAllTasks())
+		_, err = store.Update(tasksBinPath(), func(s *store.TaskStore) error {
+			var acquireErr error
+			acquired, replayed, acquireErr = acquireFromStore(s, actor, requestID, fingerprint, ttl, capabilities, maxLoad, resolver)
+			return acquireErr
+		})
+		if err == nil {
+			break
+		}
+		if errors.Is(err, errNoReadyTasks) && wait > 0 {
+			remaining := time.Until(deadline)
+			if remaining > 0 {
+				delay := 250 * time.Millisecond
+				if remaining < delay {
+					delay = remaining
+				}
+				time.Sleep(delay)
+				continue
+			}
+		}
 		switch {
 		case errors.Is(err, errNoReadyTasks):
 			fail(ErrNoWork, "%v", err)

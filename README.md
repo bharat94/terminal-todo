@@ -129,6 +129,7 @@ todo agent-card \
 todo acquire \
   --as go-worker-1 \
   --request-id 01JZQ4N6BK7R8T9W0XYZ123456 \
+  --wait 30s \
   --json
 ```
 
@@ -162,6 +163,10 @@ A successful response contains the selected task and its lease:
 Use a new request ID for each new allocation attempt. If delivery is uncertain,
 retry the same request with the same parameters: `terminal-todo` returns the
 original result without claiming twice or extending its lease.
+
+`--wait` keeps the CLI call open for a bounded period when no compatible task
+is ready. Each retry still performs one atomic selection-and-claim transition;
+capacity and idempotency errors return immediately.
 
 When work finishes:
 
@@ -449,7 +454,7 @@ re-graphing, events, and a transport-neutral protocol.
 The larger vision is **Distributed Multi-Agent Task Orchestration (DMATO)**:
 a decentralized shared memory layer that can coordinate heterogeneous agents
 across repositories, machines, and inference runtimes. The next frontier is
-improving reactive worker workflows and eventually supporting synchronization
+reducing polling overhead further and eventually supporting synchronization
 beyond a shared filesystem.
 
 See [Vision](docs/vision.md) for the principles and roadmap.

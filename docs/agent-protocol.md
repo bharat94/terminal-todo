@@ -410,7 +410,7 @@ the error envelope when `--json` is present.
 | `rm <id>` | Remove task | Emits `removed` event |
 | `update <id> [--title] [--priority] [--caps] [--set k=v] [--add-dep] [--remove-dep] [--as]` | Modify task | Emits `updated`/`dep_added`/`dep_removed` events |
 | `claim <id> --as <owner> [--ttl <duration>]` | Acquire lease | Emits `claimed` event |
-| `acquire --as <owner> --request-id <id> [--capabilities a,b] [--ttl <duration>]` | Atomically select and claim the highest-priority compatible task | Durable request IDs make retries idempotent; enforces agent `max_load`, emits `claimed` event |
+| `acquire --as <owner> --request-id <id> [--capabilities a,b] [--ttl <duration>] [--wait <duration>]` | Atomically select and claim the highest-priority compatible task | Durable request IDs make retries idempotent; optional bounded waiting retries `NO_WORK`; enforces agent `max_load`, emits `claimed` event |
 | `heartbeat <id> --as <owner> [--ttl <duration>]` | Renew an owned active lease from the current time | Emits `lease_renewed`; stale leases cannot be revived |
 | `release <id> --as <owner> [--error <msg>]` | Yield lease | Increments retry_count, emits `released` event |
 | `block <id> --reason <text> [--as <owner>]` | Mark blocked | Emits `blocked` event |
@@ -584,6 +584,14 @@ dependency event and use backoff before trying again. `AGENT_AT_CAPACITY`
 means the actor must finish or release active work before retrying. Capacity is
 checked before queue availability, so an at-capacity actor receives
 `AGENT_AT_CAPACITY` even when no compatible work is ready.
+
+CLI clients can pass `--wait <duration>` to retry `NO_WORK` within one bounded
+invocation. Every attempt refreshes linked-repository dependency state and
+uses the same atomic allocator. The wait duration is not part of the durable
+request fingerprint, so retrying a successful request with a different wait
+budget still replays its original result. JSON-RPC acquisition remains
+non-blocking so a serial stdio session can continue processing heartbeats and
+other coordination messages.
 
 Acquire request IDs are opaque, project-wide identifiers of 1–128 bytes; a
 UUID or ULID is recommended. A successful acquisition stores its request

@@ -162,7 +162,7 @@ Task Management:
 Agent Operations:
   claim <id> --as <n>  Secure an exclusive execution lease (--ttl)
   acquire --as <n> --request-id <id>
-                       Atomically select and claim ready work
+                       Atomically select and claim ready work (--wait)
   heartbeat <id> --as <n>
                        Renew an active owned lease (--ttl)
   release <id> --as <n> Yield an owned lease back to the pool (--error)
@@ -236,6 +236,7 @@ func parseIDs(args []string) []uint64 {
 		"--reason": true, "--msg": true, "--tag": true,
 		"--add-dep": true, "--remove-dep": true,
 		"--error": true, "--poll": true, "--output": true,
+		"--wait": true,
 	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -259,7 +260,7 @@ func validateCommandArgs(command string, args []string) error {
 		"backup":     {"--output": true},
 		"block":      {"--reason": true, "--as": true},
 		"claim":      {"--as": true, "--ttl": true},
-		"acquire":    {"--as": true, "--request-id": true, "--ttl": true, "--capabilities": true},
+		"acquire":    {"--as": true, "--request-id": true, "--ttl": true, "--capabilities": true, "--wait": true},
 		"heartbeat":  {"--as": true, "--ttl": true},
 		"decompose":  {"--into": true},
 		"done":       {"--as": true},
@@ -371,7 +372,7 @@ func extractTitle(args []string) string {
 			skipNext = false
 			continue
 		}
-		if arg == "--after" || arg == "--as" || arg == "--ttl" || arg == "--capabilities" || arg == "--caps" || arg == "--priority" || arg == "--into" || arg == "--reason" || arg == "--msg" || arg == "--tag" || arg == "--add-dep" || arg == "--remove-dep" || arg == "--set" || arg == "--output" || arg == "--error" || arg == "--poll" {
+		if arg == "--after" || arg == "--as" || arg == "--ttl" || arg == "--capabilities" || arg == "--caps" || arg == "--priority" || arg == "--into" || arg == "--reason" || arg == "--msg" || arg == "--tag" || arg == "--add-dep" || arg == "--remove-dep" || arg == "--set" || arg == "--output" || arg == "--error" || arg == "--poll" || arg == "--wait" {
 			skipNext = true
 			continue
 		}

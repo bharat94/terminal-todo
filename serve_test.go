@@ -158,4 +158,9 @@ func TestServerRejectsUnknownAndTrailingParams(t *testing.T) {
 	assert.NotNil(t, rpcErr)
 	assert.Equal(t, rpcInvalidParams, rpcErr.Code)
 	assert.Contains(t, rpcErr.Message, "trailing JSON data")
+
+	_, rpcErr = srv.dispatch("todo.acquire", json.RawMessage(`{"actor":"agent","requestId":"request-1","wait":"1s"}`))
+	assert.NotNil(t, rpcErr)
+	assert.Equal(t, rpcInvalidParams, rpcErr.Code)
+	assert.Contains(t, rpcErr.Message, "unknown field")
 }
