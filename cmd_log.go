@@ -19,17 +19,23 @@ func cmdLog(args []string) {
 
 	owner := optionValue(args, "--as")
 
-	updateStore(func(s *store.TaskStore) error {
+	var logged *store.Task
+	updateLifecycleStore(func(s *store.TaskStore) error {
 		task, ok := s.GetTask(ids[0])
 		if !ok {
-			return fmt.Errorf("task %d not found", ids[0])
+			return lifecycleError(ErrTaskNotFound, "task %d not found", ids[0])
 		}
 		if task.Owner != "" && task.Owner != owner {
-			return fmt.Errorf("task %d is claimed by %s; use --as %s", ids[0], task.Owner, task.Owner)
+			return lifecycleError(ErrNotOwner, "task %d is claimed by %s; use --as %s", ids[0], task.Owner, task.Owner)
 		}
 		s.AddLog(ids[0], owner, message)
+		logged = task
 		return nil
 	})
 
+	if hasFlag(args, "--json") {
+		writeJSON(taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(logged)})
+		return
+	}
 	fmt.Printf("Logged to task %d: %s\n", ids[0], message)
 }

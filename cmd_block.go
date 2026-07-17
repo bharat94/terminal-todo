@@ -19,16 +19,17 @@ func cmdBlock(args []string) {
 
 	owner := optionValue(args, "--as")
 
-	updateStore(func(s *store.TaskStore) error {
+	var blocked *store.Task
+	updateLifecycleStore(func(s *store.TaskStore) error {
 		task, ok := s.GetTask(ids[0])
 		if !ok {
-			return fmt.Errorf("task %d not found", ids[0])
+			return lifecycleError(ErrTaskNotFound, "task %d not found", ids[0])
 		}
 		if task.Status == store.StatusCompleted {
-			return fmt.Errorf("task %d is already completed", ids[0])
+			return lifecycleError(ErrInvalidArgs, "task %d is already completed", ids[0])
 		}
 		if task.Owner != "" && task.Owner != owner {
-			return fmt.Errorf("task %d is claimed by %s; use --as %s", ids[0], task.Owner, task.Owner)
+			return lifecycleError(ErrNotOwner, "task %d is claimed by %s; use --as %s", ids[0], task.Owner, task.Owner)
 		}
 		task.Status = store.StatusBlocked
 		task.BlockReason = reason
@@ -36,8 +37,13 @@ func cmdBlock(args []string) {
 		task.LeaseExpires = 0
 		s.AddLog(ids[0], owner, fmt.Sprintf("blocked: %s", reason))
 		s.AddEvent(store.EventTaskBlocked, ids[0], owner, map[string]string{"reason": reason})
+		blocked = task
 		return nil
 	})
 
+	if hasFlag(args, "--json") {
+		writeJSON(taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(blocked)})
+		return
+	}
 	fmt.Printf("Blocked task %d: %s\n", ids[0], reason)
 }

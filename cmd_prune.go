@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/bharat94/terminal-todo/dag"
 
@@ -9,12 +10,13 @@ import (
 )
 
 func cmdPrune(args []string) {
-	var removedCount int
+	var removed []*store.Task
 	updateStore(func(s *store.TaskStore) error {
 		completed := make(map[uint64]struct{})
 		for _, t := range s.GetAllTasks() {
 			if t.Status == store.StatusCompleted {
 				completed[t.ID] = struct{}{}
+				removed = append(removed, t)
 			}
 		}
 		for _, task := range s.Tasks {
@@ -33,9 +35,19 @@ func cmdPrune(args []string) {
 		}
 		for id := range completed {
 			s.RemoveTask(id)
-			removedCount++
 		}
 		return nil
 	})
-	fmt.Printf("Removed %d completed task(s)\n", removedCount)
+	sort.Slice(removed, func(i, j int) bool {
+		return removed[i].ID < removed[j].ID
+	})
+	if hasFlag(args, "--json") {
+		tasks := make([]protocolTask, 0, len(removed))
+		for _, task := range removed {
+			tasks = append(tasks, newProtocolTask(task))
+		}
+		writeJSON(tasksEnvelope{SchemaVersion: protocolVersion, Tasks: tasks})
+		return
+	}
+	fmt.Printf("Removed %d completed task(s)\n", len(removed))
 }

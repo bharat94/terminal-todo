@@ -51,6 +51,10 @@ func TestServerAcquireUsesSharedAtomicAllocator(t *testing.T) {
 	_, rpcErr = srv.dispatch("todo.acquire", json.RawMessage(`{"actor":"rpc-agent","requestId":"rpc-request-2"}`))
 	assert.NotNil(t, rpcErr)
 	assert.Equal(t, rpcNoWork, rpcErr.Code)
+	diagnostics, ok := rpcErr.Data.(allocationDiagnostics)
+	assert.True(t, ok)
+	assert.Equal(t, allocationNoPendingWork, diagnostics.Reason)
+	assert.Equal(t, 1, diagnostics.Worker.Owned)
 }
 
 func TestServerRejectsInvalidTaskAndConfigInputAsInvalidParams(t *testing.T) {

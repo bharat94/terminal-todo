@@ -617,7 +617,9 @@ func TestCLI_AcquireAtomicallySelectsCompatibleWorkAndEnforcesCapacity(t *testin
 	assert.True(t, errors.As(err, &exitErr))
 	assert.Equal(t, 7, exitErr.ExitCode())
 	assert.Contains(t, string(out), `"code": "AGENT_AT_CAPACITY"`)
-	assert.Contains(t, string(out), "reached max load 1")
+	assert.Contains(t, string(out), `"reason": "worker_at_capacity"`)
+	assert.Contains(t, string(out), `"current_load": 1`)
+	assert.Contains(t, string(out), `"max_load": 1`)
 
 	persisted, loadErr := store.LoadCurrent(filepath.Join(tmpDir, ".terminal-todo", "tasks.bin"))
 	assert.NoError(t, loadErr)
@@ -715,6 +717,8 @@ func TestCLI_AcquireWaitTimesOutWithNoWork(t *testing.T) {
 	assert.True(t, errors.As(err, &exitErr))
 	assert.Equal(t, 6, exitErr.ExitCode())
 	assert.Contains(t, string(out), `"code": "NO_WORK"`)
+	assert.Contains(t, string(out), `"reason": "no_pending_work"`)
+	assert.Contains(t, string(out), `"compatible_ready": 0`)
 }
 
 func TestCLI_Status(t *testing.T) {
@@ -787,6 +791,9 @@ func TestCLI_NextJSON(t *testing.T) {
 	assert.NoError(t, err, string(out))
 	assert.Contains(t, string(out), `"available_tasks"`)
 	assert.Contains(t, string(out), `"blocked_summary"`)
+	assert.Contains(t, string(out), `"allocation"`)
+	assert.Contains(t, string(out), `"reason": "ready"`)
+	assert.Contains(t, string(out), `"compatible_ready": 1`)
 	assert.Contains(t, string(out), `"schema_version": "1"`)
 }
 

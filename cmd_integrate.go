@@ -1,15 +1,21 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 //go:embed integrations/skills/terminal-todo/SKILL.md integrations/skills/terminal-todo/agents/openai.yaml
@@ -37,13 +43,16 @@ func cmdIntegrate(args []string) {
 	if command == "" {
 		command = "todo"
 	}
+	check := hasFlag(args, "--check")
+	if hasFlag(args, "--live") && !check {
+		fail(ErrInvalidArgs, "--live requires --check")
+	}
 
 	files, err := prepareIntegration(projectRoot, targets, command, hasFlag(args, "--force"))
 	if err != nil {
 		fail(ErrInvalidArgs, "integration: %v", err)
 	}
 
-	check := hasFlag(args, "--check")
 	changed := 0
 	for _, file := range files {
 		state := "ok"
@@ -64,6 +73,14 @@ func cmdIntegrate(args []string) {
 		if changed > 0 {
 			fail(ErrInvalidArgs, "%d integration file(s) need installation or update", changed)
 		}
+		if hasFlag(args, "--live") {
+			report, err := verifyMCPIntegration(command, projectRoot)
+			if err != nil {
+				fail(ErrInvalidArgs, "live integration check failed: %v", err)
+			}
+			fmt.Printf("Live MCP check passed (%d tools, project %s).\n", report.ToolCount, report.Project)
+			return
+		}
 		fmt.Println("Integration check passed.")
 		return
 	}
@@ -72,6 +89,297 @@ func cmdIntegrate(args []string) {
 		return
 	}
 	fmt.Printf("Installed terminal-todo integration for %s.\n", formatIntegrationTargets(targets))
+}
+
+type integrationHealth struct {
+	ToolCount int
+	Project   string
+}
+
+type synchronizedBuffer struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (b *synchronizedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.Write(p)
+}
+
+func (b *synchronizedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.String()
+}
+
+func verifyMCPIntegration(command, root string) (integrationHealth, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, command, "mcp", "--stdio")
+	cmd.Dir = root
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return integrationHealth{}, fmt.Errorf("starting %q: %w", command, err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return integrationHealth{}, fmt.Errorf("starting %q: %w", command, err)
+	}
+	var stderr synchronizedBuffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return integrationHealth{}, fmt.Errorf("starting %q: %w", command, err)
+	}
+	finished := false
+	defer func() {
+		if !finished {
+			_ = stdin.Close()
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}
+	}()
+
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	send := func(request interface{}) error {
+		if err := json.NewEncoder(stdin).Encode(request); err != nil {
+			return fmt.Errorf("writing MCP request: %w", err)
+		}
+		return nil
+	}
+	read := func(id int) (map[string]interface{}, error) {
+		if !scanner.Scan() {
+			if ctx.Err() != nil {
+				return nil, errors.New("MCP handshake timed out")
+			}
+			if err := scanner.Err(); err != nil {
+				return nil, fmt.Errorf("reading MCP response: %w", err)
+			}
+			detail := strings.TrimSpace(stderr.String())
+			if detail != "" {
+				return nil, fmt.Errorf("MCP response %d is missing: %s", id, detail)
+			}
+			return nil, fmt.Errorf("MCP response %d is missing", id)
+		}
+		var response map[string]interface{}
+		if err := json.Unmarshal(scanner.Bytes(), &response); err != nil {
+			return nil, fmt.Errorf("invalid MCP response: %w", err)
+		}
+		if response["jsonrpc"] != "2.0" {
+			return nil, fmt.Errorf("MCP response %d has invalid jsonrpc version", id)
+		}
+		responseID, ok := response["id"].(float64)
+		if !ok || int(responseID) != id || responseID != float64(id) {
+			return nil, fmt.Errorf("MCP response %d has unexpected id %v", id, response["id"])
+		}
+		if rpcErr, ok := response["error"]; ok {
+			return nil, fmt.Errorf("MCP response %d failed: %v", id, rpcErr)
+		}
+		return response, nil
+	}
+
+	if err := send(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "initialize",
+		"params": map[string]interface{}{
+			"protocolVersion": mcpProtocolVersion,
+			"capabilities":    map[string]interface{}{},
+			"clientInfo":      map[string]string{"name": "terminal-todo-integrate", "version": "1"},
+		},
+	}); err != nil {
+		return integrationHealth{}, err
+	}
+	initializeResponse, err := read(1)
+	if err != nil {
+		return integrationHealth{}, err
+	}
+	initialize, ok := initializeResponse["result"].(map[string]interface{})
+	if !ok || initialize["protocolVersion"] != mcpProtocolVersion {
+		return integrationHealth{}, errors.New("MCP protocol negotiation failed")
+	}
+	serverInfo, ok := initialize["serverInfo"].(map[string]interface{})
+	if !ok || serverInfo["name"] != "terminal-todo" {
+		return integrationHealth{}, errors.New("MCP server identity is not terminal-todo")
+	}
+	serverCapabilities, ok := initialize["capabilities"].(map[string]interface{})
+	if !ok {
+		return integrationHealth{}, errors.New("MCP server capabilities are missing")
+	}
+	toolsCapability, ok := serverCapabilities["tools"].(map[string]interface{})
+	if !ok {
+		return integrationHealth{}, errors.New("MCP tools capability is missing")
+	}
+	if _, ok := toolsCapability["listChanged"].(bool); !ok {
+		return integrationHealth{}, errors.New("MCP tools capability listChanged flag is missing")
+	}
+
+	if err := send(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "notifications/initialized",
+		"params":  map[string]interface{}{},
+	}); err != nil {
+		return integrationHealth{}, err
+	}
+	if err := send(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/list",
+		"params":  map[string]interface{}{},
+	}); err != nil {
+		return integrationHealth{}, err
+	}
+	listResponse, err := read(2)
+	if err != nil {
+		return integrationHealth{}, err
+	}
+	listResult, ok := listResponse["result"].(map[string]interface{})
+	if !ok {
+		return integrationHealth{}, errors.New("MCP tool list is malformed")
+	}
+	tools, ok := listResult["tools"].([]interface{})
+	if !ok || len(tools) == 0 {
+		return integrationHealth{}, errors.New("MCP tool list is empty")
+	}
+	advertisedTools := make(map[string]struct{}, len(tools))
+	for _, raw := range tools {
+		tool, ok := raw.(map[string]interface{})
+		if !ok {
+			return integrationHealth{}, errors.New("MCP tool list contains a malformed entry")
+		}
+		name, _ := tool["name"].(string)
+		if name == "" {
+			return integrationHealth{}, errors.New("MCP tool list contains an unnamed tool")
+		}
+		if _, duplicate := advertisedTools[name]; duplicate {
+			return integrationHealth{}, fmt.Errorf("MCP tool list contains duplicate %q", name)
+		}
+		advertisedTools[name] = struct{}{}
+	}
+	for _, expected := range requiredMCPIntegrationTools {
+		if _, ok := advertisedTools[expected]; !ok {
+			return integrationHealth{}, fmt.Errorf("MCP tool list is missing %q", expected)
+		}
+	}
+
+	if err := send(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"method":  "tools/call",
+		"params": map[string]interface{}{
+			"name":      "terminal_todo_ping",
+			"arguments": map[string]interface{}{},
+		},
+	}); err != nil {
+		return integrationHealth{}, err
+	}
+	pingResponse, err := read(3)
+	if err != nil {
+		return integrationHealth{}, err
+	}
+	pingResult, ok := pingResponse["result"].(map[string]interface{})
+	if !ok {
+		return integrationHealth{}, errors.New("MCP ping result is malformed")
+	}
+	if isError, _ := pingResult["isError"].(bool); isError {
+		return integrationHealth{}, errors.New("MCP ping reported an error")
+	}
+	structured, ok := pingResult["structuredContent"].(map[string]interface{})
+	if !ok {
+		return integrationHealth{}, errors.New("MCP ping structured content is missing")
+	}
+	project, _ := structured["project"].(string)
+	if strings.TrimSpace(project) == "" {
+		return integrationHealth{}, errors.New("MCP ping project is empty")
+	}
+	initialized, _ := structured["initialized"].(bool)
+	if !initialized {
+		return integrationHealth{}, errors.New("terminal-todo project state is not initialized")
+	}
+	if version, _ := structured["version"].(string); strings.TrimSpace(version) == "" {
+		return integrationHealth{}, errors.New("MCP ping version is empty")
+	}
+	if structured["protocol_version"] != protocolVersion {
+		return integrationHealth{}, fmt.Errorf("terminal-todo protocol mismatch: got %v, expected %s", structured["protocol_version"], protocolVersion)
+	}
+	capabilities, ok := structured["capabilities"].([]interface{})
+	if !ok {
+		return integrationHealth{}, errors.New("MCP ping capabilities are missing")
+	}
+	advertisedCapabilities := make(map[string]struct{}, len(capabilities))
+	for _, raw := range capabilities {
+		capability, ok := raw.(string)
+		if !ok || capability == "" {
+			return integrationHealth{}, errors.New("MCP ping capabilities contain a malformed entry")
+		}
+		if _, duplicate := advertisedCapabilities[capability]; duplicate {
+			return integrationHealth{}, fmt.Errorf("MCP ping capabilities contain duplicate %q", capability)
+		}
+		advertisedCapabilities[capability] = struct{}{}
+	}
+	for _, expected := range requiredMCPIntegrationCapabilities {
+		if _, ok := advertisedCapabilities[expected]; !ok {
+			return integrationHealth{}, fmt.Errorf("MCP ping capabilities are missing %q", expected)
+		}
+	}
+	expectedRoot, err := filepath.Abs(root)
+	if err != nil {
+		return integrationHealth{}, err
+	}
+	actualRoot, err := filepath.Abs(project)
+	if err != nil {
+		return integrationHealth{}, err
+	}
+	if filepath.Clean(actualRoot) != filepath.Clean(expectedRoot) {
+		return integrationHealth{}, fmt.Errorf("MCP resolved project %q, expected %q", actualRoot, expectedRoot)
+	}
+
+	if err := stdin.Close(); err != nil {
+		return integrationHealth{}, fmt.Errorf("closing MCP input: %w", err)
+	}
+	if err := cmd.Wait(); err != nil {
+		if ctx.Err() != nil {
+			return integrationHealth{}, errors.New("MCP handshake timed out")
+		}
+		detail := strings.TrimSpace(stderr.String())
+		if detail != "" {
+			return integrationHealth{}, fmt.Errorf("MCP server exited: %s", detail)
+		}
+		return integrationHealth{}, fmt.Errorf("MCP server exited: %w", err)
+	}
+	finished = true
+	return integrationHealth{ToolCount: len(tools), Project: project}, nil
+}
+
+var requiredMCPIntegrationCapabilities = []string{
+	"dag",
+	"leases",
+	"lease_heartbeat",
+	"atomic_acquire",
+	"idempotent_acquire",
+	"session_bootstrap",
+	"events",
+	"cross_repository_dependencies",
+}
+
+var requiredMCPIntegrationTools = []string{
+	"terminal_todo_ping",
+	"terminal_todo_init",
+	"terminal_todo_bootstrap",
+	"terminal_todo_status",
+	"terminal_todo_cat",
+	"terminal_todo_add",
+	"terminal_todo_acquire",
+	"terminal_todo_heartbeat",
+	"terminal_todo_update",
+	"terminal_todo_log",
+	"terminal_todo_decompose",
+	"terminal_todo_block",
+	"terminal_todo_release",
+	"terminal_todo_complete",
+	"terminal_todo_events",
 }
 
 func parseIntegrationTargets(args []string) ([]integrationTarget, error) {

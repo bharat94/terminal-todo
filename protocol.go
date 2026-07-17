@@ -81,9 +81,10 @@ type blockedSummary struct {
 }
 
 type nextEnvelope struct {
-	SchemaVersion  string          `json:"schema_version"`
-	AvailableTasks []availableTask `json:"available_tasks"`
-	BlockedSummary blockedSummary  `json:"blocked_summary"`
+	SchemaVersion  string                `json:"schema_version"`
+	AvailableTasks []availableTask       `json:"available_tasks"`
+	BlockedSummary blockedSummary        `json:"blocked_summary"`
+	Allocation     allocationDiagnostics `json:"allocation"`
 }
 
 func newProtocolTask(task *store.Task) protocolTask {

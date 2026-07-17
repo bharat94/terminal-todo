@@ -380,6 +380,10 @@ func rpcErrorf(code int, format string, args ...interface{}) *rpcError {
 	return &rpcError{Code: code, Message: fmt.Sprintf(format, args...)}
 }
 
+func rpcErrorWithData(code int, message string, data interface{}) *rpcError {
+	return &rpcError{Code: code, Message: message, Data: data}
+}
+
 func unmarshalParams(params json.RawMessage, target interface{}) *rpcError {
 	if len(params) == 0 {
 		return nil
@@ -508,6 +512,8 @@ func (srv *server) dispatch(method string, params json.RawMessage) (interface{},
 		return srv.handleDone(params)
 	case "todo.status":
 		return srv.handleStatus(params)
+	case "todo.bootstrap":
+		return srv.handleBootstrap(params)
 	case "todo.cat":
 		return srv.handleCat(params)
 	case "todo.update":
@@ -591,6 +597,7 @@ func (srv *server) handlePing(params json.RawMessage) (interface{}, *rpcError) {
 			"lease_heartbeat",
 			"atomic_acquire",
 			"idempotent_acquire",
+			"session_bootstrap",
 			"events",
 			"cross_repository_dependencies",
 		},
@@ -804,6 +811,44 @@ func (srv *server) handleStatus(params json.RawMessage) (interface{}, *rpcError)
 	}
 
 	return tasksEnvelope{SchemaVersion: protocolVersion, Tasks: protocolTasks}, nil
+}
+
+func (srv *server) handleBootstrap(params json.RawMessage) (interface{}, *rpcError) {
+	var p bootstrapParams
+	if err := unmarshalParams(params, &p); err != nil {
+		return nil, err
+	}
+	capabilitiesExplicit := p.Capabilities != nil
+	normalized, validationErr := normalizeBootstrapParams(p)
+	if validationErr != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", validationErr)
+	}
+	if err := srv.ensureInitialized(); err != nil {
+		return nil, err
+	}
+
+	s, err := loadStoreSafe()
+	if err != nil {
+		return nil, rpcErrorf(rpcStoreCorrupted, "loading store: %v", err)
+	}
+	registry, err := loadAgentRegistry()
+	if err != nil {
+		return nil, rpcErrorf(rpcStoreCorrupted, "loading agent registry: %v", err)
+	}
+	result, buildErr := buildBootstrap(
+		s,
+		registry,
+		normalized,
+		capabilitiesExplicit,
+		snapshotDependencyResolver(s.GetAllTasks()),
+	)
+	if buildErr != nil {
+		if strings.Contains(buildErr.Error(), "not found") {
+			return nil, rpcErrorf(rpcTaskNotFound, "%v", buildErr)
+		}
+		return nil, rpcErrorf(rpcInvalidParams, "%v", buildErr)
+	}
+	return result, nil
 }
 
 func (srv *server) handleStatusAll() (interface{}, *rpcError) {
@@ -1156,9 +1201,11 @@ func (srv *server) handleAcquire(params json.RawMessage) (interface{}, *rpcError
 	if err != nil {
 		switch {
 		case errors.Is(err, errNoReadyTasks):
-			return nil, rpcErrorf(rpcNoWork, "%v", err)
+			diagnostics, _ := allocationDiagnosticsFromError(err)
+			return nil, rpcErrorWithData(rpcNoWork, err.Error(), diagnostics)
 		case errors.Is(err, errAgentAtCapacity):
-			return nil, rpcErrorf(rpcAgentCapacity, "%v", err)
+			diagnostics, _ := allocationDiagnosticsFromError(err)
+			return nil, rpcErrorWithData(rpcAgentCapacity, err.Error(), diagnostics)
 		case errors.Is(err, errAcquireRequestConflict):
 			return nil, rpcErrorf(rpcIdempotencyConflict, "%v", err)
 		default:
@@ -1383,27 +1430,11 @@ func (srv *server) handleNext(params json.RawMessage) (interface{}, *rpcError) {
 		return nil, rpcErrorf(rpcStoreCorrupted, "loading store: %v", err)
 	}
 
-	d := dag.NewDAG()
-	d.BuildFromTasks(s.Tasks)
 	resolver := dependencyResolver()
-	ready := d.GetReadyTasksWithResolver(s.Tasks, resolver)
-
-	if len(p.Capabilities) > 0 {
-		var filtered []*store.Task
-		for _, t := range ready {
-			if matchesCapabilities(t.Capabilities, p.Capabilities) {
-				filtered = append(filtered, t)
-			}
-		}
-		ready = filtered
-	}
-
-	sort.Slice(ready, func(i, j int) bool {
-		if ready[i].Priority == ready[j].Priority {
-			return ready[i].ID < ready[j].ID
-		}
-		return ready[i].Priority > ready[j].Priority
-	})
+	filterCapabilities := p.Capabilities != nil
+	capabilities := normalizeCapabilities(strings.Join(p.Capabilities, ","))
+	ready := rankedReadyTasks(s, resolver, capabilities, filterCapabilities)
+	diagnostics := diagnoseAllocation(s, resolver, "", capabilities, filterCapabilities, 0)
 
 	available := make([]availableTask, 0, len(ready))
 	for _, task := range ready {
@@ -1421,6 +1452,7 @@ func (srv *server) handleNext(params json.RawMessage) (interface{}, *rpcError) {
 		SchemaVersion:  protocolVersion,
 		AvailableTasks: available,
 		BlockedSummary: newBlockedSummaryWithResolver(s.Tasks, resolver),
+		Allocation:     diagnostics,
 	}, nil
 }
 

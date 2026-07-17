@@ -1,14 +1,26 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMain(m *testing.M) {
+	if mode := os.Getenv("TERMINAL_TODO_FAKE_MCP"); mode != "" {
+		os.Exit(runFakeMCPServer(mode))
+	}
+	os.Exit(m.Run())
+}
 
 func TestPrepareIntegrationInstallsAndChecksBothClients(t *testing.T) {
 	root := t.TempDir()
@@ -132,4 +144,218 @@ func TestParseIntegrationTargets(t *testing.T) {
 
 	_, err = parseIntegrationTargets([]string{"cursor"})
 	require.Error(t, err)
+}
+
+func TestVerifyMCPIntegrationChecksToolsAndProjectRoot(t *testing.T) {
+	root := setupTestProject(t)
+	binary := buildTodo(t)
+
+	report, err := verifyMCPIntegration(binary, root)
+	require.NoError(t, err)
+	assert.Greater(t, report.ToolCount, 10)
+	assert.Equal(t, root, report.Project)
+}
+
+func TestRequiredMCPIntegrationToolsMatchCuratedSurface(t *testing.T) {
+	actual := make([]string, 0, len(terminalTodoMCPTools()))
+	for _, tool := range terminalTodoMCPTools() {
+		actual = append(actual, tool.Name)
+	}
+	assert.ElementsMatch(t, actual, requiredMCPIntegrationTools)
+}
+
+func TestVerifyMCPIntegrationRejectsMissingCommand(t *testing.T) {
+	_, err := verifyMCPIntegration(filepath.Join(t.TempDir(), "missing-todo"), t.TempDir())
+	assert.ErrorContains(t, err, "starting")
+}
+
+func TestVerifyMCPIntegrationRequiresInitializedProject(t *testing.T) {
+	_, err := verifyMCPIntegration(buildTodo(t), t.TempDir())
+	assert.ErrorContains(t, err, "not initialized")
+}
+
+func TestVerifyMCPIntegrationSequencesInitializeBeforeOtherRequests(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("TERMINAL_TODO_FAKE_MCP", "strict")
+	t.Setenv("TERMINAL_TODO_FAKE_MCP_PROJECT", root)
+
+	report, err := verifyMCPIntegration(os.Args[0], root)
+	require.NoError(t, err)
+	assert.Equal(t, len(terminalTodoMCPTools()), report.ToolCount)
+	assert.Equal(t, root, report.Project)
+}
+
+func TestVerifyMCPIntegrationRejectsStaleToolSet(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("TERMINAL_TODO_FAKE_MCP", "stale-tools")
+	t.Setenv("TERMINAL_TODO_FAKE_MCP_PROJECT", root)
+
+	_, err := verifyMCPIntegration(os.Args[0], root)
+	assert.ErrorContains(t, err, `missing "terminal_todo_bootstrap"`)
+}
+
+func TestVerifyMCPIntegrationRejectsStaleCapabilities(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("TERMINAL_TODO_FAKE_MCP", "stale-capabilities")
+	t.Setenv("TERMINAL_TODO_FAKE_MCP_PROJECT", root)
+
+	_, err := verifyMCPIntegration(os.Args[0], root)
+	assert.ErrorContains(t, err, `capabilities are missing "session_bootstrap"`)
+}
+
+func TestVerifyMCPIntegrationRejectsEmptyProject(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("TERMINAL_TODO_FAKE_MCP", "empty-project")
+	t.Setenv("TERMINAL_TODO_FAKE_MCP_PROJECT", root)
+
+	_, err := verifyMCPIntegration(os.Args[0], root)
+	assert.ErrorContains(t, err, "project is empty")
+}
+
+func TestVerifyMCPIntegrationAcceptsBoundedLargeResponses(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("TERMINAL_TODO_FAKE_MCP", "large-response")
+	t.Setenv("TERMINAL_TODO_FAKE_MCP_PROJECT", root)
+
+	_, err := verifyMCPIntegration(os.Args[0], root)
+	require.NoError(t, err)
+}
+
+func runFakeMCPServer(mode string) int {
+	reader := bufio.NewReader(os.Stdin)
+	encoder := json.NewEncoder(os.Stdout)
+
+	initialize, err := readFakeMCPRequest(reader)
+	if err != nil {
+		return fakeMCPFailure(err)
+	}
+	if initialize["method"] != "initialize" || initialize["id"] != float64(1) {
+		return fakeMCPFailure(fmt.Errorf("expected initialize request, got %v", initialize))
+	}
+
+	type readResult struct {
+		request map[string]interface{}
+		err     error
+	}
+	next := make(chan readResult, 1)
+	go func() {
+		request, err := readFakeMCPRequest(reader)
+		next <- readResult{request: request, err: err}
+	}()
+	select {
+	case early := <-next:
+		if early.err != nil {
+			return fakeMCPFailure(early.err)
+		}
+		return fakeMCPFailure(errors.New("request was pipelined before the initialize response"))
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	if err := encoder.Encode(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"result": map[string]interface{}{
+			"protocolVersion": mcpProtocolVersion,
+			"capabilities": map[string]interface{}{
+				"tools": map[string]interface{}{"listChanged": false},
+			},
+			"serverInfo": map[string]interface{}{"name": "terminal-todo", "version": "test"},
+		},
+	}); err != nil {
+		return fakeMCPFailure(err)
+	}
+
+	initialized := <-next
+	if initialized.err != nil {
+		return fakeMCPFailure(initialized.err)
+	}
+	if initialized.request["method"] != "notifications/initialized" {
+		return fakeMCPFailure(fmt.Errorf("expected initialized notification, got %v", initialized.request))
+	}
+	list, err := readFakeMCPRequest(reader)
+	if err != nil {
+		return fakeMCPFailure(err)
+	}
+	if list["method"] != "tools/list" || list["id"] != float64(2) {
+		return fakeMCPFailure(fmt.Errorf("expected tools/list request, got %v", list))
+	}
+
+	tools := make([]map[string]string, 0, len(terminalTodoMCPTools()))
+	for _, tool := range terminalTodoMCPTools() {
+		if mode == "stale-tools" && tool.Name == "terminal_todo_bootstrap" {
+			continue
+		}
+		entry := map[string]string{"name": tool.Name}
+		if mode == "large-response" && len(tools) == 0 {
+			entry["description"] = strings.Repeat("x", 128*1024)
+		}
+		tools = append(tools, entry)
+	}
+	if err := encoder.Encode(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"result":  map[string]interface{}{"tools": tools},
+	}); err != nil {
+		return fakeMCPFailure(err)
+	}
+
+	ping, err := readFakeMCPRequest(reader)
+	if err != nil {
+		return fakeMCPFailure(err)
+	}
+	if ping["method"] != "tools/call" || ping["id"] != float64(3) {
+		return fakeMCPFailure(fmt.Errorf("expected tools/call request, got %v", ping))
+	}
+	params, _ := ping["params"].(map[string]interface{})
+	if params["name"] != "terminal_todo_ping" {
+		return fakeMCPFailure(fmt.Errorf("expected terminal_todo_ping, got %v", params["name"]))
+	}
+
+	capabilities := append([]string(nil), requiredMCPIntegrationCapabilities...)
+	if mode == "stale-capabilities" {
+		for i, capability := range capabilities {
+			if capability == "session_bootstrap" {
+				capabilities = append(capabilities[:i], capabilities[i+1:]...)
+				break
+			}
+		}
+	}
+	project := os.Getenv("TERMINAL_TODO_FAKE_MCP_PROJECT")
+	if mode == "empty-project" {
+		project = ""
+	}
+	if err := encoder.Encode(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      3,
+		"result": map[string]interface{}{
+			"content": []map[string]string{{"type": "text", "text": "terminal-todo ready"}},
+			"structuredContent": map[string]interface{}{
+				"version":          "test",
+				"protocol_version": protocolVersion,
+				"project":          project,
+				"initialized":      true,
+				"capabilities":     capabilities,
+			},
+		},
+	}); err != nil {
+		return fakeMCPFailure(err)
+	}
+	return 0
+}
+
+func readFakeMCPRequest(reader *bufio.Reader) (map[string]interface{}, error) {
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	var request map[string]interface{}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(line)), &request); err != nil {
+		return nil, err
+	}
+	return request, nil
+}
+
+func fakeMCPFailure(err error) int {
+	fmt.Fprintln(os.Stderr, err)
+	return 2
 }

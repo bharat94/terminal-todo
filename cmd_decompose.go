@@ -16,6 +16,12 @@ type DecomposePayload struct {
 	} `json:"subtasks"`
 }
 
+type decomposeEnvelope struct {
+	SchemaVersion string         `json:"schema_version"`
+	Parent        protocolTask   `json:"parent"`
+	Subtasks      []protocolTask `json:"subtasks"`
+}
+
 func cmdDecompose(args []string) {
 	ids := parseIDs(args)
 	if len(ids) == 0 {
@@ -49,17 +55,18 @@ func cmdDecompose(args []string) {
 
 	parentID := ids[0]
 	agent := optionValue(args, "--as")
+	var parent *store.Task
 	var added []*store.Task
-	updateStore(func(s *store.TaskStore) error {
+	updateLifecycleStore(func(s *store.TaskStore) error {
 		parentTask, ok := s.GetTask(parentID)
 		if !ok {
-			return fmt.Errorf("parent task %d not found", parentID)
+			return lifecycleError(ErrTaskNotFound, "parent task %d not found", parentID)
 		}
 		if parentTask.Status == store.StatusCompleted {
-			return fmt.Errorf("parent task %d is already completed", parentID)
+			return lifecycleError(ErrInvalidArgs, "parent task %d is already completed", parentID)
 		}
 		if parentTask.Owner != "" && parentTask.Owner != agent {
-			return fmt.Errorf("task %d is claimed by %s (use --as %s to decompose)", parentID, parentTask.Owner, parentTask.Owner)
+			return lifecycleError(ErrNotOwner, "task %d is claimed by %s (use --as %s to decompose)", parentID, parentTask.Owner, parentTask.Owner)
 		}
 		for _, sub := range payload.Subtasks {
 			subTask := s.AddTask(strings.TrimSpace(sub.Title), nil)
@@ -71,15 +78,28 @@ func cmdDecompose(args []string) {
 		d := dag.NewDAG()
 		d.BuildFromTasks(s.Tasks)
 		if err := d.DetectCycle(parentTask.Depends, parentID); err != nil {
-			return fmt.Errorf("decompose would create a cycle: %w", err)
+			return lifecycleError(ErrCycleDetected, "decompose would create a cycle: %v", err)
 		}
 		parentTask.Status = store.StatusPending
 		parentTask.Owner = ""
 		parentTask.LeaseExpires = 0
 		parentTask.BlockReason = ""
 		s.AddEvent(store.EventTaskDecomposed, parentID, agent, map[string]string{"count": fmt.Sprintf("%d", len(payload.Subtasks))})
+		parent = parentTask
 		return nil
 	})
+	if hasFlag(args, "--json") {
+		subtasks := make([]protocolTask, 0, len(added))
+		for _, subtask := range added {
+			subtasks = append(subtasks, newProtocolTask(subtask))
+		}
+		writeJSON(decomposeEnvelope{
+			SchemaVersion: protocolVersion,
+			Parent:        newProtocolTask(parent),
+			Subtasks:      subtasks,
+		})
+		return
+	}
 	fmt.Printf("Decomposing task %d into %d subtasks...\n", parentID, len(payload.Subtasks))
 	for _, subTask := range added {
 		fmt.Printf("  Added subtask %d: %s\n", subTask.ID, subTask.Title)

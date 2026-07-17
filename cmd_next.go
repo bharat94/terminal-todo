@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 )
 
 func cmdNext(args []string) {
@@ -14,11 +13,13 @@ func cmdNext(args []string) {
 	var caps []string
 	for i, arg := range args {
 		if arg == "--capabilities" && i+1 < len(args) {
-			caps = strings.Split(args[i+1], ",")
+			caps = normalizeCapabilities(args[i+1])
 		}
 	}
 
-	ready := rankedReadyTasks(s, resolver, caps, len(caps) > 0)
+	filterCapabilities := hasFlag(args, "--capabilities")
+	ready := rankedReadyTasks(s, resolver, caps, filterCapabilities)
+	diagnostics := diagnoseAllocation(s, resolver, "", caps, filterCapabilities, 0)
 
 	if hasFlag(args, "--json") {
 		available := make([]availableTask, 0, len(ready))
@@ -35,6 +36,7 @@ func cmdNext(args []string) {
 		output, err := json.MarshalIndent(nextEnvelope{
 			SchemaVersion: protocolVersion, AvailableTasks: available,
 			BlockedSummary: newBlockedSummaryWithResolver(s.Tasks, resolver),
+			Allocation:     diagnostics,
 		}, "", "  ")
 		if err != nil {
 			fail(ErrStoreCorrupted, "Error encoding JSON: %v", err)
@@ -44,7 +46,7 @@ func cmdNext(args []string) {
 	}
 
 	if len(ready) == 0 {
-		fmt.Println("No tasks ready to work on.")
+		fmt.Printf("No tasks ready: %s.\n", allocationReasonMessage(diagnostics.Reason))
 		return
 	}
 

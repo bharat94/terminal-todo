@@ -20,6 +20,11 @@ type compactResult struct {
 	DryRun          bool `json:"dry_run"`
 }
 
+type compactEnvelope struct {
+	SchemaVersion string `json:"schema_version"`
+	compactResult
+}
+
 func cmdCompact(args []string) {
 	options, err := parseCompactOptions(args)
 	if err != nil {
@@ -40,6 +45,10 @@ func cmdCompact(args []string) {
 		})
 	}
 
+	if hasFlag(args, "--json") {
+		writeJSON(compactEnvelope{SchemaVersion: protocolVersion, compactResult: result})
+		return
+	}
 	mode := "Removed"
 	if options.DryRun {
 		mode = "Would remove"

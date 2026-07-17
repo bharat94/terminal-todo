@@ -114,6 +114,8 @@ func main() {
 		cmdWatch(args)
 	case "my":
 		cmdMy(args)
+	case "bootstrap":
+		cmdBootstrap(args)
 	case "agent-card":
 		cmdAgentCard(args)
 	case "caps":
@@ -168,9 +170,9 @@ Task Management:
   done <id>           Mark complete (--as owner for claimed tasks)
   status              Show all tasks (--json, --all, --as, --tag)
   cat <id>            Show task details
-  rm <id>             Remove a task
+  rm <id>             Remove a task (--json)
   update <id>         Update metadata (--set, --title, --priority, --caps)
-  log <id>            Append to task audit trail (--msg, --as)
+  log <id>            Append to task audit trail (--msg, --as, --json)
   next                Show tasks ready to work (--json, --capabilities)
   search <query>      Search tasks by title or tag
 
@@ -182,15 +184,16 @@ Agent Operations:
                        Renew an active owned lease (--ttl)
   release <id> --as <n> Yield an owned lease back to the pool (--error)
   my --as <owner>      Show tasks claimed by you
+  bootstrap --as <n>   Get a bounded worker session brief (--json, --objective)
   agent-card [--as <n>] Register or query agent identity (--caps, --desc, --max-load)
   caps [--all]          Show capability demand across all tasks
-  block <id>           Mark a task as blocked (--reason, --as)
-  unblock <id>         Unblock a task (--as)
+  block <id>           Mark a task as blocked (--reason, --as, --json)
+  unblock <id>         Unblock a task (--as, --json)
 
 DAG & Dependency:
   depends <id>        Show what this task depends on
   dependents <id>     Show tasks that depend on this
-  decompose <id>      Split a task into sub-tasks (--into, --as)
+  decompose <id>      Split a task into sub-tasks (--into, --as, --json)
   lineage <id>        Show recursive decomposition tree (--json)
   what-if <id>        Simulate completing/blocking a task
   graph [--dot]       Visualize the DAG topology (DOT/JSON/text)
@@ -202,15 +205,15 @@ Reactivity:
 Integrations:
   mcp --stdio         Start the Model Context Protocol server
   serve --stdio       Start the native JSON-RPC server
-  integrate [target]  Install Codex/Claude project integration (--check)
+  integrate [target]  Install Codex/Claude project integration (--check, --live)
 
 Project:
   config [key=value]  View or set project configuration
   export              Export tasks (--markdown)
-  prune               Remove all completed tasks
+  prune               Remove all completed tasks (--json)
   backup [--output]   Snapshot the task store
   restore <path>      Restore tasks from a backup
-  compact             Apply explicit audit/receipt retention policy
+  compact             Apply explicit audit/receipt retention policy (--json)
   doctor [--fix]      Diagnose project health and repair issues
   link <alias> <path> Register a linked repository
   unlink <alias>      Remove a linked repository alias
@@ -293,6 +296,7 @@ func validateCommandArgs(command string, args []string) error {
 		"status":     {"--tag": true, "--as": true},
 		"watch":      {"--poll": true},
 		"my":         {"--as": true},
+		"bootstrap":  {"--as": true, "--capabilities": true, "--objective": true, "--limit": true, "--events": true},
 		"agent-card": {"--as": true, "--caps": true, "--desc": true, "--max-load": true},
 		"caps":       {"--as": true},
 		"integrate":  {"--command": true},
@@ -305,6 +309,12 @@ func validateCommandArgs(command string, args []string) error {
 		"heartbeat":  {"--json": true},
 		"done":       {"--json": true},
 		"release":    {"--json": true},
+		"block":      {"--json": true},
+		"unblock":    {"--json": true},
+		"log":        {"--json": true},
+		"decompose":  {"--json": true},
+		"rm":         {"--json": true},
+		"prune":      {"--json": true},
 		"cat":        {"--json": true},
 		"status":     {"--json": true, "--all": true},
 		"next":       {"--json": true, "--ready": true},
@@ -320,12 +330,13 @@ func validateCommandArgs(command string, args []string) error {
 		"dependents": {"--json": true},
 		"search":     {"--json": true},
 		"my":         {"--json": true},
+		"bootstrap":  {"--json": true},
 		"agent-card": {"--json": true},
 		"caps":       {"--json": true, "--all": true},
 		"serve":      {"--stdio": true},
 		"mcp":        {"--stdio": true},
-		"integrate":  {"--force": true, "--check": true},
-		"compact":    {"--dry-run": true},
+		"integrate":  {"--force": true, "--check": true, "--live": true},
+		"compact":    {"--dry-run": true, "--json": true},
 	}
 	knownCommands := map[string]bool{
 		"init": true, "add": true, "done": true, "status": true,
@@ -337,6 +348,7 @@ func validateCommandArgs(command string, args []string) error {
 		"log": true, "search": true, "doctor": true, "backup": true,
 		"restore": true, "what-if": true, "whatif": true, "events": true,
 		"watch": true, "my": true, "graph": true, "serve": true, "mcp": true,
+		"bootstrap": true,
 		"integrate": true,
 		"compact":   true,
 	}

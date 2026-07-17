@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bharat94/terminal-todo/store"
 
@@ -52,6 +53,148 @@ func TestMCPInitializeAndListTools(t *testing.T) {
 	assert.Contains(t, names, "terminal_todo_acquire")
 	assert.Contains(t, names, "terminal_todo_heartbeat")
 	assert.Contains(t, names, "terminal_todo_complete")
+}
+
+func TestMCPToolsHaveTitlesAndCompleteAnnotations(t *testing.T) {
+	tools := terminalTodoMCPTools()
+	require.NotEmpty(t, tools)
+
+	for _, tool := range tools {
+		t.Run(tool.Name, func(t *testing.T) {
+			assert.NotEmpty(t, tool.Title)
+			assert.False(t, tool.Annotations.OpenWorldHint, "terminal-todo tools operate only on configured project state")
+
+			encoded, err := json.Marshal(tool)
+			require.NoError(t, err)
+			var wire map[string]interface{}
+			require.NoError(t, json.Unmarshal(encoded, &wire))
+
+			assert.Equal(t, tool.Title, wire["title"])
+			assert.NotContains(t, wire, "outputSchema", "do not advertise an incomplete output contract")
+
+			annotations, ok := wire["annotations"].(map[string]interface{})
+			require.True(t, ok)
+			assert.Len(t, annotations, 4)
+			for _, key := range []string{"readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"} {
+				value, present := annotations[key]
+				assert.True(t, present, "%s must explicitly include %s", tool.Name, key)
+				assert.IsType(t, false, value)
+			}
+		})
+	}
+}
+
+func TestMCPToolAnnotationsMatchCoordinationEffects(t *testing.T) {
+	expected := map[string]mcpToolAnnotations{
+		"terminal_todo_ping":      {ReadOnlyHint: true, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false},
+		"terminal_todo_init":      {ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false},
+		"terminal_todo_bootstrap": {ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false},
+		"terminal_todo_status":    {ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false},
+		"terminal_todo_cat":       {ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false},
+		"terminal_todo_add":       {ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: false, OpenWorldHint: false},
+		"terminal_todo_acquire":   {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: true, OpenWorldHint: false},
+		"terminal_todo_heartbeat": {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
+		"terminal_todo_update":    {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
+		"terminal_todo_log":       {ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: false, OpenWorldHint: false},
+		"terminal_todo_decompose": {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
+		"terminal_todo_block":     {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
+		"terminal_todo_release":   {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: true, OpenWorldHint: false},
+		"terminal_todo_complete":  {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
+		"terminal_todo_events":    {ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false},
+	}
+
+	tools := terminalTodoMCPTools()
+	assert.Len(t, tools, len(expected), "every new MCP tool needs an explicit safety classification")
+	for _, tool := range tools {
+		want, ok := expected[tool.Name]
+		require.True(t, ok, "missing expected annotation classification for %s", tool.Name)
+		assert.Equal(t, want, tool.Annotations, tool.Name)
+	}
+}
+
+func TestMCPReadAnnotationsMatchExpiredLeasePersistence(t *testing.T) {
+	annotations := make(map[string]mcpToolAnnotations)
+	for _, tool := range terminalTodoMCPTools() {
+		annotations[tool.Name] = tool.Annotations
+	}
+
+	tests := []struct {
+		name      string
+		arguments string
+	}{
+		{name: "terminal_todo_bootstrap", arguments: `{"actor":"audit-worker"}`},
+		{name: "terminal_todo_status", arguments: `{}`},
+		{name: "terminal_todo_cat", arguments: `{"id":1}`},
+		{name: "terminal_todo_events", arguments: `{}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.False(t, annotations[tt.name].ReadOnlyHint)
+
+			oldRoot := projectRoot
+			projectRoot = t.TempDir()
+			defer func() { projectRoot = oldRoot }()
+
+			path := filepath.Join(projectRoot, ".terminal-todo", "tasks.bin")
+			s := store.NewTaskStore()
+			task := s.AddTask("expired MCP work", nil)
+			task.Status = store.StatusInProgress
+			task.Owner = "expired-worker"
+			task.LeaseExpires = uint64(time.Now().Add(-time.Minute).UnixMilli())
+			require.NoError(t, s.Save(path))
+
+			srv := &mcpServer{
+				backend:        &server{initialized: true},
+				initializeSeen: true,
+				initialized:    true,
+			}
+			request := json.RawMessage(`{"name":"` + tt.name + `","arguments":` + tt.arguments + `}`)
+			result, rpcErr := srv.dispatch("tools/call", request)
+			require.Nil(t, rpcErr)
+			assert.False(t, result.(mcpCallResult).IsError)
+
+			persisted, err := store.Load(path)
+			require.NoError(t, err)
+			assert.Equal(t, store.StatusPending, persisted.Tasks[1].Status)
+			assert.Empty(t, persisted.Tasks[1].Owner)
+			require.Len(t, persisted.Events, 1)
+			assert.Equal(t, store.EventLeaseExpired, persisted.Events[0].Type)
+		})
+	}
+
+	t.Run("terminal_todo_ping", func(t *testing.T) {
+		assert.True(t, annotations["terminal_todo_ping"].ReadOnlyHint)
+
+		oldRoot := projectRoot
+		projectRoot = t.TempDir()
+		defer func() { projectRoot = oldRoot }()
+
+		path := filepath.Join(projectRoot, ".terminal-todo", "tasks.bin")
+		s := store.NewTaskStore()
+		task := s.AddTask("expired MCP work", nil)
+		task.Status = store.StatusInProgress
+		task.Owner = "expired-worker"
+		task.LeaseExpires = uint64(time.Now().Add(-time.Minute).UnixMilli())
+		require.NoError(t, s.Save(path))
+
+		srv := &mcpServer{
+			backend:        &server{initialized: true},
+			initializeSeen: true,
+			initialized:    true,
+		}
+		result, rpcErr := srv.dispatch(
+			"tools/call",
+			json.RawMessage(`{"name":"terminal_todo_ping","arguments":{}}`),
+		)
+		require.Nil(t, rpcErr)
+		assert.False(t, result.(mcpCallResult).IsError)
+
+		persisted, err := store.Load(path)
+		require.NoError(t, err)
+		assert.Equal(t, store.StatusInProgress, persisted.Tasks[1].Status)
+		assert.Equal(t, "expired-worker", persisted.Tasks[1].Owner)
+		assert.Empty(t, persisted.Events)
+	})
 }
 
 func TestMCPToolCallUsesCoordinationBackend(t *testing.T) {
@@ -105,10 +248,13 @@ func TestMCPBusinessErrorsAreToolResults(t *testing.T) {
 	require.Nil(t, rpcErr)
 	call := result.(mcpCallResult)
 	assert.True(t, call.IsError)
-	assert.Equal(t, "NO_WORK: no compatible tasks ready", call.Content[0].Text)
+	assert.Equal(t, "NO_WORK: no pending work", call.Content[0].Text)
 	detail := call.StructuredContent.(map[string]interface{})
 	assert.Equal(t, rpcNoWork, detail["code"])
-	assert.Equal(t, "no compatible tasks ready", detail["message"])
+	assert.Equal(t, "no pending work", detail["message"])
+	diagnostics := detail["data"].(allocationDiagnostics)
+	assert.Equal(t, allocationNoPendingWork, diagnostics.Reason)
+	assert.Zero(t, diagnostics.Queue.Pending)
 }
 
 func TestMCPToolTextIsCompactWhileStructuredContentStaysComplete(t *testing.T) {

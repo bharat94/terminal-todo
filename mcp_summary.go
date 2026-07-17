@@ -25,6 +25,22 @@ func mcpResultSummary(toolName string, value interface{}, isError bool) string {
 		}
 	case "terminal_todo_init":
 		summary = "Initialized terminal-todo project state."
+	case "terminal_todo_bootstrap":
+		if result, ok := value.(bootstrapResult); ok {
+			objective := "No objective"
+			if result.Objective != nil {
+				objective = fmt.Sprintf("Objective %d [%s]", result.Objective.ID, result.Objective.Status)
+			}
+			summary = fmt.Sprintf(
+				"%s; %d/%d complete; %d owned, %d compatible ready, %d blocked.",
+				objective,
+				result.Progress.Completed,
+				result.Progress.Total,
+				result.OwnedWork.Total,
+				result.ReadyWork.Total,
+				result.Blockers.ExplicitTotal+result.Blockers.DependencyBlockedTotal,
+			)
+		}
 	case "terminal_todo_status":
 		switch result := value.(type) {
 		case tasksEnvelope:

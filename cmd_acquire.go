@@ -83,9 +83,11 @@ func cmdAcquire(args []string) {
 		}
 		switch {
 		case errors.Is(err, errNoReadyTasks):
-			fail(ErrNoWork, "%v", err)
+			diagnostics, _ := allocationDiagnosticsFromError(err)
+			failData(ErrNoWork, err.Error(), diagnostics)
 		case errors.Is(err, errAgentAtCapacity):
-			fail(ErrAgentAtCapacity, "%v", err)
+			diagnostics, _ := allocationDiagnosticsFromError(err)
+			failData(ErrAgentAtCapacity, err.Error(), diagnostics)
 		case errors.Is(err, errAcquireRequestConflict):
 			fail(ErrIdempotencyConflict, "%v", err)
 		default:

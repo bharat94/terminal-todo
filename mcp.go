@@ -20,8 +20,17 @@ type mcpServer struct {
 
 type mcpTool struct {
 	Name        string                 `json:"name"`
+	Title       string                 `json:"title"`
 	Description string                 `json:"description"`
 	InputSchema map[string]interface{} `json:"inputSchema"`
+	Annotations mcpToolAnnotations     `json:"annotations"`
+}
+
+type mcpToolAnnotations struct {
+	ReadOnlyHint    bool `json:"readOnlyHint"`
+	DestructiveHint bool `json:"destructiveHint"`
+	IdempotentHint  bool `json:"idempotentHint"`
+	OpenWorldHint   bool `json:"openWorldHint"`
 }
 
 type mcpCallParams struct {
@@ -229,6 +238,7 @@ func mcpToolMethods() map[string]string {
 	return map[string]string{
 		"terminal_todo_ping":      "todo.ping",
 		"terminal_todo_init":      "todo.init",
+		"terminal_todo_bootstrap": "todo.bootstrap",
 		"terminal_todo_status":    "todo.status",
 		"terminal_todo_cat":       "todo.cat",
 		"terminal_todo_add":       "todo.add",
@@ -267,30 +277,52 @@ func terminalTodoMCPTools() []mcpTool {
 	return []mcpTool{
 		{
 			Name:        "terminal_todo_ping",
+			Title:       "Check terminal-todo",
 			Description: "Discover the terminal-todo protocol version, project root, initialization state, and coordination capabilities.",
 			InputSchema: object(map[string]interface{}{}),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: true, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false},
 		},
 		{
 			Name:        "terminal_todo_init",
+			Title:       "Initialize terminal-todo",
 			Description: "Initialize terminal-todo's user-owned state in the current project. Safe to call when already initialized.",
 			InputSchema: object(map[string]interface{}{}),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false},
+		},
+		{
+			Name:        "terminal_todo_bootstrap",
+			Title:       "Get worker session brief",
+			Description: "Summarize a caller-supplied worker identity with one bounded brief: objective progress, owned work, compatible ready work, blockers, capability demand, and recent events. Prefer this over dumping status and event history.",
+			InputSchema: object(map[string]interface{}{
+				"actor":        stringProp("Stable identity for this worker or session."),
+				"capabilities": stringList("Capabilities available to this worker. Omit to use its registered agent card."),
+				"objectiveId":  map[string]interface{}{"type": "integer", "minimum": 1, "description": "Optional objective task whose local dependency closure defines progress."},
+				"limit":        map[string]interface{}{"type": "integer", "minimum": 1, "maximum": maxBootstrapLimit, "description": "Maximum entries per work, blocker, and capability section; defaults to 5."},
+				"eventLimit":   map[string]interface{}{"type": "integer", "minimum": 1, "maximum": maxBootstrapLimit, "description": "Maximum recent events; defaults to 5."},
+			}, "actor"),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false},
 		},
 		{
 			Name:        "terminal_todo_status",
+			Title:       "Inspect task graph",
 			Description: "Inspect the shared execution graph. Use before planning or resuming work to understand task state and ownership.",
 			InputSchema: object(map[string]interface{}{
 				"tag":   stringProp("Return only tasks with this tag."),
 				"actor": stringProp("Return only tasks owned by this actor."),
 				"all":   map[string]interface{}{"type": "boolean", "description": "Include linked repositories."},
 			}),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false},
 		},
 		{
 			Name:        "terminal_todo_cat",
+			Title:       "Read task details",
 			Description: "Read one task's full state, dependencies, lease metadata, findings, and audit fields.",
 			InputSchema: object(map[string]interface{}{"id": idProp}, "id"),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false},
 		},
 		{
 			Name:        "terminal_todo_add",
+			Title:       "Add task",
 			Description: "Add durable work to the shared DAG, optionally with dependencies, priority, required capabilities, and tags.",
 			InputSchema: object(map[string]interface{}{
 				"title":        stringProp("Clear outcome-oriented task title."),
@@ -299,9 +331,11 @@ func terminalTodoMCPTools() []mcpTool {
 				"capabilities": stringList("Capabilities an actor must advertise to acquire this task."),
 				"tags":         stringList("User-defined task tags."),
 			}, "title"),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: false, OpenWorldHint: false},
 		},
 		{
 			Name:        "terminal_todo_acquire",
+			Title:       "Acquire ready work",
 			Description: "Atomically select and lease one ready task. Always use this instead of separately listing and claiming work. Reuse requestId when retrying the same allocation.",
 			InputSchema: object(map[string]interface{}{
 				"actor":        stringProp("Stable identity for this worker or session."),
@@ -309,18 +343,22 @@ func terminalTodoMCPTools() []mcpTool {
 				"ttl":          stringProp("Lease duration such as 30m or 2h."),
 				"capabilities": stringList("Capabilities available to this worker."),
 			}, "actor", "requestId"),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: true, OpenWorldHint: false},
 		},
 		{
 			Name:        "terminal_todo_heartbeat",
+			Title:       "Renew task lease",
 			Description: "Renew an active lease before it expires. Use periodically during long-running work.",
 			InputSchema: object(map[string]interface{}{
 				"id":    idProp,
 				"actor": stringProp("Current lease owner."),
 				"ttl":   stringProp("New lease duration such as 30m or 2h."),
 			}, "id", "actor"),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
 		},
 		{
 			Name:        "terminal_todo_update",
+			Title:       "Update task",
 			Description: "Update owned task metadata, dependencies, or structured findings. Use extra for durable handoff facts such as tests, commit, files, or decisions.",
 			InputSchema: object(map[string]interface{}{
 				"id":           idProp,
@@ -332,18 +370,22 @@ func terminalTodoMCPTools() []mcpTool {
 				"addDeps":      stringList("Dependencies to add."),
 				"removeDeps":   stringList("Dependencies to remove."),
 			}, "id"),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
 		},
 		{
 			Name:        "terminal_todo_log",
+			Title:       "Record task note",
 			Description: "Append an immutable human-readable progress note or finding to a task's audit trail.",
 			InputSchema: object(map[string]interface{}{
 				"id":      idProp,
 				"message": stringProp("Concise progress, decision, risk, or handoff note."),
 				"actor":   stringProp("Actor recording the note."),
 			}, "id", "message"),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: false, OpenWorldHint: false},
 		},
 		{
 			Name:        "terminal_todo_decompose",
+			Title:       "Decompose task",
 			Description: "Split a broad task into child tasks. The parent becomes pending on the children and any active parent lease is safely released.",
 			InputSchema: object(map[string]interface{}{
 				"id":    idProp,
@@ -358,39 +400,48 @@ func terminalTodoMCPTools() []mcpTool {
 					}, "title"),
 				},
 			}, "id", "subtasks"),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
 		},
 		{
 			Name:        "terminal_todo_block",
+			Title:       "Block task",
 			Description: "Mark work explicitly blocked and preserve the reason for coordinators and future sessions.",
 			InputSchema: object(map[string]interface{}{
 				"id":     idProp,
 				"reason": stringProp("Concrete blocking condition and what would unblock it."),
 				"actor":  stringProp("Actor reporting the blocker."),
 			}, "id", "reason"),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
 		},
 		{
 			Name:        "terminal_todo_release",
+			Title:       "Release task lease",
 			Description: "Yield an owned lease back to the ready pool, optionally recording a failed-attempt error for retries and recovery.",
 			InputSchema: object(map[string]interface{}{
 				"id":    idProp,
 				"actor": stringProp("Current lease owner."),
 				"error": stringProp("Failure summary when releasing after an unsuccessful attempt."),
 			}, "id", "actor"),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: true, OpenWorldHint: false},
 		},
 		{
 			Name:        "terminal_todo_complete",
+			Title:       "Complete tasks",
 			Description: "Complete one or more tasks after verifying their outcome and dependencies. Claimed tasks require the owning actor.",
 			InputSchema: object(map[string]interface{}{
 				"ids":   map[string]interface{}{"type": "array", "minItems": 1, "items": map[string]interface{}{"type": "integer", "minimum": 1}},
 				"actor": stringProp("Current lease owner for claimed tasks."),
 			}, "ids"),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
 		},
 		{
 			Name:        "terminal_todo_events",
+			Title:       "Read coordination events",
 			Description: "Read the append-only coordination event stream for audit, recovery, monitoring, or incremental synchronization.",
 			InputSchema: object(map[string]interface{}{
 				"since": map[string]interface{}{"type": "integer", "minimum": 0, "description": "Return events after this event sequence."},
 			}),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false},
 		},
 	}
 }

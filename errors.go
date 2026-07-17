@@ -26,9 +26,10 @@ const (
 )
 
 type ErrorResponse struct {
-	Code    ErrorCode `json:"code"`
-	Message string    `json:"message"`
-	Details string    `json:"details,omitempty"`
+	Code    ErrorCode   `json:"code"`
+	Message string      `json:"message"`
+	Details string      `json:"details,omitempty"`
+	Data    interface{} `json:"data,omitempty"`
 }
 
 type errorEnvelope struct {
@@ -42,6 +43,14 @@ func fail(code ErrorCode, msg string, args ...interface{}) {
 }
 
 func failDetails(code ErrorCode, message, details string) {
+	failWithData(code, message, details, nil)
+}
+
+func failData(code ErrorCode, message string, data interface{}) {
+	failWithData(code, message, "", data)
+}
+
+func failWithData(code ErrorCode, message, details string, data interface{}) {
 	args := os.Args[1:]
 	if hasFlag(args, "--json") {
 		output, err := json.MarshalIndent(errorEnvelope{
@@ -50,6 +59,7 @@ func failDetails(code ErrorCode, message, details string) {
 				Code:    code,
 				Message: message,
 				Details: details,
+				Data:    data,
 			},
 		}, "", "  ")
 		if err != nil {
