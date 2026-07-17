@@ -1,26 +1,54 @@
 version: 2
-project_name: todo
+project_name: terminal-todo
 
 before:
   hooks:
-    - go mod tidy
+    - go mod verify
 
 builds:
-  - main: .
+  - id: todo
+    main: .
+    binary: todo
+    flags:
+      - -trimpath
     ldflags:
-      - -s -w -X main.version={{.Version}}
+      - -s
+      - -w
+      - -buildid=
+      - -X main.version={{.Version}}
     env:
       - CGO_ENABLED=0
     goos:
       - linux
       - darwin
+      - windows
     goarch:
       - amd64
       - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
-  - format: tar.gz
+  - ids:
+      - todo
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - docs/*.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+sboms:
+  - id: archives
+    artifacts: archive
 
 changelog:
   sort: asc
@@ -28,3 +56,11 @@ changelog:
     exclude:
       - "^docs:"
       - "^test:"
+      - "^chore:"
+      - "^ci:"
+
+release:
+  draft: false
+  prerelease: auto
+
+report_sizes: true

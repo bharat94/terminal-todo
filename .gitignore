@@ -4,6 +4,7 @@ todo_test
 
 # Test artifacts
 *.test
+dist/
 
 # OS
 .DS_Store

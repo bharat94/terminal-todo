@@ -5,6 +5,7 @@ go 1.26.1
 require (
 	github.com/stretchr/testify v1.6.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1
+	golang.org/x/sys v0.47.0
 )
 
 require (

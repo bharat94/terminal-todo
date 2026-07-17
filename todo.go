@@ -46,7 +46,7 @@ func main() {
 
 	root, err := findProjectRoot()
 	if err != nil {
-		if os.Args[1] == "init" || os.Args[1] == "serve" || os.Args[1] == "mcp" || os.Args[1] == "integrate" {
+		if commandAllowsUninitializedProject(os.Args[1]) {
 			projectRoot, _ = os.Getwd()
 		} else {
 			fail(ErrNotInitialized, "%s", err)
@@ -144,6 +144,15 @@ func main() {
 		printUsage()
 	default:
 		fail(ErrInvalidArgs, "unknown command: %s", command)
+	}
+}
+
+func commandAllowsUninitializedProject(command string) bool {
+	switch command {
+	case "init", "serve", "mcp", "integrate", "--version", "-v", "help", "--help", "-h":
+		return true
+	default:
+		return false
 	}
 }
 

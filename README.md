@@ -71,9 +71,13 @@ boundary:
 
 ## Quick start
 
-### 1. Build and install
+### 1. Install
 
-`terminal-todo` currently installs from source and requires Go 1.26 or newer.
+Download the archive for your platform from
+[GitHub Releases](https://github.com/bharat94/terminal-todo/releases), verify
+it against `checksums.txt`, and place `todo` on your `PATH`.
+
+To build from source, install Go 1.26 or newer:
 
 ```bash
 git clone https://github.com/bharat94/terminal-todo.git
@@ -90,6 +94,10 @@ go build -o todo .
 mkdir -p "$HOME/.local/bin"
 install -m 755 todo "$HOME/.local/bin/todo"
 ```
+
+Release archives cover Linux, macOS, and Windows on amd64 and arm64 and include
+SHA-256 checksums, SPDX SBOMs, and GitHub provenance attestations. See
+[Releasing](docs/releasing.md) for verification and maintainer procedures.
 
 ### 2. Initialize a project
 

@@ -25,6 +25,19 @@ func TestCLI_Init(t *testing.T) {
 	assert.FileExists(t, filepath.Join(tmpDir, ".terminal-todo", "tasks.bin"))
 }
 
+func TestCLI_HelpAndVersionWorkOutsideAProject(t *testing.T) {
+	tmpDir := t.TempDir()
+	todo := buildTodo(t)
+
+	for _, args := range [][]string{{"--version"}, {"help"}, {"--help"}, {"-h"}} {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, "%v: %s", args, string(out))
+		assert.NotContains(t, string(out), "not in a project")
+	}
+}
+
 func TestCLI_InitDoesNotOverwriteExistingTasks(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)

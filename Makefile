@@ -2,7 +2,7 @@ BINARY := todo
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -ldflags="-X main.version=$(VERSION)"
 
-.PHONY: all build test test-race lint clean install
+.PHONY: all build test test-race test-short lint clean install release-check release-snapshot
 
 all: build
 
@@ -32,3 +32,9 @@ clean:
 
 install: build
 	install -m 755 $(BINARY) /usr/local/bin/$(BINARY)
+
+release-check:
+	goreleaser check
+
+release-snapshot:
+	goreleaser release --snapshot --clean
