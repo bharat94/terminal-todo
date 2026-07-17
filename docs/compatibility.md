@@ -23,7 +23,7 @@ The coordination store requires a filesystem that provides:
 
 - advisory locks visible to every participating process;
 - atomic rename within one directory;
-- durable file and directory synchronization;
+- durable file synchronization;
 - coherent reads after rename.
 
 Local APFS, common local Linux filesystems, and local Windows filesystems are
@@ -31,6 +31,13 @@ the supported deployment shape. Network mounts, cloud-synchronized folders,
 and filesystems with incomplete lock or rename semantics are best effort.
 When using one, validate concurrent acquisition and crash recovery under the
 actual mount configuration.
+
+On Linux and macOS, terminal-todo also flushes the containing directory after
+an atomic replace. Go does not expose a usable directory-sync operation on
+Windows, where terminal-todo flushes the complete temporary file and then
+atomically replaces the destination. A sudden power loss can therefore leave
+either complete version after the replace on Windows; backups remain the
+recovery boundary for media and filesystem failures on every platform.
 
 All workers coordinating one store must see the same lock sidecar and
 `tasks.bin` path. Copying stores between machines is backup or transfer, not

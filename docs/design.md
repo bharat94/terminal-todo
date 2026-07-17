@@ -109,7 +109,9 @@ The system uses advisory file locking to allow concurrent read operations while 
 Task updates follow a Compare-And-Swap (CAS) pattern. A `claim` or `done` operation will only succeed if the underlying state matches the agent's expectation at the moment of the write lock.
 
 ### Fault Tolerance
-- **Atomic Rename:** New state is written to a temporary file and renamed, ensuring a valid `tasks.bin` always exists even during power failures.
+- **Atomic Rename:** New state is flushed to a temporary file and renamed, so
+  readers observe a complete `tasks.bin`; directory metadata is additionally
+  flushed where the operating system exposes that operation.
 - **Lease Timeout:** Long-running agents must maintain "heartbeat" leases. If an agent crashes, its claimed tasks are automatically reclaimed by the pool after the TTL expires.
 
 ---
