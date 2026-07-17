@@ -84,6 +84,8 @@ func main() {
 		cmdExport(args)
 	case "prune":
 		cmdPrune(args)
+	case "compact":
+		cmdCompact(args)
 	case "claim":
 		cmdClaim(args)
 	case "acquire":
@@ -208,6 +210,7 @@ Project:
   prune               Remove all completed tasks
   backup [--output]   Snapshot the task store
   restore <path>      Restore tasks from a backup
+  compact             Apply explicit audit/receipt retention policy
   doctor [--fix]      Diagnose project health and repair issues
   link <alias> <path> Register a linked repository
   unlink <alias>      Remove a linked repository alias
@@ -293,6 +296,7 @@ func validateCommandArgs(command string, args []string) error {
 		"agent-card": {"--as": true, "--caps": true, "--desc": true, "--max-load": true},
 		"caps":       {"--as": true},
 		"integrate":  {"--command": true},
+		"compact":    {"--keep-events": true, "--receipts-before": true},
 	}
 	booleanFlags := map[string]map[string]bool{
 		"add":        {"--json": true},
@@ -321,6 +325,7 @@ func validateCommandArgs(command string, args []string) error {
 		"serve":      {"--stdio": true},
 		"mcp":        {"--stdio": true},
 		"integrate":  {"--force": true, "--check": true},
+		"compact":    {"--dry-run": true},
 	}
 	knownCommands := map[string]bool{
 		"init": true, "add": true, "done": true, "status": true,
@@ -333,6 +338,7 @@ func validateCommandArgs(command string, args []string) error {
 		"restore": true, "what-if": true, "whatif": true, "events": true,
 		"watch": true, "my": true, "graph": true, "serve": true, "mcp": true,
 		"integrate": true,
+		"compact":   true,
 	}
 	if !knownCommands[command] {
 		return nil

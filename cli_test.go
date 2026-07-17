@@ -2,8 +2,10 @@ package main
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -71,6 +73,40 @@ func TestCLI_DoctorFixPreservesStableLockFile(t *testing.T) {
 	assert.NoError(t, err, string(out))
 	assert.Contains(t, string(out), "Lock files (persistent)")
 	assert.FileExists(t, lockPath)
+}
+
+func TestCLI_DoctorFixRepairsPrivateStatePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not authoritative on Windows")
+	}
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+	stateDir := filepath.Join(tmpDir, ".terminal-todo")
+	tasksPath := filepath.Join(stateDir, "tasks.bin")
+	lockPath := tasksPath + ".lock"
+	assert.NoError(t, os.Chmod(stateDir, 0755))
+	assert.NoError(t, os.Chmod(tasksPath, 0644))
+	assert.NoError(t, os.Chmod(lockPath, 0644))
+
+	cmd := exec.Command(todo, "doctor", "--fix")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), "Local privacy permissions")
+	assert.Contains(t, string(out), "fixed")
+
+	for _, check := range []struct {
+		path string
+		mode os.FileMode
+	}{
+		{stateDir, 0700},
+		{tasksPath, 0600},
+		{lockPath, 0600},
+	} {
+		info, err := os.Stat(check.path)
+		assert.NoError(t, err)
+		assert.Equal(t, check.mode, info.Mode().Perm(), check.path)
+	}
 }
 
 func TestCLI_AddTask(t *testing.T) {

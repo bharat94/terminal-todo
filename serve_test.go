@@ -218,3 +218,39 @@ func TestServerRejectsUnknownAndTrailingParams(t *testing.T) {
 	assert.Equal(t, rpcInvalidParams, rpcErr.Code)
 	assert.Contains(t, rpcErr.Message, "unknown field")
 }
+
+func TestServerCompactSupportsDryRunAndStrictRetention(t *testing.T) {
+	oldRoot := projectRoot
+	projectRoot = t.TempDir()
+	defer func() { projectRoot = oldRoot }()
+
+	path := filepath.Join(projectRoot, ".terminal-todo", "tasks.bin")
+	s := store.NewTaskStore()
+	for i := 0; i < 4; i++ {
+		s.AddEvent(store.EventTaskUpdated, 1, "test", nil)
+	}
+	assert.NoError(t, s.Save(path))
+	srv := &server{initialized: true}
+
+	result, rpcErr := srv.dispatch("todo.compact", json.RawMessage(`{"keepEvents":2,"dryRun":true}`))
+	assert.Nil(t, rpcErr)
+	preview := result.(compactResult)
+	assert.Equal(t, 2, preview.EventsRemoved)
+	assert.True(t, preview.DryRun)
+	unchanged, err := store.Load(path)
+	assert.NoError(t, err)
+	assert.Len(t, unchanged.Events, 4)
+
+	result, rpcErr = srv.dispatch("todo.compact", json.RawMessage(`{"keepEvents":2}`))
+	assert.Nil(t, rpcErr)
+	applied := result.(compactResult)
+	assert.Equal(t, 2, applied.EventsRemoved)
+	compacted, err := store.Load(path)
+	assert.NoError(t, err)
+	assert.Len(t, compacted.Events, 2)
+	assert.Equal(t, uint64(5), compacted.NextEventID)
+
+	_, rpcErr = srv.dispatch("todo.compact", json.RawMessage(`{"keepEvents":-1}`))
+	assert.NotNil(t, rpcErr)
+	assert.Equal(t, rpcInvalidParams, rpcErr.Code)
+}

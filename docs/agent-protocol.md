@@ -419,6 +419,7 @@ the error envelope when `--json` is present.
 | `log <id> --msg <text> --as <owner>` | Append to trail | Appends to task.Log |
 | `decompose <id> --into <json> [--as]` | Split into subtasks | Releases the parent lease, clears a manual block, and emits `decomposed` |
 | `prune` | Remove completed tasks | Rewrites dependency lists |
+| `compact --keep-events <n> [--receipts-before <duration>] [--dry-run]` | Apply explicit audit/idempotency retention | Preserves monotonic event IDs; removes receipts only for completed or absent tasks |
 
 ---
 
@@ -589,11 +590,12 @@ processed but no response is written. Stdio requests may be up to 4 MiB.
 | `todo.config.get` | `{key?}` | `{config}` |
 | `todo.config.set` | `{key, value}` | `{key, value}` |
 | `todo.prune` | `{}` | `{removedCount}` |
+| `todo.compact` | `{keepEvents?, receiptsBefore?, dryRun?}` | `{events_removed, receipts_removed, dry_run}` |
 | `todo.export` | `{format?}` | `tasksEnvelope` |
 | `todo.link` | `{alias, path}` | `{alias, path}` |
 | `todo.unlink` | `{alias}` | `{alias}` |
 | `todo.backup` | `{output?}` | `{path, taskCount}` |
-| `todo.restore` | `{path}` | `{taskCount}` |
+| `todo.restore` | `{path}` | `{taskCount}`; replaces tasks, event sequence/history, and acquisition receipts |
 | `todo.doctor` | `{fix?}` | diagnostic map |
 | `todo.agentCard` | `{actor?, caps?, desc?, maxLoad?}` | `agentCardEnvelope` |
 | `todo.caps` | `{actor?, all?}` | `capsEnvelope` |

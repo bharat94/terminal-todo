@@ -3,13 +3,37 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/vmihailenco/msgpack/v5"
 )
+
+func TestStoreUsesPrivatePermissionsByDefault(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not authoritative on Windows")
+	}
+	root := filepath.Join(t.TempDir(), ".terminal-todo")
+	path := filepath.Join(root, "tasks.bin")
+	require.NoError(t, NewTaskStore().Save(path))
+
+	for _, check := range []struct {
+		path string
+		mode os.FileMode
+	}{
+		{root, 0700},
+		{path, 0600},
+		{path + ".lock", 0600},
+	} {
+		info, err := os.Stat(check.path)
+		require.NoError(t, err)
+		assert.Equal(t, check.mode, info.Mode().Perm(), check.path)
+	}
+}
 
 func TestStore_SaveLoad(t *testing.T) {
 	s := NewTaskStore()

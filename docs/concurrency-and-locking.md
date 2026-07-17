@@ -9,14 +9,18 @@ To prevent binary corruption during concurrent writes, `terminal-todo` employs *
 ### The Locking Protocol
 - **Shared Lock (SH):** Acquired during `status`, `next`, `cat`, and `export`. Multiple agents can read the task graph simultaneously.
 - **Exclusive Lock (EX):** Acquired during `add`, `done`, `claim`, `decompose`, and `rm`. This blocks all other readers and writers.
-- **Contention Strategy:** CLI calls wait for the current transaction to finish. A
-  bounded lock timeout is planned but is not part of the current local protocol.
+- **Contention Strategy:** CLI calls retry the non-blocking OS primitive until
+  they acquire the lock. Internal callers can supply a bounded timeout.
 
 ### Failure Atomicity
 All writes are performed via **Rename-Swap**:
-1. Write updated MessagePack data to `tasks.bin.tmp`.
-2. Call `fsync()` to ensure data is on physical media.
-3. `rename("tasks.bin.tmp", "tasks.bin")` (Atomic operation on most filesystems).
+1. Write updated MessagePack data to a private temporary file.
+2. Call `fsync()` on the complete temporary file.
+3. Atomically rename it over `tasks.bin`.
+4. Call `fsync()` on the containing directory.
+
+The stable lock is `tasks.bin.lock`, not the replaceable data inode. Writers
+therefore cannot invalidate mutual exclusion by renaming `tasks.bin`.
 
 ## 2. Logic-Level: The "Claim" Race Condition
 
@@ -53,8 +57,9 @@ If an agent claims a task and then crashes, the task would remain `In-Progress` 
 
 - **Automatic Reclamation:** The `todo next` and `todo status` commands treat any task with `LeaseExpires < now` as `Pending`.
 - **Preemption:** If an agent attempts to `claim` a task with an expired lease, the CLI transparently re-assigns the `Owner`.
-- **Agent Heartbeats:** Agents executing long-running tasks (>15m) refresh the
-  lease by claiming it again with the same owner and a new `--ttl` value.
+- **Agent Heartbeats:** Agents executing long-running tasks renew the active
+  owned lease with `todo heartbeat <id> --as <owner> --ttl <duration>`.
+  Expired leases cannot be revived by a delayed heartbeat.
 
 ## 4. Cross-Repo Consistency
 
@@ -63,11 +68,13 @@ are evaluated. Repo A depending on Repo B uses:
 - **Lock Propagation:** When checking the status of `todo://repo-b/50`, the Repo A CLI must acquire a **Shared Lock** on Repo B's `tasks.bin`.
 - **Lazy Validation:** Repo A does not receive push notifications from Repo B. Instead, it re-validates the state of external dependencies only when `todo next` or `todo status` is called in the context of Repo A.
 
-## 5. Future: Distributed Deadlock Prevention
+## 5. Cross-repository cycle boundaries
 
-Cross-repo cycles (Repo A -> Repo B -> Repo A) can stall an entire swarm.
-- **Inter-repo DFS:** The `todo link` command and any `todo add --after [URI]` call must perform a recursive DAG traversal across all linked repositories to ensure no global cycles are introduced.
-- **Max Depth:** To prevent infinite recursion in misconfigured or malicious repo-links, the DFS is capped at a depth of 32 repos.
+Local DAG changes are rejected before commit when they create a local cycle.
+Cross-repository dependencies are resolved lazily. A global cycle across
+separately managed stores can therefore remain permanently unready and must be
+diagnosed at the workspace level; terminal-todo does not claim a distributed
+transaction or global-cycle guarantee.
 
 ## 6. Summary of Safeguards
 

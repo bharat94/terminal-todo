@@ -37,20 +37,59 @@ func cmdDoctor(args []string) {
 	tasksBin := filepath.Join(ttDir, "tasks.bin")
 	reposJSON := filepath.Join(ttDir, "repositories.json")
 	configJSON := filepath.Join(ttDir, "config.json")
+	agentsJSON := filepath.Join(ttDir, "agents.json")
 
 	fmt.Printf("  tasks.bin         %s\n", checkFile("tasks.bin", tasksBin, true))
 	fmt.Printf("  repositories.json %s\n", checkFile("repos.json", reposJSON, false))
 	fmt.Printf("  config.json       %s\n", checkFile("config.json", configJSON, false))
+	fmt.Printf("  agents.json       %s\n", checkFile("agents.json", agentsJSON, false))
 
-	// Lock sidecars are stable synchronization inodes and intentionally persist.
-	fmt.Println()
-	fmt.Println("Lock files (persistent):")
 	entries, err := os.ReadDir(ttDir)
 	if err != nil {
 		fmt.Printf("  ERROR reading .terminal-todo: %v\n", err)
 		return
 	}
 
+	fmt.Println()
+	fmt.Println("Local privacy permissions:")
+	checkMode := func(path string, want os.FileMode) {
+		info, err := os.Stat(path)
+		if os.IsNotExist(err) {
+			return
+		}
+		if err != nil {
+			fmt.Printf("  %s ERROR: %v\n", filepath.Base(path), err)
+			return
+		}
+		actual := info.Mode().Perm()
+		if actual == want {
+			fmt.Printf("  %-20s %04o (ok)\n", filepath.Base(path), actual)
+			return
+		}
+		fmt.Printf("  %-20s %04o (expected %04o)", filepath.Base(path), actual, want)
+		if fix {
+			if err := os.Chmod(path, want); err != nil {
+				fmt.Printf(" ERROR: %v\n", err)
+			} else {
+				fmt.Print(" fixed\n")
+			}
+		} else {
+			fmt.Println()
+		}
+	}
+	checkMode(ttDir, 0700)
+	for _, entry := range entries {
+		path := filepath.Join(ttDir, entry.Name())
+		if !entry.IsDir() && (filepath.Ext(entry.Name()) == ".bin" ||
+			filepath.Ext(entry.Name()) == ".json" ||
+			filepath.Ext(entry.Name()) == ".lock") {
+			checkMode(path, 0600)
+		}
+	}
+
+	// Lock sidecars are stable synchronization inodes and intentionally persist.
+	fmt.Println()
+	fmt.Println("Lock files (persistent):")
 	now := time.Now()
 	foundLocks := false
 	for _, entry := range entries {

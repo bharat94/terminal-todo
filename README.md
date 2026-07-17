@@ -9,8 +9,8 @@
 `terminal-todo` is a user-owned execution graph that people, coding agents, and
 scripts can safely share. It coordinates who should do what, in what order,
 and what has already happened across vendors, sessions, and repositories. The
-same state is available through a friendly CLI, versioned JSON, and JSON-RPC
-over stdio.
+same state is available through a friendly CLI, versioned JSON, MCP, and the
+complete native JSON-RPC API over stdio.
 
 No account. No daemon. No hosted control plane. One small binary and one
 `.terminal-todo/` directory.
@@ -478,6 +478,34 @@ This design provides:
 For the invariants and platform details, read
 [Concurrency and Locking](docs/concurrency-and-locking.md).
 
+## Security, privacy, and retention
+
+terminal-todo is a local coordination control plane, not an authentication
+boundary. New state is private to the current OS user: `.terminal-todo/` is
+created with mode `0700`, and state, backups, and lock files use `0600`.
+`todo doctor --fix` detects and repairs broader legacy permissions.
+
+Task titles, logs, errors, actor names, and metadata are persisted in cleartext.
+Do not store secrets. Anyone who can run a configured MCP server with your OS
+account has the same project authority as the CLI; the server is stdio-only
+and should not be exposed as an unauthenticated network service.
+
+Audit events and successful acquisition receipts are durable by default.
+Retention is explicit and previewable:
+
+```bash
+todo compact --keep-events 10000 --receipts-before 2160h --dry-run
+todo backup
+todo compact --keep-events 10000 --receipts-before 2160h
+```
+
+Receipts are removed only when their task is completed or no longer present.
+After a receipt is compacted, its request ID no longer has replay protection,
+so autonomous workers should continue generating globally unique IDs.
+Backups and restores cover the complete coordination store, including events
+and idempotency receipts. See
+[Security and data lifecycle](docs/security-and-data.md).
+
 ## Command map
 
 Run `todo help` for the concise built-in reference.
@@ -490,7 +518,7 @@ Run `todo help` for the concise built-in reference.
 | Coordination | `block`, `unblock`, `log`, `events`, `watch` |
 | Agents | `agent-card`, `caps` |
 | Projects | `init`, `link`, `unlink`, `config` |
-| Operations | `serve`, `export`, `backup`, `restore`, `doctor` |
+| Operations | `serve`, `mcp`, `integrate`, `export`, `backup`, `restore`, `compact`, `doctor` |
 
 Common configuration:
 
@@ -518,7 +546,8 @@ features are used:
 
 `.terminal-todo/` is ignored by this repository because it is live,
 project-specific state. Choose whether to ignore, share, or synchronize it
-according to your own workflow.
+according to your own workflow. The directory is private to the creating OS
+user by default.
 
 ## Development
 
@@ -556,6 +585,9 @@ the [Agent Protocol](docs/agent-protocol.md).
 - [System design](docs/design.md) — storage, allocation, and orchestration model
 - [Agent protocol](docs/agent-protocol.md) — stable JSON and JSON-RPC contract
 - [Concurrency and locking](docs/concurrency-and-locking.md) — safety invariants
+- [Security and data lifecycle](docs/security-and-data.md) — trust boundary, permissions, retention, and recovery
+- [Agent integrations](docs/integrations.md) — Codex, Claude Code, skills, and MCP
+- [Releasing](docs/releasing.md) — verified artifacts and maintainer workflow
 - [Examples](docs/examples.md) — human and multi-agent workflows
 
 ## Direction

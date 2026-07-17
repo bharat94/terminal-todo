@@ -218,6 +218,12 @@ type restoreParams struct {
 	Path string `json:"path"`
 }
 
+type compactParams struct {
+	KeepEvents     *int   `json:"keepEvents,omitempty"`
+	ReceiptsBefore string `json:"receiptsBefore,omitempty"`
+	DryRun         bool   `json:"dryRun,omitempty"`
+}
+
 type doctorResult map[string]interface{}
 
 type doctorParams struct {
@@ -542,6 +548,8 @@ func (srv *server) dispatch(method string, params json.RawMessage) (interface{},
 		return srv.handleConfigSet(params)
 	case "todo.prune":
 		return srv.handlePrune(params)
+	case "todo.compact":
+		return srv.handleCompact(params)
 	case "todo.export":
 		return srv.handleExport(params)
 	case "todo.link":
@@ -599,7 +607,7 @@ func (srv *server) handleInit(params json.RawMessage) (interface{}, *rpcError) {
 		return map[string]string{"path": projectRoot}, nil
 	}
 
-	if err := os.MkdirAll(ttDir, 0755); err != nil {
+	if err := os.MkdirAll(ttDir, 0700); err != nil {
 		return nil, rpcErrorf(rpcInternal, "creating directory: %v", err)
 	}
 
@@ -1999,6 +2007,47 @@ func (srv *server) handlePrune(params json.RawMessage) (interface{}, *rpcError) 
 	return pruneResult{RemovedCount: removedCount}, nil
 }
 
+func (srv *server) handleCompact(params json.RawMessage) (interface{}, *rpcError) {
+	var p compactParams
+	if err := unmarshalParams(params, &p); err != nil {
+		return nil, err
+	}
+	options := compactOptions{KeepEvents: p.KeepEvents, DryRun: p.DryRun}
+	if p.KeepEvents != nil && *p.KeepEvents < 0 {
+		return nil, rpcErrorf(rpcInvalidParams, "keepEvents must be non-negative")
+	}
+	if p.ReceiptsBefore != "" {
+		duration, err := time.ParseDuration(p.ReceiptsBefore)
+		if err != nil || duration <= 0 {
+			return nil, rpcErrorf(rpcInvalidParams, "receiptsBefore must be a positive duration such as 2160h")
+		}
+		options.ReceiptsBefore = duration
+	}
+	if options.KeepEvents == nil && options.ReceiptsBefore == 0 {
+		return nil, rpcErrorf(rpcInvalidParams, "keepEvents, receiptsBefore, or both are required")
+	}
+	if err := srv.ensureInitialized(); err != nil {
+		return nil, err
+	}
+
+	if options.DryRun {
+		s, err := store.Load(tasksBinPath())
+		if err != nil {
+			return nil, rpcErrorf(rpcStoreCorrupted, "loading store: %v", err)
+		}
+		return compactTaskStore(s, options, false, time.Now()), nil
+	}
+
+	var result compactResult
+	if _, err := updateStoreSafe(func(s *store.TaskStore) error {
+		result = compactTaskStore(s, options, true, time.Now())
+		return nil
+	}); err != nil {
+		return nil, rpcErrorf(rpcStoreCorrupted, "compacting store: %v", err)
+	}
+	return result, nil
+}
+
 func (srv *server) handleExport(params json.RawMessage) (interface{}, *rpcError) {
 	var p exportParams
 	if err := unmarshalParams(params, &p); err != nil {
@@ -2125,7 +2174,7 @@ func (srv *server) handleBackup(params json.RawMessage) (interface{}, *rpcError)
 	}
 
 	dir := filepath.Dir(output)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, rpcErrorf(rpcStoreCorrupted, "creating backup directory: %v", err)
 	}
 
@@ -2156,8 +2205,7 @@ func (srv *server) handleRestore(params json.RawMessage) (interface{}, *rpcError
 
 	var taskCount int
 	_, err = updateStoreSafe(func(existing *store.TaskStore) error {
-		existing.Tasks = backup.Tasks
-		existing.NextID = backup.NextID
+		*existing = *backup
 		taskCount = len(backup.Tasks)
 		return nil
 	})

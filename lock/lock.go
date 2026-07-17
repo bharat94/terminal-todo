@@ -10,7 +10,7 @@ import (
 type Type int
 
 const (
-	Read  Type = iota
+	Read Type = iota
 	Write
 )
 
@@ -23,7 +23,7 @@ type FileLock struct {
 
 func Open(path string) (*FileLock, error) {
 	lockPath := filepath.Clean(path) + suffix
-	f, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0644)
+	f, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open lock file %s: %w", lockPath, err)
 	}

@@ -17,7 +17,7 @@ func cmdInit(args []string) {
 	} else if !os.IsNotExist(err) {
 		fail(ErrStoreCorrupted, "checking existing store: %v", err)
 	}
-	if err := os.MkdirAll(ttDir, 0755); err != nil {
+	if err := os.MkdirAll(ttDir, 0700); err != nil {
 		fail(ErrStoreCorrupted, "creating directory: %v", err)
 	}
 

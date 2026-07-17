@@ -272,7 +272,7 @@ func (s *TaskStore) CleanExpiredLeases() int {
 
 func (s *TaskStore) Save(path string) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 
@@ -349,7 +349,7 @@ func (s *TaskStore) HasExpiredLeases() bool {
 // while holding a lock so replacing tasks.bin cannot invalidate the lock and
 // concurrent processes cannot overwrite newer state.
 func Update(path string, mutate func(*TaskStore) error) (*TaskStore, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
 	lk, err := lock.Open(path)
@@ -426,7 +426,7 @@ func writeStore(path string, s *TaskStore) error {
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
 
-	if err := tmp.Chmod(0644); err != nil {
+	if err := tmp.Chmod(0600); err != nil {
 		tmp.Close()
 		return err
 	}

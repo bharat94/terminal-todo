@@ -18,7 +18,7 @@ func cmdBackup(args []string) {
 	s := loadStore()
 
 	dir := filepath.Dir(output)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		fail(ErrStoreCorrupted, "creating backup directory: %v", err)
 	}
 
@@ -36,16 +36,24 @@ func cmdRestore(args []string) {
 
 	backupPath := args[0]
 
-	s, err := store.Load(backupPath)
+	taskCount, err := restoreBackup(backupPath)
 	if err != nil {
-		fail(ErrStoreCorrupted, "loading backup: %v", err)
+		fail(ErrStoreCorrupted, "restoring backup: %v", err)
 	}
 
-	updateStore(func(existing *store.TaskStore) error {
-		existing.Tasks = s.Tasks
-		existing.NextID = s.NextID
-		return nil
-	})
+	fmt.Printf("Restored %d tasks from %s\n", taskCount, backupPath)
+}
 
-	fmt.Printf("Restored %d tasks from %s\n", len(s.Tasks), backupPath)
+func restoreBackup(backupPath string) (int, error) {
+	snapshot, err := store.Load(backupPath)
+	if err != nil {
+		return 0, fmt.Errorf("loading backup: %w", err)
+	}
+	if _, err := store.Update(tasksBinPath(), func(existing *store.TaskStore) error {
+		*existing = *snapshot
+		return nil
+	}); err != nil {
+		return 0, err
+	}
+	return len(snapshot.Tasks), nil
 }
