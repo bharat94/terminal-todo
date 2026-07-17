@@ -6,10 +6,11 @@
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-`terminal-todo` turns a project-local task list into a dependency graph that
-people, coding agents, and scripts can safely share. It remembers work across
-sessions, prevents two agents from taking the same task, and exposes the same
-state through a friendly CLI, versioned JSON, and JSON-RPC over stdio.
+`terminal-todo` is a user-owned execution graph that people, coding agents, and
+scripts can safely share. It coordinates who should do what, in what order,
+and what has already happened across vendors, sessions, and repositories. The
+same state is available through a friendly CLI, versioned JSON, and JSON-RPC
+over stdio.
 
 No account. No daemon. No hosted control plane. One small binary and one
 `.terminal-todo/` directory.
@@ -35,14 +36,21 @@ No account. No daemon. No hosted control plane. One small binary and one
 
 ## Why terminal-todo?
 
-AI-assisted work breaks down when coordination lives only inside a context
-window:
+> Goals tell an agent what outcome to pursue. `terminal-todo` tells a fleet who
+> should do what, in what order, and what has already happened.
 
-- a new session cannot tell what the previous one learned;
-- parallel agents race toward the same ready task;
-- flat checklists hide dependencies and blockers;
-- handoffs become prose scattered across chat logs and scratch files;
-- work spanning repositories has no shared source of truth.
+Agent-native goals, memories, and planning features are useful for maintaining
+one worker's intent. For one agent in one thread, they may be enough.
+`terminal-todo` becomes valuable when execution crosses a coordination
+boundary:
+
+- several agents or humans need conflict-free work allocation;
+- Claude, Codex, scripts, and other runtimes need one shared contract;
+- dependencies determine which work is actually ready;
+- ownership must survive crashes without remaining stuck forever;
+- findings and retries must be handed to a different worker;
+- work spans sessions, worktrees, or linked repositories;
+- the user needs portable state that no agent vendor owns.
 
 `terminal-todo` gives every participant the same persistent model:
 
@@ -52,10 +60,14 @@ window:
 - **Acquisition is atomic.** Selecting and claiming the best compatible task is
   one locked transaction.
 - **Agent retries are safe.** Durable request IDs make `acquire` idempotent.
-- **State is observable.** Structured metadata, logs, and an append-only event
-  stream preserve findings and transitions.
+- **Handoffs are structured.** Metadata, retries, logs, and an append-only
+  event stream preserve findings and transitions.
+- **Execution state persists.** The graph, ownership history, and handoff
+  context survive process exits, context resets, and agent restarts.
 - **Repositories can be linked.** A task can depend on work in another local
   checkout using a stable URI.
+- **State belongs to the user.** The coordination record remains portable,
+  inspectable, and independent of any agent runtime.
 
 ## Quick start
 
