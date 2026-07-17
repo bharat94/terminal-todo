@@ -40,6 +40,10 @@ archives:
     files:
       - LICENSE
       - README.md
+      - CONTRIBUTING.md
+      - SECURITY.md
+      - SUPPORT.md
+      - CODE_OF_CONDUCT.md
       - docs/*.md
 
 checksum:
@@ -60,7 +64,7 @@ changelog:
       - "^ci:"
 
 release:
-  draft: false
+  draft: true
   prerelease: auto
 
 report_sizes: true

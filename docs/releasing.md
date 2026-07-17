@@ -7,9 +7,11 @@ release workflow produces the `todo` binary for:
 - macOS on amd64 and arm64;
 - Windows on amd64 and arm64.
 
-Unix archives use `tar.gz`; Windows archives use `zip`. Every release includes
-SHA-256 checksums, per-archive SPDX JSON SBOMs, and a GitHub build provenance
-attestation.
+Unix archives use `tar.gz`; Windows archives use `zip`. The workflow is
+configured to publish SHA-256 checksums, per-archive SPDX JSON SBOMs, and
+GitHub build provenance attestations. Snapshot generation has validated the
+archive and SBOM configuration; the first public tag remains the end-to-end
+publication and OIDC attestation test.
 
 ## Prepare a release
 
@@ -41,25 +43,31 @@ Create and push an annotated tag. Tag creation is the explicit release
 approval boundary:
 
 ```bash
-git tag -a v0.1.0 -m "terminal-todo v0.1.0"
-git push origin v0.1.0
+git tag -a v0.1.0-beta.1 -m "terminal-todo v0.1.0-beta.1"
+git push origin v0.1.0-beta.1
 ```
 
 Tags matching `vMAJOR.MINOR.PATCH` or a semantic prerelease suffix trigger the
 release workflow. GoReleaser tests the tagged commit, builds with CGO disabled
-and trimmed source paths, uploads the release, and then GitHub attests every
-archive listed in `checksums.txt`.
+and trimmed source paths, and uploads a draft release. GitHub then attests
+every archive listed in `checksums.txt`; only after attestation succeeds does
+the workflow publish the release. A failed attestation therefore leaves a
+non-public draft for investigation.
 
 Do not move or reuse a published tag. If a release is faulty, document the
 problem and publish a new patch version.
 
 ## Verify downloaded artifacts
 
-Download an archive and `checksums.txt` from the GitHub release:
+Download an archive, its `.sbom.json`, and `checksums.txt` from the GitHub
+release:
 
 ```bash
 sha256sum --ignore-missing -c checksums.txt
-gh attestation verify --owner bharat94 terminal-todo_0.1.0_linux_amd64.tar.gz
+jq -e '.spdxVersion == "SPDX-2.3"' \
+  terminal-todo_0.1.0-beta.1_linux_amd64.tar.gz.sbom.json
+gh attestation verify --owner bharat94 \
+  terminal-todo_0.1.0-beta.1_linux_amd64.tar.gz
 ```
 
 On macOS, use:

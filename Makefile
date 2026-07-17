@@ -1,5 +1,7 @@
 BINARY := todo
-VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+PREFIX ?= /usr/local
+BINDIR ?= $(PREFIX)/bin
+VERSION := $(shell (git describe --tags --always --dirty 2>/dev/null || echo "dev") | sed 's/^v//')
 LDFLAGS := -ldflags="-X main.version=$(VERSION)"
 
 .PHONY: all build test test-race test-short lint clean install release-check release-snapshot
@@ -25,13 +27,14 @@ test-short:
 	go test ./... -short -count=1 -timeout 30s
 
 lint:
-	golangci-lint run ./... 2>/dev/null || echo "golangci-lint not installed; skipping"
+	test -z "$$(gofmt -l .)"
+	go vet ./...
 
 clean:
 	rm -f $(BINARY) $(BINARY)-*
 
 install: build
-	install -m 755 $(BINARY) /usr/local/bin/$(BINARY)
+	install -m 755 $(BINARY) $(DESTDIR)$(BINDIR)/$(BINARY)
 
 release-check:
 	goreleaser check
