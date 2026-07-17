@@ -527,11 +527,13 @@ advertises a stable, deterministic tool list:
 | `terminal_todo_complete` | `todo.done` | Complete verified work |
 | `terminal_todo_events` | `todo.events` | Read the append-only event stream |
 
-Every successful `tools/call` result contains a JSON text content block and the
-same value in `structuredContent`. Domain failures such as `NO_WORK`,
-`NOT_OWNER`, or `DEPENDENCY_ERROR` are valid MCP tool results with
-`isError: true` and a structured `{code, message, data?}` payload. Protocol
-errors such as an unknown tool or malformed call use JSON-RPC error responses.
+Every successful `tools/call` result contains a compact text summary for host
+traces and the complete machine-readable value in `structuredContent`. Text
+summaries are whitespace-normalized and capped at 240 bytes. Domain failures
+such as `NO_WORK`, `NOT_OWNER`, or `DEPENDENCY_ERROR` are valid MCP tool
+results with `isError: true`, a concise symbolic text summary, and a structured
+`{code, message, data?}` payload. Protocol errors such as an unknown tool or
+malformed call use JSON-RPC error responses.
 
 The curated surface is intentionally smaller than the native API. Agents get
 the safe coordination loop without a broad administrative capability set;

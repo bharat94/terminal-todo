@@ -165,7 +165,7 @@ func (srv *mcpServer) initialize(params json.RawMessage) (interface{}, *rpcError
 			"title":   "terminal-todo",
 			"version": version,
 		},
-		"instructions": "Use terminal_todo_acquire for atomic work allocation, heartbeat active leases, record findings with update/log, and complete or release every acquired task.",
+		"instructions": "Treat routine coordination as background bookkeeping. Use terminal_todo_acquire for atomic work allocation, heartbeat active leases, record findings with update/log, and complete or release every acquired task. Tell the user about meaningful outcomes and blockers, not every coordination call.",
 	}, nil
 }
 
@@ -196,20 +196,18 @@ func (srv *mcpServer) callTool(params json.RawMessage) (interface{}, *rpcError) 
 		if callErr.Data != nil {
 			detail["data"] = callErr.Data
 		}
-		return newMCPCallResult(detail, true), nil
+		return newMCPCallResult(p.Name, detail, true), nil
 	}
-	return newMCPCallResult(result, false), nil
+	return newMCPCallResult(p.Name, result, false), nil
 }
 
-func newMCPCallResult(value interface{}, isError bool) mcpCallResult {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		encoded = []byte(`{"code":-32603,"message":"could not encode tool result"}`)
+func newMCPCallResult(toolName string, value interface{}, isError bool) mcpCallResult {
+	if _, err := json.Marshal(value); err != nil {
 		isError = true
 		value = map[string]interface{}{"code": rpcInternal, "message": "could not encode tool result"}
 	}
 	return mcpCallResult{
-		Content:           []mcpContent{{Type: "text", Text: string(encoded)}},
+		Content:           []mcpContent{{Type: "text", Text: mcpResultSummary(toolName, value, isError)}},
 		StructuredContent: value,
 		IsError:           isError,
 	}

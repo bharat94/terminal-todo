@@ -91,6 +91,8 @@ func TestE2E_MCPAllocationAndProjectIntegration(t *testing.T) {
 	acquired := read()
 	result := acquired["result"].(map[string]interface{})
 	assert.NotEqual(t, true, result["isError"])
+	content := result["content"].([]interface{})
+	assert.Equal(t, "Acquired task 1: Allocate through a real MCP subprocess.", content[0].(map[string]interface{})["text"])
 	structured := result["structuredContent"].(map[string]interface{})
 	task := structured["task"].(map[string]interface{})
 	assert.Equal(t, "Allocate through a real MCP subprocess", task["title"])

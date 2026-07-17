@@ -18,6 +18,10 @@ func TestBundledTerminalTodoSkillPreservesCoordinationInvariants(t *testing.T) {
 	assert.NotContains(t, content, "TODO")
 
 	for _, required := range []string{
+		"Prefer the `terminal_todo_*` MCP tools when available",
+		"Do not echo raw commands",
+		"Do not narrate every coordination call",
+		"terminal_todo_acquire",
 		"todo status --json",
 		"todo acquire",
 		"--request-id <unique-request-id>",

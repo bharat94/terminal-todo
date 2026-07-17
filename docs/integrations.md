@@ -107,6 +107,15 @@ The underlying `.terminal-todo/` directory remains user-controlled portable
 state. It can stay local, be backed up, or be shared through storage chosen by
 the user.
 
+Routine coordination should remain background bookkeeping. MCP tool results
+put a concise trace in `content` and the complete result in
+`structuredContent`; the bundled skill tells workers to report meaningful
+work outcomes and blockers instead of narrating every task-manager call. Host
+UIs still control whether tool calls themselves are visible or collapsed.
+
+The design and remaining priorities come from a full production-readiness
+dogfood run. See the [dogfooding retrospective](dogfooding-retrospective.md).
+
 ## Manual registration
 
 The installer writes project-scoped configuration. For user-scoped

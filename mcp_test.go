@@ -78,12 +78,11 @@ func TestMCPToolCallUsesCoordinationBackend(t *testing.T) {
 	assert.False(t, call.IsError)
 	require.Len(t, call.Content, 1)
 	assert.Equal(t, "text", call.Content[0].Type)
-
-	var textResult acquireEnvelope
-	require.NoError(t, json.Unmarshal([]byte(call.Content[0].Text), &textResult))
-	assert.Equal(t, "MCP allocated work", textResult.Task.Title)
-	assert.Equal(t, "mcp-worker", textResult.Task.Metadata.Owner)
-	assert.NotNil(t, call.StructuredContent)
+	assert.Equal(t, "Acquired task 1: MCP allocated work.", call.Content[0].Text)
+	assert.NotContains(t, call.Content[0].Text, `"schema_version"`)
+	structured := call.StructuredContent.(acquireEnvelope)
+	assert.Equal(t, "MCP allocated work", structured.Task.Title)
+	assert.Equal(t, "mcp-worker", structured.Task.Metadata.Owner)
 
 	persisted, err := store.LoadCurrent(path)
 	require.NoError(t, err)
@@ -106,8 +105,38 @@ func TestMCPBusinessErrorsAreToolResults(t *testing.T) {
 	require.Nil(t, rpcErr)
 	call := result.(mcpCallResult)
 	assert.True(t, call.IsError)
-	assert.Contains(t, call.Content[0].Text, `"code":-32010`)
-	assert.Contains(t, call.Content[0].Text, `"message":"no `)
+	assert.Equal(t, "NO_WORK: no compatible tasks ready", call.Content[0].Text)
+	detail := call.StructuredContent.(map[string]interface{})
+	assert.Equal(t, rpcNoWork, detail["code"])
+	assert.Equal(t, "no compatible tasks ready", detail["message"])
+}
+
+func TestMCPToolTextIsCompactWhileStructuredContentStaysComplete(t *testing.T) {
+	tasks := make([]protocolTask, 40)
+	for i := range tasks {
+		tasks[i] = protocolTask{ID: uint64(i + 1), Title: strings.Repeat("verbose ", 20), Status: "pending"}
+	}
+
+	call := newMCPCallResult("terminal_todo_status", tasksEnvelope{
+		SchemaVersion: protocolVersion,
+		Tasks:         tasks,
+	}, false)
+
+	assert.Equal(t, "40 task(s): 40 pending, 0 in progress, 0 blocked, 0 completed.", call.Content[0].Text)
+	assert.LessOrEqual(t, len(call.Content[0].Text), maxMCPResultSummaryLength)
+	assert.Len(t, call.StructuredContent.(tasksEnvelope).Tasks, 40)
+}
+
+func TestMCPToolTextLimitPreservesUTF8(t *testing.T) {
+	call := newMCPCallResult("terminal_todo_cat", protocolTask{
+		ID:     1,
+		Status: "pending",
+		Title:  strings.Repeat("界", 200),
+	}, false)
+
+	assert.LessOrEqual(t, len(call.Content[0].Text), maxMCPResultSummaryLength)
+	assert.True(t, strings.HasSuffix(call.Content[0].Text, "..."))
+	assert.True(t, json.Valid([]byte(`"`+call.Content[0].Text+`"`)))
 }
 
 func TestMCPRejectsUnknownToolsAndArguments(t *testing.T) {

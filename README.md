@@ -379,8 +379,10 @@ The server implements the MCP `2025-06-18` stdio lifecycle and exposes a
 curated coordination surface: discovery, initialization, status, task detail,
 creation, atomic acquisition, heartbeats, updates, logs, decomposition,
 blocking, release, completion, and events. Tool calls return both text and
-structured JSON so clients can reason about results without scraping terminal
-output.
+structured JSON: the text is a compact human trace, while the full result
+stays in `structuredContent` for the agent. The bundled skill keeps routine
+coordination in the background so user-facing updates stay focused on the
+work.
 
 Register it in Codex:
 
@@ -397,6 +399,9 @@ claude mcp add --transport stdio --scope project terminal-todo -- todo mcp --std
 Start the client from an initialized project directory so the server discovers
 the correct `.terminal-todo/` state. The MCP server can also initialize a new
 project through `terminal_todo_init`.
+
+See the [dogfooding retrospective](docs/dogfooding-retrospective.md) for the
+interaction principles and prioritized UX follow-ups behind this design.
 
 ### Versioned CLI JSON
 

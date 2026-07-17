@@ -1,32 +1,51 @@
 ---
 name: terminal-todo
-description: Coordinate and persist project work with the terminal-todo CLI. Use when an agent needs to plan or decompose a durable objective, resume work from an existing .terminal-todo graph, distribute ready tasks across multiple workers, claim work without races, maintain ownership leases, record findings for handoff, or complete, block, and release tasks. Also use when the user explicitly mentions terminal-todo, shared agent tasks, durable task state, task DAGs, or multi-agent coordination.
+description: Coordinate and persist project work with terminal-todo through its MCP tools or CLI. Use when an agent needs to plan or decompose a durable objective, resume work from an existing .terminal-todo graph, distribute ready tasks across multiple workers, claim work without races, maintain ownership leases, record findings for handoff, or complete, block, and release tasks. Also use when the user explicitly mentions terminal-todo, shared agent tasks, durable task state, task DAGs, or multi-agent coordination.
 ---
 
 # Terminal Todo
 
-Use `terminal-todo` as the source of truth for project work that must survive
+Use terminal-todo as the source of truth for project work that must survive
 the current conversation or be shared with another worker. Keep ordinary
 one-step work out of the task graph unless the user asks to track it.
 
+## Keep coordination quiet
+
+Treat routine coordination as background bookkeeping:
+
+- Prefer the `terminal_todo_*` MCP tools when available. Use the CLI as a
+  fallback; do not launch the MCP server manually.
+- Do not echo raw commands, JSON payloads, actor IDs, request IDs, heartbeats,
+  or routine tool results to the user.
+- Do not narrate every coordination call. Mention only outcomes that affect
+  the user's understanding: selected work, a changed plan, a blocker, a
+  meaningful handoff, or completion.
+- Keep progress updates about product work, not task-manager mechanics.
+- Read decisions from structured MCP content. The short text block is for a
+  compact trace, not the complete result.
+
 ## Establish the session
 
-1. Run `command -v todo` before relying on the CLI. If it is unavailable,
-   stop and explain that terminal-todo must be installed.
-2. Work from the project root. Check for `.terminal-todo/tasks.bin`.
-3. Run `todo init` only when durable coordination is intended and the project
-   is not initialized. Do not initialize for a read-only question.
+1. Work from the project root. If MCP tools are available, call
+   `terminal_todo_ping`; otherwise run `command -v todo` before relying on the
+   CLI. If neither transport is available, explain that terminal-todo must be
+   installed.
+2. Inspect the graph with `terminal_todo_status`. On the CLI fallback, check
+   for `.terminal-todo/tasks.bin` and run `todo status --json`.
+3. Initialize only when durable coordination is intended and the project is
+   not initialized. Use `terminal_todo_init` or `todo init`. Do not initialize
+   for a read-only question.
 4. Choose one unique actor name for this agent session and reuse it in every
    ownership-sensitive command. Prefer a user-provided identity; otherwise use
    a recognizable name with a short random suffix, such as `codex-a1b2c3d4`.
-5. Inspect existing state before adding or acquiring anything:
+5. Inspect existing events before adding or acquiring anything:
 
 ```bash
-todo status --json
 todo events --json
 ```
 
-If resuming a known actor, also run:
+Use `terminal_todo_events` over MCP. If resuming a known actor on the CLI,
+also run:
 
 ```bash
 todo my --as <actor> --json
@@ -78,6 +97,9 @@ todo acquire \
   --json
 ```
 
+Over MCP, call `terminal_todo_acquire` with the same actor, request ID,
+capabilities, and TTL fields.
+
 Do not implement allocation as `todo next` followed by `todo claim`; another
 worker can win between those commands.
 
@@ -102,6 +124,8 @@ active lease before it expires:
 ```bash
 todo heartbeat <id> --as <actor> --ttl 30m --json
 ```
+
+Prefer `terminal_todo_heartbeat` over MCP.
 
 Heartbeat before and after long-running commands or extended reasoning. A
 stale lease cannot be revived; if renewal returns `LEASE_NOT_ACTIVE`, inspect
@@ -152,6 +176,7 @@ session.
 - Mutate claimed tasks only as their current owner.
 - Use dependencies for ordering and manual blocks for external conditions.
 - Record findings before context can be lost.
-- Use JSON output for machine decisions; do not scrape human-readable tables.
+- Use MCP structured content or CLI JSON for machine decisions; do not scrape
+  human-readable tables.
 - Inspect `todo status --json` after ambiguous failures before retrying a
   mutation.

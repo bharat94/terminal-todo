@@ -24,7 +24,7 @@ func TestPrepareIntegrationInstallsAndChecksBothClients(t *testing.T) {
 
 	codexSkill, err := os.ReadFile(filepath.Join(root, ".agents", "skills", "terminal-todo", "SKILL.md"))
 	require.NoError(t, err)
-	assert.Contains(t, string(codexSkill), "Use `terminal-todo` as the source of truth")
+	assert.Contains(t, string(codexSkill), "Use terminal-todo as the source of truth")
 
 	claudeSkill, err := os.ReadFile(filepath.Join(root, ".claude", "skills", "terminal-todo", "SKILL.md"))
 	require.NoError(t, err)
