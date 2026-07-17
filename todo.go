@@ -46,7 +46,7 @@ func main() {
 
 	root, err := findProjectRoot()
 	if err != nil {
-		if os.Args[1] == "init" || os.Args[1] == "serve" {
+		if os.Args[1] == "init" || os.Args[1] == "serve" || os.Args[1] == "mcp" {
 			projectRoot, _ = os.Getwd()
 		} else {
 			fail(ErrNotInitialized, "%s", err)
@@ -122,6 +122,8 @@ func main() {
 		cmdSearch(args)
 	case "serve":
 		cmdServe(args)
+	case "mcp":
+		cmdMCP(args)
 	case "backup":
 		cmdBackup(args)
 	case "restore":
@@ -183,6 +185,10 @@ DAG & Dependency:
 Reactivity:
   watch [<id>]        Live-refresh task dashboard (--poll)
   events [<since>]    Show the event log (--json)
+
+Integrations:
+  mcp --stdio         Start the Model Context Protocol server
+  serve --stdio       Start the native JSON-RPC server
 
 Project:
   config [key=value]  View or set project configuration
@@ -300,6 +306,7 @@ func validateCommandArgs(command string, args []string) error {
 		"agent-card": {"--json": true},
 		"caps":       {"--json": true, "--all": true},
 		"serve":      {"--stdio": true},
+		"mcp":        {"--stdio": true},
 	}
 	knownCommands := map[string]bool{
 		"init": true, "add": true, "done": true, "status": true,
@@ -310,7 +317,7 @@ func validateCommandArgs(command string, args []string) error {
 		"config": true, "link": true, "unlink": true, "block": true, "unblock": true,
 		"log": true, "search": true, "doctor": true, "backup": true,
 		"restore": true, "what-if": true, "whatif": true, "events": true,
-		"watch": true, "my": true, "graph": true, "serve": true,
+		"watch": true, "my": true, "graph": true, "serve": true, "mcp": true,
 	}
 	if !knownCommands[command] {
 		return nil

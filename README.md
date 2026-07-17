@@ -331,6 +331,37 @@ An upcoming `todo integrate` command will automate project-scoped skill and
 tool configuration. The CLI remains the source of truth; the skill supplies
 the reliable operating procedure.
 
+### Model Context Protocol
+
+Codex, Claude Code, and any MCP client can use terminal-todo as native tools:
+
+```bash
+todo mcp --stdio
+```
+
+The server implements the MCP `2025-06-18` stdio lifecycle and exposes a
+curated coordination surface: discovery, initialization, status, task detail,
+creation, atomic acquisition, heartbeats, updates, logs, decomposition,
+blocking, release, completion, and events. Tool calls return both text and
+structured JSON so clients can reason about results without scraping terminal
+output.
+
+Register it in Codex:
+
+```bash
+codex mcp add terminal-todo -- todo mcp --stdio
+```
+
+Or in Claude Code for the current project:
+
+```bash
+claude mcp add --transport stdio --scope project terminal-todo -- todo mcp --stdio
+```
+
+Start the client from an initialized project directory so the server discovers
+the correct `.terminal-todo/` state. The MCP server can also initialize a new
+project through `terminal_todo_init`.
+
 ### Versioned CLI JSON
 
 Add `--json` to queries and core lifecycle mutations:
@@ -377,10 +408,11 @@ Requests and responses are newline-delimited JSON-RPC 2.0:
 {"jsonrpc":"2.0","id":3,"method":"todo.events","params":{"since":120}}
 ```
 
-The server supports the complete task, graph, project, diagnostics, and agent
-card surfaces. Parameters are decoded strictly, notifications are supported,
-and stdin/stdout remain clean for embedding. `todo.ping` advertises the
-protocol version and supported coordination features before initialization.
+This native API supports the complete task, graph, project, diagnostics, and
+agent-card surfaces. Parameters are decoded strictly, notifications are
+supported, and stdin/stdout remain clean for embedding. `todo.ping` advertises
+the protocol version and supported coordination features before
+initialization. For standards-based agent integration, use `todo mcp --stdio`.
 See the
 [Agent Protocol](docs/agent-protocol.md) for method schemas and error mappings.
 

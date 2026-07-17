@@ -17,16 +17,17 @@ agent-to-CLI communication via `terminal-todo`. Every JSON response includes
 6. [Agent Cards & Capabilities](#6-agent-cards--capabilities)
 7. [Events & Logs](#7-events--logs)
 8. [Graph & Lineage](#8-graph--lineage)
-9. [JSON-RPC Transport (serve --stdio)](#9-json-rpc-transport-serve---stdio)
-10. [Timestamp Format](#10-timestamp-format)
-11. [Versioning Policy](#11-versioning-policy)
+9. [Model Context Protocol (mcp --stdio)](#9-model-context-protocol-mcp---stdio)
+10. [JSON-RPC Transport (serve --stdio)](#10-json-rpc-transport-serve---stdio)
+11. [Timestamp Format](#11-timestamp-format)
+12. [Versioning Policy](#12-versioning-policy)
 
 ---
 
 ## 1. Task Representation
 
 Every task in the system has the following JSON shape. Timestamps are
-RFC3339Nano strings. See section 10 for details.
+RFC3339Nano strings. See section 11 for details.
 
 ```json
 {
@@ -496,11 +497,53 @@ todo lineage <id> --json   # Structured with progress %, root, and descendants
 
 ---
 
-## 9. JSON-RPC Transport (`serve --stdio`)
+## 9. Model Context Protocol (`mcp --stdio`)
+
+`todo mcp --stdio` implements the Model Context Protocol `2025-06-18` over
+newline-delimited stdio. It is the recommended integration for Codex, Claude
+Code, and other MCP hosts. It supports the standard MCP initialization
+lifecycle, `ping`, `tools/list`, and `tools/call`. Stderr is reserved for
+diagnostics and requests may be up to 4 MiB.
+
+The client must send `initialize`, receive the server response, and send
+`notifications/initialized` before listing or calling tools. The server
+advertises a stable, deterministic tool list:
+
+| MCP tool | Native operation | Purpose |
+|----------|------------------|---------|
+| `terminal_todo_ping` | `todo.ping` | Discover project and protocol capabilities |
+| `terminal_todo_init` | `todo.init` | Initialize portable project state |
+| `terminal_todo_status` | `todo.status` | Inspect the shared execution graph |
+| `terminal_todo_cat` | `todo.cat` | Read one task and its handoff state |
+| `terminal_todo_add` | `todo.add` | Add durable DAG work |
+| `terminal_todo_acquire` | `todo.acquire` | Atomically allocate ready work |
+| `terminal_todo_heartbeat` | `todo.heartbeat` | Renew an active owned lease |
+| `terminal_todo_update` | `todo.update` | Update metadata, dependencies, and structured findings |
+| `terminal_todo_log` | `todo.log` | Append an audit-trail note |
+| `terminal_todo_decompose` | `todo.decompose` | Split broad work into dependent children |
+| `terminal_todo_block` | `todo.block` | Preserve an explicit blocker |
+| `terminal_todo_release` | `todo.release` | Yield work or record a failed attempt |
+| `terminal_todo_complete` | `todo.done` | Complete verified work |
+| `terminal_todo_events` | `todo.events` | Read the append-only event stream |
+
+Every successful `tools/call` result contains a JSON text content block and the
+same value in `structuredContent`. Domain failures such as `NO_WORK`,
+`NOT_OWNER`, or `DEPENDENCY_ERROR` are valid MCP tool results with
+`isError: true` and a structured `{code, message, data?}` payload. Protocol
+errors such as an unknown tool or malformed call use JSON-RPC error responses.
+
+The curated surface is intentionally smaller than the native API. Agents get
+the safe coordination loop without a broad administrative capability set;
+operators and specialized integrations can use `serve --stdio` for all
+commands.
+
+---
+
+## 10. JSON-RPC Transport (`serve --stdio`)
 
 `todo serve --stdio` starts a JSON-RPC 2.0 server over stdin/stdout. This
-enables MCP (Model Context Protocol) compatible transport without any external
-dependency.
+is terminal-todo's complete native automation API. It is distinct from MCP;
+use `todo mcp --stdio` when connecting an MCP host.
 
 ### Connection Model
 
@@ -615,7 +658,7 @@ worker from reviving ownership after the task has returned to the ready queue.
 
 ---
 
-## 10. Timestamp Format
+## 11. Timestamp Format
 
 All timestamps in JSON output use **RFC3339Nano** format:
 
@@ -637,7 +680,7 @@ converts to RFC3339Nano on JSON output.
 
 ---
 
-## 11. Versioning Policy
+## 12. Versioning Policy
 
 The protocol version is a single string field (`"schema_version"`) present in
 every JSON response.
