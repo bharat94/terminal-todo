@@ -137,6 +137,26 @@ func TestServerNotificationDoesNotEmitResponse(t *testing.T) {
 	assert.Empty(t, output.String())
 }
 
+func TestServerPingAdvertisesProtocolAndCapabilities(t *testing.T) {
+	oldRoot := projectRoot
+	projectRoot = t.TempDir()
+	defer func() { projectRoot = oldRoot }()
+
+	srv := &server{initialized: true}
+	result, rpcErr := srv.dispatch("todo.ping", json.RawMessage(`{}`))
+
+	assert.Nil(t, rpcErr)
+	ping, ok := result.(pingResult)
+	assert.True(t, ok)
+	assert.Equal(t, protocolVersion, ping.ProtocolVersion)
+	assert.Equal(t, projectRoot, ping.Project)
+	assert.True(t, ping.Initialized)
+	assert.Contains(t, ping.Capabilities, "lease_heartbeat")
+	assert.Contains(t, ping.Capabilities, "atomic_acquire")
+	assert.Contains(t, ping.Capabilities, "idempotent_acquire")
+	assert.Contains(t, ping.Capabilities, "cross_repository_dependencies")
+}
+
 func TestServerRejectsUnknownTopLevelRequestFields(t *testing.T) {
 	var output bytes.Buffer
 	srv := &server{initialized: true, encoder: json.NewEncoder(&output)}

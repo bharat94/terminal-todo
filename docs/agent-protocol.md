@@ -519,7 +519,7 @@ processed but no response is written. Stdio requests may be up to 4 MiB.
 
 | Method | Params | Result |
 |--------|--------|--------|
-| `todo.ping` | `{}` | `{version, project, initialized, capabilities}` |
+| `todo.ping` | `{}` | `{version, protocol_version, project, initialized, capabilities}` |
 | `todo.init` | `{}` | `{path}` |
 | `todo.add` | `{title, after?, priority?, capabilities?, tags?}` | `{id, title}` |
 | `todo.done` | `{ids, actor?}` | `{completed, unblocked}` |
@@ -593,6 +593,12 @@ budget still replays its original result. JSON-RPC acquisition remains
 non-blocking so a serial stdio session can continue processing heartbeats and
 other coordination messages.
 
+`todo.ping` is available before project initialization and advertises these
+protocol capabilities: `dag`, `leases`, `lease_heartbeat`, `atomic_acquire`,
+`idempotent_acquire`, `events`, and `cross_repository_dependencies`. Clients
+should use `protocol_version` and this list for feature negotiation; `version`
+identifies the binary build and can change independently.
+
 Acquire request IDs are opaque, project-wide identifiers of 1–128 bytes; a
 UUID or ULID is recommended. A successful acquisition stores its request
 fingerprint and immutable result in `tasks.bin` in the same transaction as the
@@ -643,9 +649,11 @@ every JSON response.
   response as opaque.
 
 The protocol version is independent of the internal store schema version
-(currently `2`) and the CLI tool version. They evolve independently.
+(currently `4`) and the CLI tool version. They evolve independently.
 
 To discover the protocol version at runtime:
+
 - Parse `schema_version` from any JSON response
 - `todo agent-card --json` returns a versioned envelope
-- `todo serve --stdio`'s `todo.ping` includes version info
+- `todo serve --stdio`'s `todo.ping` returns `protocol_version` and supported
+  capabilities

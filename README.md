@@ -333,6 +333,7 @@ todo serve --stdio
 Requests and responses are newline-delimited JSON-RPC 2.0:
 
 ```json
+{"jsonrpc":"2.0","id":0,"method":"todo.ping","params":{}}
 {"jsonrpc":"2.0","id":1,"method":"todo.next","params":{"capabilities":["go"]}}
 {"jsonrpc":"2.0","id":2,"method":"todo.acquire","params":{"actor":"go-worker-1","requestId":"alloc-42"}}
 {"jsonrpc":"2.0","id":3,"method":"todo.events","params":{"since":120}}
@@ -340,7 +341,9 @@ Requests and responses are newline-delimited JSON-RPC 2.0:
 
 The server supports the complete task, graph, project, diagnostics, and agent
 card surfaces. Parameters are decoded strictly, notifications are supported,
-and stdin/stdout remain clean for embedding. See the
+and stdin/stdout remain clean for embedding. `todo.ping` advertises the
+protocol version and supported coordination features before initialization.
+See the
 [Agent Protocol](docs/agent-protocol.md) for method schemas and error mappings.
 
 ## Concurrency and recovery guarantees

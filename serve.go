@@ -358,6 +358,14 @@ type capsResult struct {
 	TaskCount    int      `json:"task_count"`
 }
 
+type pingResult struct {
+	Version         string   `json:"version"`
+	ProtocolVersion string   `json:"protocol_version"`
+	Project         string   `json:"project"`
+	Initialized     bool     `json:"initialized"`
+	Capabilities    []string `json:"capabilities"`
+}
+
 func rpcErrorf(code int, format string, args ...interface{}) *rpcError {
 	return &rpcError{Code: code, Message: fmt.Sprintf(format, args...)}
 }
@@ -560,10 +568,20 @@ func (srv *server) handlePing(params json.RawMessage) (interface{}, *rpcError) {
 	if err := unmarshalParams(params, &p); err != nil {
 		return nil, err
 	}
-	return map[string]interface{}{
-		"version":     version,
-		"initialized": srv.initialized,
-		"project":     projectRoot,
+	return pingResult{
+		Version:         version,
+		ProtocolVersion: protocolVersion,
+		Project:         projectRoot,
+		Initialized:     srv.initialized,
+		Capabilities: []string{
+			"dag",
+			"leases",
+			"lease_heartbeat",
+			"atomic_acquire",
+			"idempotent_acquire",
+			"events",
+			"cross_repository_dependencies",
+		},
 	}, nil
 }
 
