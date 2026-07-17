@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose a coordination capability or workflow improvement
+title: "feat: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Coordination problem
+      description: Describe the workers, sessions, repositories, or vendors that must coordinate.
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current workaround
+      description: Explain why the existing DAG, leases, handoffs, CLI, or MCP surface is insufficient.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Focus on observable behavior rather than a specific implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility considerations
+      description: Note any protocol, state, security, or cross-platform implications.

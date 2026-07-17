@@ -1,0 +1,38 @@
+name: Question or usage help
+description: Ask about setup, workflows, integrations, or coordination design
+title: "[Question]: "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search the documentation and existing issues first. Do not include secrets or real `.terminal-todo/` state.
+  - type: input
+    id: version
+    attributes:
+      label: terminal-todo version
+      description: Paste the output of `todo --version`, or say that you built from source.
+      placeholder: v0.1.0-beta.1
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include the operating system, filesystem, and agent host or shell when relevant.
+      placeholder: macOS 15, APFS, Codex CLI
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What are you trying to accomplish, and where are you stuck?
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you tried?
+      description: Include sanitized commands or output that would help reproduce your setup.
