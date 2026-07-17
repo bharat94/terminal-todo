@@ -17,10 +17,14 @@ All writes are performed via **Rename-Swap**:
 1. Write updated MessagePack data to a private temporary file.
 2. Call `fsync()` on the complete temporary file.
 3. Atomically rename it over `tasks.bin`.
-4. Call `fsync()` on the containing directory.
+4. Call `fsync()` on the containing directory on platforms that expose the
+   operation.
 
 The stable lock is `tasks.bin.lock`, not the replaceable data inode. Writers
 therefore cannot invalidate mutual exclusion by renaming `tasks.bin`.
+Windows flushes the complete temporary file before the atomic replace but
+cannot explicitly flush a directory through Go; see the
+[compatibility contract](compatibility.md) for the resulting boundary.
 
 ## 2. Logic-Level: The "Claim" Race Condition
 
