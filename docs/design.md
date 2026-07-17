@@ -94,6 +94,18 @@ Capabilities and load limits can be supplied per request or registered in an
 agent card. Allocation is deterministic priority ordering, not an optimization
 or fairness algorithm.
 
+When allocation cannot proceed, the same deterministic read model explains
+whether the queue is empty, dependencies are incomplete, capabilities are
+missing, work is owned elsewhere, or the worker is at capacity. Concrete
+dependency references and missing capabilities remain in structured output;
+human and MCP display text stays compact.
+
+`bootstrap` is the bounded, non-allocating session view. Given a
+caller-supplied actor, it combines objective progress, owned and compatible
+ready work, blockers, capability demand, and recent events without claiming
+work, registering identity, or dumping the full graph. Like other current
+state reads, it may persist recovery of an expired lease.
+
 ## Lifecycle
 
 - `claim` leases a specific ready task.

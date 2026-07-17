@@ -23,8 +23,8 @@ pretending the interface can never evolve.
 |------|----------|--------|
 | State integrity | Stable sidecar locks, flushed temporary files, atomic replacement, migrations, backups, restore, doctor | Ready |
 | Coordination | DAG validation, atomic acquisition, idempotent receipts, leases, heartbeats, retries, recovery events | Ready |
-| Protocols | Versioned CLI JSON and JSON-RPC, MCP 2025-06-18 lifecycle, strict parameter decoding, stable errors | Ready |
-| Agent integration | Bundled MCP-first skill plus idempotent Codex and Claude installers and checks | Ready |
+| Protocols | Versioned CLI JSON and JSON-RPC, MCP 2025-06-18 lifecycle and tool annotations, strict parameter decoding, stable errors | Ready |
+| Agent integration | Bundled MCP-first skill, bounded session bootstrap, allocation diagnostics, and idempotent Codex and Claude installers with static and live checks | Ready |
 | Platforms | Native Linux, macOS, and Windows race/build/vet matrix; six release targets | Ready |
 | Supply chain | Pinned release tools, snapshot checksums and SPDX SBOMs, configured provenance attestations, reachable-vulnerability scan | Ready for tagged validation |
 | Operations | Backup, restore, retention, compaction, compatibility, security, and incident guidance | Ready |

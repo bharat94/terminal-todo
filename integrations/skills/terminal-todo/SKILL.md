@@ -30,24 +30,29 @@ Treat routine coordination as background bookkeeping:
    `terminal_todo_ping`; otherwise run `command -v todo` before relying on the
    CLI. If neither transport is available, explain that terminal-todo must be
    installed.
-2. Inspect the graph with `terminal_todo_status`. On the CLI fallback, check
-   for `.terminal-todo/tasks.bin` and run `todo status --json`.
-3. Initialize only when durable coordination is intended and the project is
+2. Initialize only when durable coordination is intended and the project is
    not initialized. Use `terminal_todo_init` or `todo init`. Do not initialize
    for a read-only question.
-4. Choose one unique actor name for this agent session and reuse it in every
+3. Choose one unique actor name for this agent session and reuse it in every
    ownership-sensitive command. Prefer a user-provided identity; otherwise use
    a recognizable name with a short random suffix, such as `codex-a1b2c3d4`.
-5. Inspect existing events before adding or acquiring anything:
+4. When the project is initialized, call `terminal_todo_bootstrap` with that
+   actor. It returns a bounded brief covering the objective, progress, owned
+   work, compatible ready work, blockers, capability demand, and recent
+   events. The brief does not register the actor or acquire work, though
+   inspecting coordination state may persist recovery of expired leases. On
+   the CLI fallback, run:
 
 ```bash
-todo events --json
+todo bootstrap --as <actor> --capabilities go,testing --json
 ```
 
-Use `terminal_todo_events` over MCP. If resuming a known actor on the CLI,
-also run:
+If bootstrap is unavailable in an older installation, fall back to
+`terminal_todo_status` plus `terminal_todo_events`; on the CLI use:
 
 ```bash
+todo status --json
+todo events --json
 todo my --as <actor> --json
 ```
 
@@ -110,8 +115,10 @@ parameters.
 
 Treat allocator errors as control flow:
 
-- `NO_WORK`: wait, inspect blockers, or finish the session.
-- `AGENT_AT_CAPACITY`: finish or release currently owned work.
+- `NO_WORK`: inspect structured `data.reason` and its blockers or missing
+  capabilities; wait only when the reported state can change.
+- `AGENT_AT_CAPACITY`: inspect current/max load, then finish or release
+  currently owned work.
 - `IDEMPOTENCY_CONFLICT`: generate a new request ID for the new parameters.
 
 Use `claim` only when the user or a manager explicitly selected a task ID.
@@ -162,7 +169,8 @@ If progress requires an external condition that no worker can currently
 resolve:
 
 ```bash
-todo block <id> --as <actor> --reason "waiting for API credentials"
+todo block <id> --as <actor> \
+  --reason "waiting for API credentials" --json
 ```
 
 Prefer `release` for retryable execution failures and `block` for durable

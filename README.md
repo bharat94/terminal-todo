@@ -17,7 +17,7 @@ No account. No daemon. No hosted control plane. One small binary and one
 
 ```text
                   ┌──────────────────────────┐
- human / agent ──▶│  CLI · JSON · JSON-RPC  │
+ human / agent ──▶│ CLI · JSON · MCP · RPC  │
                   └────────────┬─────────────┘
                                │
                     atomic state transitions
@@ -151,6 +151,8 @@ todo agent-card \
   --desc "Go implementation and test specialist" \
   --max-load 1
 
+todo bootstrap --as go-worker-1 --json
+
 todo acquire \
   --as go-worker-1 \
   --request-id 01JZQ4N6BK7R8T9W0XYZ123456 \
@@ -215,9 +217,15 @@ Machine clients should treat these acquisition errors as scheduler outcomes:
 
 | Error | Exit | Meaning |
 |---|---:|---|
-| `NO_WORK` | 6 | No compatible ready task exists; wait or back off. |
-| `AGENT_AT_CAPACITY` | 7 | Finish or release active work before acquiring more. |
+| `NO_WORK` | 6 | Inspect `error.data.reason` to distinguish an empty queue, dependencies, capability gaps, and work owned by others. |
+| `AGENT_AT_CAPACITY` | 7 | Inspect current/max load, then finish or release active work before acquiring more. |
 | `IDEMPOTENCY_CONFLICT` | 8 | The request ID was reused with different parameters. |
+
+`NO_WORK` and `AGENT_AT_CAPACITY` keep compact messages while returning a
+structured allocation diagnostic in CLI JSON, native JSON-RPC error data, and
+MCP structured content. It includes deterministic dependency blocker
+references, missing capability names, ownership/load counts, and the number of
+pending tasks that have previously been retried.
 
 ## How work is represented
 
@@ -335,6 +343,8 @@ unrelated client settings:
 
 Target one client with `todo integrate codex` or `todo integrate claude`.
 `todo integrate --check` is a read-only drift check suitable for CI.
+`todo integrate --check --live` additionally launches the configured binary,
+negotiates MCP, lists tools, and verifies project-root resolution.
 Existing terminal-todo settings or modified skill files are never overwritten
 silently; inspect them, then use `--force` if replacement is intentional.
 If the binary is not named `todo`, set the MCP launch command explicitly:
@@ -382,11 +392,13 @@ todo mcp --stdio
 ```
 
 The server implements the MCP `2025-06-18` stdio lifecycle and exposes a
-curated coordination surface: discovery, initialization, status, task detail,
-creation, atomic acquisition, heartbeats, updates, logs, decomposition,
-blocking, release, completion, and events. Tool calls return both text and
-structured JSON: the text is a compact human trace, while the full result
-stays in `structuredContent` for the agent. The bundled skill keeps routine
+curated coordination surface: discovery, initialization, bounded worker
+bootstrap, status, task detail, creation, atomic acquisition, heartbeats,
+updates, logs, decomposition, blocking, release, completion, and events. Every
+tool advertises an MCP title and explicit read-only, destructive, idempotent,
+and open-world hints. Tool calls return both text and structured JSON: the
+text is a compact human trace, while the full result stays in
+`structuredContent` for the agent. The bundled skill keeps routine
 coordination in the background so user-facing updates stay focused on the
 work.
 
@@ -416,6 +428,8 @@ Add `--json` to queries and core lifecycle mutations:
 ```bash
 todo next --capabilities go,testing --json
 todo status --as go-worker-1 --json
+todo block 7 --as go-worker-1 --reason "waiting for credentials" --json
+todo decompose 8 --as go-worker-1 --into '{"subtasks":[{"title":"Reproduce"}]}' --json
 todo events 120 --json
 todo graph --json
 ```
@@ -450,9 +464,10 @@ Requests and responses are newline-delimited JSON-RPC 2.0:
 
 ```json
 {"jsonrpc":"2.0","id":0,"method":"todo.ping","params":{}}
-{"jsonrpc":"2.0","id":1,"method":"todo.next","params":{"capabilities":["go"]}}
-{"jsonrpc":"2.0","id":2,"method":"todo.acquire","params":{"actor":"go-worker-1","requestId":"alloc-42"}}
-{"jsonrpc":"2.0","id":3,"method":"todo.events","params":{"since":120}}
+{"jsonrpc":"2.0","id":1,"method":"todo.bootstrap","params":{"actor":"go-worker-1"}}
+{"jsonrpc":"2.0","id":2,"method":"todo.next","params":{"capabilities":["go"]}}
+{"jsonrpc":"2.0","id":3,"method":"todo.acquire","params":{"actor":"go-worker-1","requestId":"alloc-42"}}
+{"jsonrpc":"2.0","id":4,"method":"todo.events","params":{"since":120}}
 ```
 
 This native API supports the complete task, graph, project, diagnostics, and
@@ -529,7 +544,7 @@ Run `todo help` for the concise built-in reference.
 | Scheduling | `next`, `claim`, `acquire`, `heartbeat`, `release`, `my` |
 | Dependencies | `depends`, `dependents`, `decompose`, `lineage`, `graph`, `what-if` |
 | Coordination | `block`, `unblock`, `log`, `events`, `watch` |
-| Agents | `agent-card`, `caps` |
+| Agents | `bootstrap`, `agent-card`, `caps` |
 | Projects | `init`, `link`, `unlink`, `config` |
 | Operations | `serve`, `mcp`, `integrate`, `export`, `backup`, `restore`, `compact`, `doctor` |
 
@@ -614,6 +629,7 @@ the [Agent Protocol](docs/agent-protocol.md).
 - [Releasing](docs/releasing.md) — verified artifacts and maintainer workflow
 - [Production readiness](docs/production-readiness.md) — evidence, release gate, and known boundaries
 - [Dogfooding retrospective](docs/dogfooding-retrospective.md) — observed UX friction and improvement plan
+- [Coordination noise budget](docs/coordination-noise.md) — measurable MCP output contract and host boundary
 - [Examples](docs/examples.md) — human and multi-agent workflows
 
 ## Community

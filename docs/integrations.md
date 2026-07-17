@@ -19,6 +19,7 @@ From the project you want agents to coordinate:
 todo init
 todo integrate
 todo integrate --check
+todo integrate --check --live
 ```
 
 The default target is `all`. Use `codex` or `claude` to install one runtime:
@@ -90,18 +91,32 @@ todo integrate --check
 It exits non-zero when an expected file is missing or does not match the
 version bundled with the binary.
 
+Add `--live` to verify the configured command as well as the files:
+
+```bash
+todo integrate --check --live
+```
+
+The live check starts the configured binary in MCP stdio mode, negotiates the
+protocol, lists its tools, calls `terminal_todo_ping`, and verifies that the
+server resolved the current project root. It times out rather than leaving a
+stalled host process behind.
+
 ## Runtime lifecycle
 
 Start Codex or Claude Code from the initialized project directory. The MCP
 host launches terminal-todo over stdio, completes MCP initialization, and
 discovers the curated tools. A worker should then:
 
-1. inspect `terminal_todo_status`;
-2. identify itself with a stable actor name;
-3. call `terminal_todo_acquire` with a unique request ID;
-4. heartbeat before the lease expires;
-5. record findings with `terminal_todo_update` or `terminal_todo_log`;
-6. complete, block, decompose, or release the task explicitly.
+1. identify itself with a stable actor name;
+2. call `terminal_todo_bootstrap` for a bounded objective, ownership, ready
+   work, blocker, capability, and recent-event brief;
+3. inspect status, events, or task detail only when the brief identifies a
+   need;
+4. call `terminal_todo_acquire` with a unique request ID;
+5. heartbeat before the lease expires;
+6. record findings with `terminal_todo_update` or `terminal_todo_log`;
+7. complete, block, decompose, or release the task explicitly.
 
 The underlying `.terminal-todo/` directory remains user-controlled portable
 state. It can stay local, be backed up, or be shared through storage chosen by
@@ -145,4 +160,6 @@ todo mcp --stdio
 
 The last command waits for MCP messages on stdin; exiting on EOF is normal.
 Run `todo integrate --check` after upgrading the binary so skill and client
-configuration drift is visible.
+configuration drift is visible. Use `todo integrate --check --live` when
+debugging process launch, MCP negotiation, tool discovery, or project-root
+resolution.

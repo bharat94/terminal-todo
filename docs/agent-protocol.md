@@ -92,7 +92,8 @@ type depends on the command.
 
 ### Task Envelope (single task)
 
-Used by: `cat --json`, `update --json`
+Used by: `add --json`, `claim --json`, `heartbeat --json`, `cat --json`,
+`update --json`, `block --json`, `unblock --json`, `log --json`
 
 ```json
 {
@@ -103,7 +104,8 @@ Used by: `cat --json`, `update --json`
 
 ### Tasks Envelope (multiple tasks)
 
-Used by: `status --json`, `search --json`, `my --json`, `export`
+Used by: `status --json`, `search --json`, `my --json`, `done --json`,
+`release --json`, `rm --json`, `prune --json`, `export`
 
 ```json
 {
@@ -111,6 +113,22 @@ Used by: `status --json`, `search --json`, `my --json`, `export`
   "tasks": [ ... ]
 }
 ```
+
+### Acquire Envelope
+
+Used by: `acquire --json`
+
+```json
+{
+  "schema_version": "1",
+  "request_id": "alloc-42",
+  "replayed": false,
+  "task": { ... }
+}
+```
+
+Retrying the same request ID with identical parameters returns the original
+task with `replayed: true`; it does not extend the original lease.
 
 ### Next Envelope
 
@@ -131,9 +149,122 @@ Used by: `next --json`
   "blocked_summary": {
     "count": 5,
     "primary_blockers": ["todo://local/99"]
+  },
+  "allocation": {
+    "reason": "ready",
+    "requested_capabilities": ["go"],
+    "requested_capabilities_total": 1,
+    "requested_capabilities_truncated": false,
+    "queue": {
+      "pending": 6,
+      "ready": 1,
+      "compatible_ready": 1,
+      "dependency_blocked": 5,
+      "dependency_blockers": ["todo://local/99"],
+      "dependency_blockers_total": 1,
+      "dependency_blockers_truncated": false,
+      "capability_mismatch": 0,
+      "missing_capabilities": [],
+      "missing_capabilities_total": 0,
+      "missing_capabilities_truncated": false,
+      "in_progress": 2,
+      "blocked": 0,
+      "completed": 8,
+      "retried_pending": 1
+    }
   }
 }
 ```
+
+`allocation` is the same deterministic queue explanation used by the atomic
+allocator. `next` has no worker identity, so it omits the worker-capacity
+section included with `acquire` errors.
+
+### Bootstrap Envelope
+
+Used by: `bootstrap --as <actor> --json`
+
+The bounded worker brief contains:
+
+```json
+{
+  "schema_version": "1",
+  "worker": {
+    "actor": "go-worker-1",
+    "capabilities": ["go", "testing"],
+    "capability_source": "agent_card",
+    "max_load": 1,
+    "current_load": 0,
+    "at_capacity": false,
+    "registered": true
+  },
+  "objective": {
+    "id": 1,
+    "title": "Ship the beta",
+    "status": "pending",
+    "priority": 0.9,
+    "capabilities": []
+  },
+  "objective_source": "explicit",
+  "progress": {
+    "scope": "objective:1",
+    "total": 4,
+    "pending": 2,
+    "in_progress": 1,
+    "blocked": 0,
+    "completed": 1,
+    "percent": 25
+  },
+  "owned_work": {"total": 0, "items": []},
+  "ready_work": {
+    "total": 1,
+    "items": [
+      {
+        "id": 2,
+        "title": "Verify release archives",
+        "status": "pending",
+        "priority": 0.8,
+        "capabilities": ["go", "testing"]
+      }
+    ]
+  },
+  "blockers": {
+    "explicit_total": 0,
+    "explicit": [],
+    "dependency_blocked_total": 2,
+    "primary_dependencies_total": 1,
+    "primary_dependencies": ["todo://local/2"]
+  },
+  "capability_demand": {
+    "unclaimed_tasks": 3,
+    "without_capabilities": 1,
+    "total": 2,
+    "items": [
+      {"capability": "go", "task_count": 2, "matched": true}
+    ]
+  },
+  "recent_events": {
+    "total": 12,
+    "items": [
+      {
+        "id": 12,
+        "timestamp": "2026-07-16T12:00:00Z",
+        "type": "completed",
+        "task_id": 3,
+        "task_title": "Run the race suite",
+        "actor": "test-worker"
+      }
+    ]
+  }
+}
+```
+
+`--limit` and `--events` default to 5 and are capped at 20. `items` arrays are
+bounded but each adjacent `total` describes the complete matching set.
+Capabilities come from `--capabilities` when explicitly supplied, otherwise
+from the actor's registered agent card. An explicit `--objective` scopes
+progress to that task and its local dependency closure; otherwise the command
+selects the strongest unfinished top-level objective.
 
 ### Projects Envelope
 
@@ -347,12 +478,51 @@ The error envelope is:
 {
   "schema_version": "1",
   "error": {
-    "code": "TASK_NOT_FOUND",
-    "message": "task 999 not found",
-    "details": ""
+    "code": "NO_WORK",
+    "message": "ready work requires capabilities this worker does not provide",
+    "data": {
+      "reason": "capabilities_unavailable",
+      "requested_capabilities": ["go"],
+      "requested_capabilities_total": 1,
+      "requested_capabilities_truncated": false,
+      "queue": {
+        "pending": 2,
+        "ready": 2,
+        "compatible_ready": 0,
+        "dependency_blocked": 0,
+        "dependency_blockers": [],
+        "dependency_blockers_total": 0,
+        "dependency_blockers_truncated": false,
+        "capability_mismatch": 2,
+        "missing_capabilities": ["python"],
+        "missing_capabilities_total": 1,
+        "missing_capabilities_truncated": false,
+        "in_progress": 0,
+        "blocked": 0,
+        "completed": 0,
+        "retried_pending": 1
+      },
+      "worker": {
+        "current_load": 0,
+        "max_load": 0,
+        "owned": 0,
+        "owned_by_others": 0
+      }
+    }
   }
 }
 ```
+
+Requested capabilities and diagnostic detail arrays contain at most 20
+deterministic, sorted entries. Their `_total` fields preserve the unique count,
+while `_truncated` reports either omitted entries or a safely shortened value.
+Values are limited to 96 UTF-8-safe bytes.
+
+`retried_pending` counts pending tasks whose retry count is already non-zero.
+It does not imply a scheduled retry time. `details` and `data` are optional.
+`NO_WORK` and `AGENT_AT_CAPACITY` include
+the allocation diagnostic in `data`; other errors only add either field when
+they have structured context to report.
 
 **Error codes:**
 
@@ -384,6 +554,7 @@ All query commands support `--json` for structured output.
 | `status [--json]` | `tasksEnvelope` | All tasks with optional `--tag`/`--as` filter |
 | `status --all --json` | `projectsEnvelope` | Aggregate local + linked repos |
 | `cat <id> --json` | `taskEnvelope` | Single task detail |
+| `bootstrap --as <actor> --json` | `bootstrapEnvelope` | Bounded worker brief; optional `--capabilities`, `--objective`, `--limit`, `--events` |
 | `next --json` | `nextEnvelope` | Tasks ready to work, with blocked summary |
 | `next --json --capabilities go,test` | `nextEnvelope` | Filtered by agent capabilities |
 | `lineage <id> --json` | `lineageEnvelope` | Recursive decomposition with progress |
@@ -404,26 +575,25 @@ All query commands support `--json` for structured output.
 ## 5. Mutation Commands
 
 Mutation commands output human-readable text by default. Core lifecycle
-mutations (`add`, `claim`, `heartbeat`, `release`, and `done`) accept `--json`
-and return a versioned task or tasks envelope. All errors are structured via
-the error envelope when `--json` is present.
+mutations accept `--json` and return a versioned envelope. All errors are
+structured via the error envelope when `--json` is present.
 
-| Command | Args | Effect |
-|---------|------|--------|
-| `add "<title>" [--priority N] [--caps a,b] [--tag x,y] [--after <id>]` | Create task | Emits `created` event |
-| `done <id> [--as <owner>]` | Mark complete | Makes pending dependents eligible and emits `completed`; manual blocks remain until `unblock` |
-| `rm <id>` | Remove task | Emits `removed` event |
-| `update <id> [--title] [--priority] [--caps] [--set k=v] [--add-dep] [--remove-dep] [--as]` | Modify task | Emits `updated`/`dep_added`/`dep_removed` events |
-| `claim <id> --as <owner> [--ttl <duration>]` | Acquire lease | Emits `claimed` event |
-| `acquire --as <owner> --request-id <id> [--capabilities a,b] [--ttl <duration>] [--wait <duration>]` | Atomically select and claim the highest-priority compatible task | Durable request IDs make retries idempotent; optional bounded waiting retries `NO_WORK`; enforces agent `max_load`, emits `claimed` event |
-| `heartbeat <id> --as <owner> [--ttl <duration>]` | Renew an owned active lease from the current time | Emits `lease_renewed`; stale leases cannot be revived |
-| `release <id> --as <owner> [--error <msg>]` | Yield lease | Increments retry_count, emits `released` event |
-| `block <id> --reason <text> [--as <owner>]` | Mark blocked | Releases any active lease and emits `blocked` event |
-| `unblock <id> [--as <owner>]` | Mark pending | Clears legacy lease fields and emits `unblocked` event |
-| `log <id> --msg <text> --as <owner>` | Append to trail | Appends to task.Log |
-| `decompose <id> --into <json> [--as]` | Split into subtasks | Releases the parent lease, clears a manual block, and emits `decomposed` |
-| `prune` | Remove completed tasks | Rewrites dependency lists |
-| `compact --keep-events <n> [--receipts-before <duration>] [--dry-run]` | Apply explicit audit/idempotency retention | Preserves monotonic event IDs; removes receipts only for completed or absent tasks |
+| Command | Effect | JSON result |
+|---------|--------|-------------|
+| `add "<title>" [--priority N] [--caps a,b] [--tag x,y] [--after <id>]` | Create task; emits `created` | `taskEnvelope` |
+| `done <id> [--as <owner>]` | Complete and make eligible dependents visible; manual blocks remain | `tasksEnvelope` |
+| `rm <id>` | Remove an unowned task after dependency checks | `tasksEnvelope` snapshot of removed tasks |
+| `update <id> [--title] [--priority] [--caps] [--set k=v] [--add-dep] [--remove-dep] [--as]` | Modify task; emits update/dependency events | `taskEnvelope` |
+| `claim <id> --as <owner> [--ttl <duration>]` | Acquire a lease | `taskEnvelope` |
+| `acquire --as <owner> --request-id <id> [--capabilities a,b] [--ttl <duration>] [--wait <duration>]` | Atomically select and lease compatible work | `acquireEnvelope` |
+| `heartbeat <id> --as <owner> [--ttl <duration>]` | Renew an active owned lease | `taskEnvelope` |
+| `release <id> --as <owner> [--error <msg>]` | Yield lease and optionally record a failed attempt | `taskEnvelope` |
+| `block <id> --reason <text> [--as <owner>]` | Preserve a blocker and release any active lease | `taskEnvelope` |
+| `unblock <id> [--as <owner>]` | Return manually blocked work to pending | `taskEnvelope` |
+| `log <id> --msg <text> --as <owner>` | Append to the task audit trail | `taskEnvelope` |
+| `decompose <id> --into <json> [--as]` | Create children and make them prerequisites of the parent | `{schema_version, parent, subtasks}` |
+| `prune` | Remove completed tasks and rewrite local dependencies | `tasksEnvelope` snapshot of removed tasks |
+| `compact --keep-events <n> [--receipts-before <duration>] [--dry-run]` | Apply explicit audit/idempotency retention | `{schema_version, events_removed, receipts_removed, dry_run}` |
 
 ---
 
@@ -518,6 +688,7 @@ advertises a stable, deterministic tool list:
 |----------|------------------|---------|
 | `terminal_todo_ping` | `todo.ping` | Discover project and protocol capabilities |
 | `terminal_todo_init` | `todo.init` | Initialize portable project state |
+| `terminal_todo_bootstrap` | `todo.bootstrap` | Get a bounded worker session brief |
 | `terminal_todo_status` | `todo.status` | Inspect the shared execution graph |
 | `terminal_todo_cat` | `todo.cat` | Read one task and its handoff state |
 | `terminal_todo_add` | `todo.add` | Add durable DAG work |
@@ -539,7 +710,13 @@ results with `isError: true`, a concise symbolic text summary, and a structured
 `{code, message, data?}` payload. Protocol errors such as an unknown tool or
 malformed call use JSON-RPC error responses.
 
-The curated surface is intentionally smaller than the native API. Agents get
+Each tool also supplies a human-readable `title` and explicit advisory MCP
+`readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`
+annotations. Every current tool is local (`openWorldHint: false`); clients
+must still authorize and dispatch by tool name. `bootstrap`, `status`, `cat`,
+and `events` are not annotated read-only because loading current state may
+persist recovery of expired leases. The curated surface is
+intentionally smaller than the native API. Agents get
 the safe coordination loop without a broad administrative capability set;
 operators and specialized integrations can use `serve --stdio` for all
 commands.
@@ -571,6 +748,7 @@ processed but no response is written. Stdio requests may be up to 4 MiB.
 |--------|--------|--------|
 | `todo.ping` | `{}` | `{version, protocol_version, project, initialized, capabilities}` |
 | `todo.init` | `{}` | `{path}` |
+| `todo.bootstrap` | `{actor, capabilities?, objectiveId?, limit?, eventLimit?}` | `bootstrapEnvelope` |
 | `todo.add` | `{title, after?, priority?, capabilities?, tags?}` | `{id, title}` |
 | `todo.done` | `{ids, actor?}` | `{completed, unblocked}` |
 | `todo.status` | `{tag?, actor?, all?}` | `tasksEnvelope` or `projectsEnvelope` |
@@ -630,10 +808,15 @@ processed but no response is written. Stdio requests may be up to 4 MiB.
 | `LEASE_NOT_ACTIVE` | -32013 |
 
 Error identifiers and numeric codes are append-only protocol values. `NO_WORK`
-is a normal, retryable scheduler outcome: clients should wait for a task or
-dependency event and use backoff before trying again. `AGENT_AT_CAPACITY`
-means the actor must finish or release active work before retrying. Capacity is
-checked before queue availability, so an at-capacity actor receives
+is a normal, retryable scheduler outcome. Its structured allocation diagnostic
+distinguishes `no_pending_work`, `dependencies_incomplete`,
+`capabilities_unavailable`, and `work_owned_by_others`. Queue counts also
+report concrete dependency references, missing capabilities, and previously
+retried pending work. Clients should use that reason to decide whether to wait
+for a task, wait for a dependency or ownership event, add capabilities, or
+finish the session. `AGENT_AT_CAPACITY` uses `worker_at_capacity` and reports current and
+maximum load; the actor must finish or release active work before retrying.
+Capacity is checked before queue availability, so an at-capacity actor receives
 `AGENT_AT_CAPACITY` even when no compatible work is ready.
 
 CLI clients can pass `--wait <duration>` to retry `NO_WORK` within one bounded

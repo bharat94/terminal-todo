@@ -42,10 +42,15 @@ The current product provides:
 - a durable local DAG with local and linked-repository dependencies;
 - atomic `acquire`, explicit `claim`, leases, heartbeats, retries, and recovery;
 - capability-aware deterministic allocation and per-agent load limits;
+- deterministic allocation diagnostics with dependency blockers, missing
+  capabilities, retry history, and worker load;
+- a bounded non-allocating session brief covering objective progress, owned and
+  ready work, blockers, capability demand, and recent events;
 - structured findings, lifecycle events, mutation receipts, backup, export,
   doctor, prune, and compaction;
 - human CLI output, stable CLI JSON, native JSON-RPC, and an MCP server;
-- reusable Codex and Claude integration material; and
+- annotated MCP tools, reusable Codex and Claude integration material,
+  project-scoped installers, and a live MCP integration check; and
 - cross-platform builds and an auditable release pipeline.
 
 All live participants must operate on the same lock-capable filesystem.
@@ -55,8 +60,6 @@ Cross-repository aliases point to other stores visible from that workspace.
 
 Near-term work should make the existing control plane easier to operate:
 
-- explain precisely why no work was allocated;
-- provide a compact session/bootstrap view for a newly arrived worker;
 - expose richer health and invariant diagnostics;
 - improve host UI treatment of background heartbeats and coordination calls;
 - validate the first public prerelease and installation paths on real hosts;

@@ -87,6 +87,22 @@ todo acquire --as agent-beta --capabilities go \
 If a worker crashes instead, its in-progress lease becomes reclaimable after
 the TTL. A delayed heartbeat cannot revive an expired lease.
 
+## Resume a worker session
+
+Choose and reuse an actor identity, then get one bounded brief before
+acquiring more work:
+
+```bash
+todo agent-card --as agent-beta --caps go,testing --max-load 1
+todo bootstrap --as agent-beta --json
+todo acquire --as agent-beta --request-id agent-beta-acquire-2 --json
+```
+
+Bootstrap does not register the actor or reserve a task. It summarizes
+objective progress, current ownership, compatible ready work, blockers,
+capability demand, and recent events; like other state reads, it may persist
+recovery of an expired lease.
+
 ## Cross-repository ordering
 
 In `api-service`, create the prerequisite:

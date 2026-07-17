@@ -43,6 +43,16 @@ That was more useful than storing only a high-level objective: the graph
 remembered what had happened and why, while the thread-level goal retained the
 overall outcome.
 
+### Bootstrap reduced resume cost
+
+After the first implementation pass, one bounded bootstrap replaced separate
+status, ownership, and event-history reads. Against this project's live graph
+it summarized an objective at 83% completion, the one explicit publication
+gate, current capability demand, and three recent events out of 55. It also
+surfaced and durably recovered an expired integration-task lease. That was the
+first point where resuming coordination felt like reading a brief instead of
+querying a task database.
+
 ### Failures exposed product gaps
 
 Native Windows CI found an unsupported directory-sync assumption. The task
@@ -112,6 +122,16 @@ future network service; copying state is transfer, not live coordination.
    from complete structured data.
 5. MCP tests enforce the compact-output contract while proving structured
    content remains complete.
+6. Allocation failures now explain exact dependency, capability, ownership,
+   retry-history, and capacity conditions in structured data.
+7. A bounded bootstrap gives a newly arrived worker the smallest useful
+   objective, ownership, ready-work, blocker, capability, and event brief.
+8. Remaining lifecycle mutations now support versioned CLI JSON and
+   structured errors without changing human output.
+9. Every MCP tool advertises explicit title and behavior annotations, and the
+   installer can perform a live handshake, tool-list, ping, and root check.
+10. A test-backed noise budget measures server-visible bytes independently
+    from host-rendered tool chrome and assistant narration.
 
 ## Systematic improvement plan
 
@@ -124,26 +144,31 @@ Status: implemented in this run.
 - Keep visible MCP text bounded and semantic.
 - Preserve full typed data separately.
 - Teach agents to narrate outcomes, not coordination calls.
+- Enforce the server-controlled [coordination noise
+  budget](coordination-noise.md) independently from host-rendered tool chrome.
 
 ### P1: explain allocation decisions
 
-Status: next.
+Status: implemented in this run.
 
-- Add structured `NO_WORK` diagnostics that distinguish no ready work,
+- Structured `NO_WORK` diagnostics distinguish no ready work,
   dependency blocking, capability mismatch, and ownership/capacity.
-- Return the smallest useful set of missing capabilities and blocker task IDs.
-- Keep the visible error one line; put detail in structured error data.
+- Responses include deterministic missing capabilities and blocker task
+  references.
+- Visible errors stay compact while full detail lives in structured error data.
 
 ### P1: first-class session bootstrap
 
-Status: next.
+Status: bounded session brief implemented; identity and request-ID ergonomics
+remain.
 
-- Provide a session bootstrap operation that establishes or resumes a stable
-  actor identity.
-- Make request-ID generation easy while preserving caller-controlled retry
-  identity.
-- Expose current ownership and recommended heartbeat timing in one compact
-  result.
+- `bootstrap` provides one bounded view of objective progress, current
+  ownership, compatible ready work, blockers, capability demand, and recent
+  events.
+- The caller still chooses the stable actor and request IDs; this preserves
+  portable identity and retry semantics across vendors.
+- MCP and CLI summaries remain compact while structured content carries the
+  complete brief.
 
 ### P1: incremental reads
 
@@ -156,13 +181,24 @@ Status: protocol support exists; workflow refinement remains.
 
 ### P2: host-aware onboarding
 
-Status: planned.
+Status: live integration check implemented; restart detection remains planned.
 
 - Detect and explain when integration was installed but requires a host
   restart.
-- Add a minimal integration health check that verifies binary discovery, MCP
+- A live integration health check verifies binary discovery, MCP
   initialization, tool listing, and project-root resolution.
 - Keep setup output concise by default and offer detail on request.
+
+Host-side tool collapsing remains outside the MCP server's control. Measure
+server text, host-rendered tool rows, and assistant narration separately so a
+presentation regression is assigned to the layer that can fix it.
+
+The second dogfood pass confirmed the intended split: bootstrap made discovery
+small, allocation diagnostics made empty work actionable, and MCP summaries
+made routine transitions terse. The remaining context-size risk is complete
+structured task payloads with very large logs or bulk prune results. Address
+that with compact mutation receipts and paginated detail reads rather than
+removing audit history or hiding it from operators.
 
 ### P2: remote coordination boundary
 
