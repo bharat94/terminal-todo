@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 )
 
 func cmdUnblock(args []string) {
@@ -22,11 +22,12 @@ func cmdUnblock(args []string) {
 		if task.Status != store.StatusBlocked {
 			return fmt.Errorf("task %d is not blocked", ids[0])
 		}
-		if task.Owner != "" && task.Owner != owner {
-			return fmt.Errorf("task %d is claimed by %s; use --as %s", ids[0], task.Owner, task.Owner)
-		}
 		task.Status = store.StatusPending
 		task.BlockReason = ""
+		// Blocked tasks do not retain ownership. Clear legacy state written by
+		// versions that kept a stale lease while blocked.
+		task.Owner = ""
+		task.LeaseExpires = 0
 		s.AddLog(ids[0], owner, "unblocked")
 		s.AddEvent(store.EventTaskUnblocked, ids[0], owner, nil)
 		return nil

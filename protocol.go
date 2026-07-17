@@ -4,8 +4,9 @@ import (
 	"sort"
 	"time"
 
-	"terminal-todo/dag"
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/dag"
+
+	"github.com/bharat94/terminal-todo/store"
 )
 
 const protocolVersion = "1"

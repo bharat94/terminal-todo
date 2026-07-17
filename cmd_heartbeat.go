@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 )
 
 func cmdHeartbeat(args []string) {

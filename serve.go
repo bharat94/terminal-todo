@@ -14,8 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"terminal-todo/dag"
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/dag"
+
+	"github.com/bharat94/terminal-todo/store"
 )
 
 type rpcRequest struct {
@@ -231,10 +232,10 @@ type doctorParams struct {
 }
 
 type agentCardParams struct {
-	Actor   string   `json:"actor,omitempty"`
-	Caps    []string `json:"caps,omitempty"`
-	Desc    string   `json:"desc,omitempty"`
-	MaxLoad int      `json:"maxLoad,omitempty"`
+	Actor   string    `json:"actor,omitempty"`
+	Caps    *[]string `json:"caps,omitempty"`
+	Desc    *string   `json:"desc,omitempty"`
+	MaxLoad *int      `json:"maxLoad,omitempty"`
 }
 
 type capsParams struct {
@@ -352,11 +353,14 @@ type restoreResult struct {
 }
 
 type agentCardResult struct {
-	Actor      string   `json:"actor"`
-	Caps       []string `json:"caps"`
-	Desc       string   `json:"desc"`
-	MaxLoad    int      `json:"maxLoad"`
-	Registered bool     `json:"registered"`
+	Actor       string   `json:"actor"`
+	Caps        []string `json:"caps"`
+	Desc        string   `json:"desc,omitempty"`
+	MaxLoad     int      `json:"maxLoad"`
+	CurrentLoad int      `json:"currentLoad"`
+	CreatedAt   string   `json:"createdAt"`
+	LastSeen    string   `json:"lastSeen,omitempty"`
+	Registered  bool     `json:"registered"`
 }
 
 type capsResult struct {
@@ -625,8 +629,12 @@ func (srv *server) handleAdd(params json.RawMessage) (interface{}, *rpcError) {
 	if err := unmarshalParams(params, &p); err != nil {
 		return nil, err
 	}
+	p.Title = strings.TrimSpace(p.Title)
 	if p.Title == "" {
 		return nil, rpcErrorf(rpcInvalidParams, "title is required")
+	}
+	if p.Priority != nil && !validPriority32(*p.Priority) {
+		return nil, rpcErrorf(rpcInvalidParams, "priority must be between 0 and 1")
 	}
 
 	if err := srv.ensureInitialized(); err != nil {
@@ -867,6 +875,12 @@ func (srv *server) handleUpdate(params json.RawMessage) (interface{}, *rpcError)
 	if p.Title == nil && p.Priority == nil && p.Capabilities == nil && len(p.Extra) == 0 && len(p.AddDeps) == 0 && len(p.RemoveDeps) == 0 {
 		return nil, rpcErrorf(rpcInvalidParams, "nothing to update")
 	}
+	if p.Title != nil && strings.TrimSpace(*p.Title) == "" {
+		return nil, rpcErrorf(rpcInvalidParams, "title cannot be empty")
+	}
+	if p.Priority != nil && !validPriority32(*p.Priority) {
+		return nil, rpcErrorf(rpcInvalidParams, "priority must be between 0 and 1")
+	}
 
 	if err := srv.ensureInitialized(); err != nil {
 		return nil, err
@@ -951,7 +965,7 @@ func (srv *server) handleUpdate(params json.RawMessage) (interface{}, *rpcError)
 			task.Title = title
 		}
 		if p.Priority != nil {
-			if *p.Priority < 0 || *p.Priority > 1 {
+			if !validPriority32(*p.Priority) {
 				return fmt.Errorf("priority must be between 0 and 1")
 			}
 			task.Priority = *p.Priority
@@ -1291,6 +1305,8 @@ func (srv *server) handleBlock(params json.RawMessage) (interface{}, *rpcError) 
 
 		task.Status = store.StatusBlocked
 		task.BlockReason = p.Reason
+		task.Owner = ""
+		task.LeaseExpires = 0
 		s.AddLog(p.ID, p.Actor, fmt.Sprintf("blocked: %s", p.Reason))
 		s.AddEvent(store.EventTaskBlocked, p.ID, p.Actor, map[string]string{"reason": p.Reason})
 		return nil
@@ -1329,12 +1345,12 @@ func (srv *server) handleUnblock(params json.RawMessage) (interface{}, *rpcError
 		if task.Status != store.StatusBlocked {
 			return fmt.Errorf("task %d is not blocked", p.ID)
 		}
-		if task.Owner != "" && task.Owner != p.Actor {
-			return fmt.Errorf("task %d is claimed by %s", p.ID, task.Owner)
-		}
-
 		task.Status = store.StatusPending
 		task.BlockReason = ""
+		// Clear legacy owner fields from stores written before blocking
+		// released the active lease.
+		task.Owner = ""
+		task.LeaseExpires = 0
 		s.AddLog(p.ID, p.Actor, "unblocked")
 		s.AddEvent(store.EventTaskUnblocked, p.ID, p.Actor, nil)
 		return nil
@@ -1932,30 +1948,37 @@ func (srv *server) handleConfigSet(params json.RawMessage) (interface{}, *rpcErr
 		return nil, err
 	}
 
+	var normalizedValue interface{}
+	switch p.Key {
+	case "default_ttl":
+		d, err := time.ParseDuration(p.Value)
+		if err != nil || d <= 0 {
+			return nil, rpcErrorf(rpcInvalidParams, "default_ttl must be a positive duration")
+		}
+		normalizedValue = p.Value
+	case "default_priority":
+		val, err := strconv.ParseFloat(p.Value, 32)
+		if err != nil || !validPriority(val) {
+			return nil, rpcErrorf(rpcInvalidParams, "default_priority must be between 0 and 1")
+		}
+		normalizedValue = float32(val)
+	case "default_caps":
+		normalizedValue = p.Value
+	default:
+		return nil, rpcErrorf(rpcInvalidParams, "unknown config key %q", p.Key)
+	}
+
 	if err := updateConfig(func(cfg *ProjectConfig) error {
 		switch p.Key {
 		case "default_ttl":
-			d, err := time.ParseDuration(p.Value)
-			if err != nil || d <= 0 {
-				return fmt.Errorf("default_ttl must be a positive duration")
-			}
-			cfg.DefaultTTL = p.Value
+			cfg.DefaultTTL = normalizedValue.(string)
 		case "default_priority":
-			val, err := strconv.ParseFloat(p.Value, 32)
-			if err != nil || val < 0 || val > 1 {
-				return fmt.Errorf("default_priority must be between 0 and 1")
-			}
-			cfg.DefaultPriority = float32(val)
+			cfg.DefaultPriority = normalizedValue.(float32)
 		case "default_caps":
-			cfg.DefaultCapCaps = p.Value
-		default:
-			return fmt.Errorf("unknown config key %q", p.Key)
+			cfg.DefaultCapCaps = normalizedValue.(string)
 		}
 		return nil
 	}); err != nil {
-		if strings.Contains(err.Error(), "unknown config key") {
-			return nil, rpcErrorf(rpcInvalidParams, "%v", err)
-		}
 		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 	}
 
@@ -2279,13 +2302,64 @@ func (srv *server) handleAgentCard(params json.RawMessage) (interface{}, *rpcErr
 	if err := unmarshalParams(params, &p); err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(p.Actor) == "" {
+		return nil, rpcErrorf(rpcInvalidParams, "actor is required")
+	}
+	if p.MaxLoad != nil && *p.MaxLoad < 0 {
+		return nil, rpcErrorf(rpcInvalidParams, "maxLoad must be a non-negative integer")
+	}
+	if err := srv.ensureInitialized(); err != nil {
+		return nil, err
+	}
 
+	if p.Caps != nil || p.Desc != nil || p.MaxLoad != nil {
+		now := nowTimestamp()
+		if err := updateAgentRegistry(func(registry *AgentRegistry) error {
+			card, exists := registry.Agents[p.Actor]
+			if !exists {
+				card = AgentCard{Name: p.Actor, CreatedAt: now}
+			}
+			if p.Caps != nil {
+				card.Capabilities = normalizeCapabilities(strings.Join(*p.Caps, ","))
+				if card.Capabilities == nil {
+					card.Capabilities = []string{}
+				}
+			}
+			if p.Desc != nil {
+				card.Description = *p.Desc
+			}
+			if p.MaxLoad != nil {
+				card.MaxLoad = *p.MaxLoad
+			}
+			card.LastSeen = now
+			registry.Agents[p.Actor] = card
+			return nil
+		}); err != nil {
+			return nil, rpcErrorf(rpcStoreCorrupted, "updating agent registry: %v", err)
+		}
+	}
+
+	registry, err := loadAgentRegistry()
+	if err != nil {
+		return nil, rpcErrorf(rpcStoreCorrupted, "loading agent registry: %v", err)
+	}
+	card, ok := registry.Agents[p.Actor]
+	if !ok {
+		return nil, rpcErrorf(rpcTaskNotFound, "agent %s not found in registry", p.Actor)
+	}
+	s, err := loadStoreSafe()
+	if err != nil {
+		return nil, rpcErrorf(rpcStoreCorrupted, "loading store: %v", err)
+	}
 	return agentCardResult{
-		Actor:      p.Actor,
-		Caps:       p.Caps,
-		Desc:       p.Desc,
-		MaxLoad:    p.MaxLoad,
-		Registered: true,
+		Actor:       card.Name,
+		Caps:        append([]string(nil), card.Capabilities...),
+		Desc:        card.Description,
+		MaxLoad:     card.MaxLoad,
+		CurrentLoad: computeAgentLoad(s, p.Actor),
+		CreatedAt:   card.CreatedAt,
+		LastSeen:    card.LastSeen,
+		Registered:  true,
 	}, nil
 }
 

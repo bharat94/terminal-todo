@@ -1,7 +1,7 @@
 package dag
 
 import (
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 	"testing"
 
 	"github.com/stretchr/testify/assert"

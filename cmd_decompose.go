@@ -3,9 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/bharat94/terminal-todo/dag"
+	"github.com/bharat94/terminal-todo/store"
 	"strings"
-	"terminal-todo/dag"
-	"terminal-todo/store"
 )
 
 type DecomposePayload struct {

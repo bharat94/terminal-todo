@@ -162,8 +162,12 @@ func TestClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := l.AcquireWithTimeout(Read, 100*time.Millisecond); err == nil {
+	started := time.Now()
+	if err := l.AcquireWithTimeout(Read, time.Second); err == nil {
 		t.Error("expected error acquiring lock on closed file")
+	}
+	if elapsed := time.Since(started); elapsed >= 500*time.Millisecond {
+		t.Errorf("permanent lock error was retried for %v", elapsed)
 	}
 }
 

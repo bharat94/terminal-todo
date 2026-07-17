@@ -3,8 +3,9 @@ package main
 import (
 	"fmt"
 
-	"terminal-todo/dag"
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/dag"
+
+	"github.com/bharat94/terminal-todo/store"
 )
 
 func cmdPrune(args []string) {

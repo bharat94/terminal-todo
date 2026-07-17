@@ -1,4 +1,4 @@
-module terminal-todo
+module github.com/bharat94/terminal-todo
 
 go 1.26.1
 

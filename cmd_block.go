@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 )
 
 func cmdBlock(args []string) {
@@ -32,6 +32,8 @@ func cmdBlock(args []string) {
 		}
 		task.Status = store.StatusBlocked
 		task.BlockReason = reason
+		task.Owner = ""
+		task.LeaseExpires = 0
 		s.AddLog(ids[0], owner, fmt.Sprintf("blocked: %s", reason))
 		s.AddEvent(store.EventTaskBlocked, ids[0], owner, map[string]string{"reason": reason})
 		return nil

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

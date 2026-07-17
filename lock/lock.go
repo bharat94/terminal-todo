@@ -1,6 +1,7 @@
 package lock
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,8 @@ const (
 )
 
 const suffix = ".lock"
+
+var errContended = errors.New("lock is held by another process")
 
 type FileLock struct {
 	f    *os.File
@@ -46,6 +49,9 @@ func (l *FileLock) AcquireWithTimeout(lockType Type, timeout time.Duration) erro
 		err := l.tryAcquire(lockType)
 		if err == nil {
 			return nil
+		}
+		if !errors.Is(err, errContended) {
+			return err
 		}
 		if timeout > 0 && time.Now().After(deadline) {
 			return fmt.Errorf("lock acquisition timed out after %v", timeout)

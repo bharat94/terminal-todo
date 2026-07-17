@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 )
 
 func cmdRelease(args []string) {

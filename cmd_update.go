@@ -6,8 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"terminal-todo/dag"
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/dag"
+
+	"github.com/bharat94/terminal-todo/store"
 )
 
 func cmdUpdate(args []string) {
@@ -41,7 +42,7 @@ func cmdUpdate(args []string) {
 	var priority float64
 	if hasPriority {
 		priority, err = strconv.ParseFloat(priorityValue, 32)
-		if err != nil || priority < 0 || priority > 1 {
+		if err != nil || !validPriority(priority) {
 			fail(ErrInvalidArgs, "--priority must be between 0 and 1")
 		}
 	}

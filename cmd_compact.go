@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 )
 
 type compactOptions struct {

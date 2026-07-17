@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 )
 
 func cmdInit(args []string) {

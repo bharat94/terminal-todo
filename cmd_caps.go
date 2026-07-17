@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 )
 
 type capabilityDemand struct {

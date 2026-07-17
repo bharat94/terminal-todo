@@ -35,7 +35,7 @@ func cmdConfig(args []string) {
 				cfg.DefaultTTL = value
 			case "default_priority":
 				p, err := strconv.ParseFloat(value, 32)
-				if err != nil || p < 0 || p > 1 {
+				if err != nil || !validPriority(p) {
 					return fmt.Errorf("default_priority must be between 0 and 1")
 				}
 				cfg.DefaultPriority = float32(p)

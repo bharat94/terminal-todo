@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"terminal-todo/dag"
-	"terminal-todo/store"
+
+	"github.com/bharat94/terminal-todo/dag"
+	"github.com/bharat94/terminal-todo/store"
 )
 
 func cmdRm(args []string) {
@@ -15,8 +16,12 @@ func cmdRm(args []string) {
 	updateStore(func(s *store.TaskStore) error {
 		removing := make(map[uint64]struct{}, len(ids))
 		for _, id := range ids {
-			if _, ok := s.Tasks[id]; !ok {
+			task, ok := s.Tasks[id]
+			if !ok {
 				return fmt.Errorf("task %d not found", id)
+			}
+			if task.Status == store.StatusInProgress && task.Owner != "" {
+				return fmt.Errorf("cannot remove task %d: active lease is owned by %s; release it first", id, task.Owner)
 			}
 			removing[id] = struct{}{}
 		}

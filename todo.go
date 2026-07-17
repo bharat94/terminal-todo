@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 )
 
 var (

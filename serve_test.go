@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -53,6 +53,30 @@ func TestServerAcquireUsesSharedAtomicAllocator(t *testing.T) {
 	assert.Equal(t, rpcNoWork, rpcErr.Code)
 }
 
+func TestServerRejectsInvalidTaskAndConfigInputAsInvalidParams(t *testing.T) {
+	oldRoot := projectRoot
+	projectRoot = t.TempDir()
+	defer func() { projectRoot = oldRoot }()
+	path := filepath.Join(projectRoot, ".terminal-todo", "tasks.bin")
+	assert.NoError(t, store.NewTaskStore().Save(path))
+
+	srv := &server{initialized: true}
+	for _, test := range []struct {
+		method string
+		params string
+	}{
+		{"todo.add", `{"title":"work","priority":1.1}`},
+		{"todo.add", `{"title":"   "}`},
+		{"todo.update", `{"id":1,"priority":-0.1}`},
+		{"todo.config.set", `{"key":"default_priority","value":"NaN"}`},
+		{"todo.config.set", `{"key":"default_ttl","value":"forever"}`},
+	} {
+		_, rpcErr := srv.dispatch(test.method, json.RawMessage(test.params))
+		assert.NotNil(t, rpcErr, "%s %s", test.method, test.params)
+		assert.Equal(t, rpcInvalidParams, rpcErr.Code, "%s %s", test.method, test.params)
+	}
+}
+
 func TestServerHeartbeatRenewsOnlyTheOwnersActiveLease(t *testing.T) {
 	oldRoot := projectRoot
 	projectRoot = t.TempDir()
@@ -93,6 +117,41 @@ func TestServerHeartbeatRenewsOnlyTheOwnersActiveLease(t *testing.T) {
 	_, rpcErr = srv.dispatch("todo.heartbeat", json.RawMessage(`{"id":1,"actor":"rpc-agent"}`))
 	assert.NotNil(t, rpcErr)
 	assert.Equal(t, rpcLeaseNotActive, rpcErr.Code)
+}
+
+func TestServerBlockReleasesLeaseAndUnblockRepairsLegacyOwnership(t *testing.T) {
+	oldRoot := projectRoot
+	projectRoot = t.TempDir()
+	defer func() { projectRoot = oldRoot }()
+	path := filepath.Join(projectRoot, ".terminal-todo", "tasks.bin")
+	s := store.NewTaskStore()
+	task := s.AddTask("RPC blocked work", nil)
+	task.Status = store.StatusInProgress
+	task.Owner = "rpc-agent"
+	task.LeaseExpires = uint64(time.Now().Add(time.Hour).UnixMilli())
+	assert.NoError(t, s.Save(path))
+
+	srv := &server{initialized: true}
+	_, rpcErr := srv.dispatch("todo.block", json.RawMessage(`{"id":1,"actor":"rpc-agent","reason":"waiting"}`))
+	assert.Nil(t, rpcErr)
+
+	persisted, err := store.LoadCurrent(path)
+	assert.NoError(t, err)
+	assert.Equal(t, store.StatusBlocked, persisted.Tasks[1].Status)
+	assert.Empty(t, persisted.Tasks[1].Owner)
+	assert.Zero(t, persisted.Tasks[1].LeaseExpires)
+
+	persisted.Tasks[1].Owner = "legacy-agent"
+	persisted.Tasks[1].LeaseExpires = uint64(time.Now().Add(-time.Hour).UnixMilli())
+	assert.NoError(t, persisted.Save(path))
+
+	_, rpcErr = srv.dispatch("todo.unblock", json.RawMessage(`{"id":1,"actor":"coordinator"}`))
+	assert.Nil(t, rpcErr)
+	persisted, err = store.LoadCurrent(path)
+	assert.NoError(t, err)
+	assert.Equal(t, store.StatusPending, persisted.Tasks[1].Status)
+	assert.Empty(t, persisted.Tasks[1].Owner)
+	assert.Zero(t, persisted.Tasks[1].LeaseExpires)
 }
 
 func TestServerDecomposeReleasesParentLeaseAndAttributesActor(t *testing.T) {
@@ -198,6 +257,57 @@ func TestServerAcquireReportsAgentCapacity(t *testing.T) {
 	assert.NotNil(t, rpcErr)
 	assert.Equal(t, rpcAgentCapacity, rpcErr.Code)
 	assert.Equal(t, -32011, rpcErr.Code)
+}
+
+func TestServerAgentCardPersistsProfileAndReportsCurrentLoad(t *testing.T) {
+	oldRoot := projectRoot
+	projectRoot = t.TempDir()
+	defer func() { projectRoot = oldRoot }()
+	path := filepath.Join(projectRoot, ".terminal-todo", "tasks.bin")
+	s := store.NewTaskStore()
+	active := s.AddTask("Active", nil)
+	active.Status = store.StatusInProgress
+	active.Owner = "rpc-agent"
+	active.LeaseExpires = uint64(time.Now().Add(time.Hour).UnixMilli())
+	ready := s.AddTask("Go work", nil)
+	ready.Capabilities = []string{"go"}
+	assert.NoError(t, s.Save(path))
+
+	srv := &server{initialized: true}
+	result, rpcErr := srv.dispatch("todo.agentCard", json.RawMessage(`{
+		"actor":"rpc-agent",
+		"caps":["go","testing","go"],
+		"desc":"RPC worker",
+		"maxLoad":2
+	}`))
+	assert.Nil(t, rpcErr)
+	card := result.(agentCardResult)
+	assert.Equal(t, []string{"go", "testing"}, card.Caps)
+	assert.Equal(t, "RPC worker", card.Desc)
+	assert.Equal(t, 2, card.MaxLoad)
+	assert.Equal(t, 1, card.CurrentLoad)
+	assert.NotEmpty(t, card.CreatedAt)
+
+	registry, err := loadAgentRegistry()
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"go", "testing"}, registry.Agents["rpc-agent"].Capabilities)
+	assert.Equal(t, 2, registry.Agents["rpc-agent"].MaxLoad)
+
+	queried, rpcErr := srv.dispatch("todo.agentCard", json.RawMessage(`{"actor":"rpc-agent"}`))
+	assert.Nil(t, rpcErr)
+	assert.Equal(t, card.Actor, queried.(agentCardResult).Actor)
+	assert.Equal(t, 1, queried.(agentCardResult).CurrentLoad)
+
+	acquired, rpcErr := srv.dispatch("todo.acquire", json.RawMessage(`{"actor":"rpc-agent","requestId":"registered-profile"}`))
+	assert.Nil(t, rpcErr)
+	assert.Equal(t, "Go work", acquired.(acquireEnvelope).Task.Title)
+
+	_, rpcErr = srv.dispatch("todo.agentCard", json.RawMessage(`{"caps":["go"]}`))
+	assert.NotNil(t, rpcErr)
+	assert.Equal(t, rpcInvalidParams, rpcErr.Code)
+	_, rpcErr = srv.dispatch("todo.agentCard", json.RawMessage(`{"actor":"bad","maxLoad":-1}`))
+	assert.NotNil(t, rpcErr)
+	assert.Equal(t, rpcInvalidParams, rpcErr.Code)
 }
 
 func TestServerRejectsUnknownAndTrailingParams(t *testing.T) {

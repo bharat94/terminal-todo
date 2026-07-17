@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"terminal-todo/dag"
+	"github.com/bharat94/terminal-todo/dag"
 )
 
 func cmdLink(args []string) {

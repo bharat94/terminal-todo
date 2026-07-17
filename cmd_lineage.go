@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 )
 
 type lineageProgress struct {

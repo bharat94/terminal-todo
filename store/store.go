@@ -7,8 +7,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"terminal-todo/fsutil"
-	"terminal-todo/lock"
+	"github.com/bharat94/terminal-todo/fsutil"
+
+	"github.com/bharat94/terminal-todo/lock"
 
 	"github.com/vmihailenco/msgpack/v5"
 )

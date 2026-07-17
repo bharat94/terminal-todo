@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 )
 
 func cmdSearch(args []string) {

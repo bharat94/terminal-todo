@@ -7,8 +7,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"terminal-todo/fsutil"
-	"terminal-todo/lock"
+	"github.com/bharat94/terminal-todo/fsutil"
+
+	"github.com/bharat94/terminal-todo/lock"
 )
 
 type ProjectConfig struct {
@@ -39,6 +40,12 @@ func loadConfig() (*ProjectConfig, error) {
 	var cfg ProjectConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+	if ttl, err := time.ParseDuration(cfg.DefaultTTL); err != nil || ttl <= 0 {
+		return nil, fmt.Errorf("invalid config: default_ttl must be a positive duration")
+	}
+	if !validPriority32(cfg.DefaultPriority) {
+		return nil, fmt.Errorf("invalid config: default_priority must be between 0 and 1")
 	}
 	return &cfg, nil
 }

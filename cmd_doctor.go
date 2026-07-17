@@ -6,8 +6,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"terminal-todo/dag"
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/dag"
+
+	"github.com/bharat94/terminal-todo/store"
 )
 
 func cmdDoctor(args []string) {
@@ -138,22 +139,14 @@ func cmdDoctor(args []string) {
 		fmt.Printf("  ERROR: %v\n", err)
 	} else {
 		fmt.Printf("  %d tasks, next ID: %d\n", len(s.Tasks), s.NextID)
-		// Check for orphaned dep references
-		orphaned := 0
-		for _, t := range s.Tasks {
-			for _, dep := range t.Depends {
-				depID, local := dag.ParseLocalID(dep)
-				if local {
-					if _, ok := s.Tasks[depID]; !ok {
-						orphaned++
-					}
-				}
+		problems := storeInvariantProblems(s)
+		if len(problems) > 0 {
+			fmt.Printf("  WARNING: %d invariant problem(s)\n", len(problems))
+			for _, problem := range problems {
+				fmt.Printf("    - %s\n", problem)
 			}
-		}
-		if orphaned > 0 {
-			fmt.Printf("  WARNING: %d orphaned dependency reference(s)\n", orphaned)
 		} else {
-			fmt.Println("  no orphaned dependencies")
+			fmt.Println("  task graph invariants ok")
 		}
 	}
 
@@ -161,6 +154,73 @@ func cmdDoctor(args []string) {
 		fmt.Println()
 		fmt.Println("Run with --fix to remove orphaned temp files.")
 	}
+}
+
+func storeInvariantProblems(s *store.TaskStore) []string {
+	var problems []string
+	var maxID uint64
+
+	for key, task := range s.Tasks {
+		if task == nil {
+			problems = append(problems, fmt.Sprintf("task map entry %d is nil", key))
+			continue
+		}
+		if key != task.ID {
+			problems = append(problems, fmt.Sprintf("task map key %d contains task ID %d", key, task.ID))
+		}
+		if task.ID > maxID {
+			maxID = task.ID
+		}
+		if task.Status > store.StatusBlocked {
+			problems = append(problems, fmt.Sprintf("task %d has invalid status %d", task.ID, task.Status))
+		}
+		if !validPriority32(task.Priority) {
+			problems = append(problems, fmt.Sprintf("task %d has invalid priority %v", task.ID, task.Priority))
+		}
+		if task.Status == store.StatusInProgress {
+			if task.Owner == "" || task.LeaseExpires == 0 {
+				problems = append(problems, fmt.Sprintf("task %d is in progress without a complete ownership lease", task.ID))
+			}
+		} else if task.Owner != "" || task.LeaseExpires != 0 {
+			problems = append(problems, fmt.Sprintf("task %d has ownership metadata while not in progress", task.ID))
+		}
+		if task.Status == store.StatusCompleted && task.Completed == 0 {
+			problems = append(problems, fmt.Sprintf("task %d is completed without a completion timestamp", task.ID))
+		}
+		if task.Status != store.StatusCompleted && task.Completed != 0 {
+			problems = append(problems, fmt.Sprintf("task %d has a completion timestamp while not completed", task.ID))
+		}
+
+		for _, dep := range task.Depends {
+			repository, depID, err := dag.ParseTaskURI(dep)
+			if err != nil {
+				if localID, local := dag.ParseLocalID(dep); local {
+					depID = localID
+					repository = "local"
+				} else {
+					problems = append(problems, fmt.Sprintf("task %d has invalid dependency %q", task.ID, dep))
+					continue
+				}
+			}
+			if repository == "local" {
+				if _, ok := s.Tasks[depID]; !ok {
+					problems = append(problems, fmt.Sprintf("task %d references missing local task %d", task.ID, depID))
+				}
+			}
+		}
+	}
+
+	if s.NextID == 0 || s.NextID <= maxID {
+		problems = append(problems, fmt.Sprintf("next ID %d must be greater than maximum task ID %d", s.NextID, maxID))
+	}
+
+	graph := dag.NewDAG()
+	graph.BuildFromTasks(s.Tasks)
+	if err := graph.DetectCycle(nil, 0); err != nil {
+		problems = append(problems, fmt.Sprintf("local dependency graph: %v", err))
+	}
+
+	return problems
 }
 
 func formatSize(bytes int64) string {

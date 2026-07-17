@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 )
 
 func cmdBackup(args []string) {

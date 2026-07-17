@@ -3,10 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/bharat94/terminal-todo/store"
 	"path/filepath"
 	"sort"
 	"strings"
-	"terminal-todo/store"
 )
 
 const (

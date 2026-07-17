@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -109,6 +110,22 @@ func TestCLI_DoctorFixRepairsPrivateStatePermissions(t *testing.T) {
 	}
 }
 
+func TestDoctorDetectsStoreInvariantProblems(t *testing.T) {
+	s := store.NewTaskStore()
+	task := s.AddTask("broken", nil)
+	task.Status = store.StatusInProgress
+	task.Priority = float32(math.NaN())
+	task.Depends = []string{"todo://local/99"}
+	s.NextID = task.ID
+
+	problems := storeInvariantProblems(s)
+	joined := strings.Join(problems, "\n")
+	assert.Contains(t, joined, "invalid priority")
+	assert.Contains(t, joined, "without a complete ownership lease")
+	assert.Contains(t, joined, "references missing local task 99")
+	assert.Contains(t, joined, "must be greater than maximum task ID")
+}
+
 func TestCLI_AddTask(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)
@@ -143,11 +160,43 @@ func TestCLI_AddRejectsInvalidPriority(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)
 
-	cmd := exec.Command(todo, "add", "Invalid", "--priority", "high")
-	cmd.Dir = tmpDir
-	out, err := cmd.CombinedOutput()
-	assert.Error(t, err)
-	assert.Contains(t, string(out), "--priority must be between 0 and 1")
+	for _, value := range []string{"high", "NaN", "+Inf", "1.1"} {
+		cmd := exec.Command(todo, "add", "Invalid", "--priority", value)
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.Error(t, err, value)
+		assert.Contains(t, string(out), "--priority must be between 0 and 1", value)
+	}
+	for _, value := range []string{"-Inf", "-0.1"} {
+		cmd := exec.Command(todo, "add", "Invalid", "--priority", value)
+		cmd.Dir = tmpDir
+		_, err := cmd.CombinedOutput()
+		assert.Error(t, err, value)
+	}
+}
+
+func TestCLI_UpdateAndConfigRejectNonFinitePriority(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	add := exec.Command(todo, "add", "Valid")
+	add.Dir = tmpDir
+	assert.NoError(t, add.Run())
+
+	for _, args := range [][]string{
+		{"update", "1", "--priority", "NaN"},
+		{"config", "default_priority=+Inf"},
+	} {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.Error(t, err, "%v", args)
+		assert.Contains(t, string(out), "priority must be between 0 and 1")
+	}
+
+	persisted, err := store.LoadCurrent(filepath.Join(tmpDir, ".terminal-todo", "tasks.bin"))
+	assert.NoError(t, err)
+	assert.Equal(t, float32(0.5), persisted.Tasks[1].Priority)
 }
 
 func TestCLI_UpdateAddsHandoffContext(t *testing.T) {
@@ -291,6 +340,45 @@ func TestCLI_DependencyCompletionDoesNotEraseManualBlock(t *testing.T) {
 	out, err = cmd.CombinedOutput()
 	assert.NoError(t, err, string(out))
 	assert.NotContains(t, string(out), `"title": "Manually blocked"`)
+}
+
+func TestCLI_BlockReleasesLeaseAndUnblockClearsLegacyOwnership(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+	for _, args := range [][]string{
+		{"add", "Externally blocked work"},
+		{"claim", "1", "--as", "worker", "--ttl", "1h"},
+		{"block", "1", "--as", "worker", "--reason", "waiting for approval"},
+	} {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, "%v: %s", args, out)
+	}
+
+	path := filepath.Join(tmpDir, ".terminal-todo", "tasks.bin")
+	persisted, err := store.LoadCurrent(path)
+	assert.NoError(t, err)
+	assert.Equal(t, store.StatusBlocked, persisted.Tasks[1].Status)
+	assert.Empty(t, persisted.Tasks[1].Owner)
+	assert.Zero(t, persisted.Tasks[1].LeaseExpires)
+
+	// Simulate stale ownership written by an older binary. Unblock must repair
+	// it instead of requiring an expired owner identity forever.
+	persisted.Tasks[1].Owner = "legacy-worker"
+	persisted.Tasks[1].LeaseExpires = uint64(time.Now().Add(-time.Hour).UnixMilli())
+	assert.NoError(t, persisted.Save(path))
+
+	cmd := exec.Command(todo, "unblock", "1", "--as", "coordinator")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+
+	persisted, err = store.LoadCurrent(path)
+	assert.NoError(t, err)
+	assert.Equal(t, store.StatusPending, persisted.Tasks[1].Status)
+	assert.Empty(t, persisted.Tasks[1].Owner)
+	assert.Zero(t, persisted.Tasks[1].LeaseExpires)
 }
 
 func TestCLI_ClaimedTaskRequiresOwnerToCompleteOrRelease(t *testing.T) {
@@ -1038,6 +1126,25 @@ func TestCLI_RmRefusesDanglingDependency(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	assert.Error(t, err)
 	assert.Contains(t, string(out), "task 2 depends on it")
+}
+
+func TestCLI_RmRefusesActiveLease(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+	for _, args := range [][]string{
+		{"add", "Owned work"},
+		{"claim", "1", "--as", "worker", "--ttl", "1h"},
+	} {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		assert.NoError(t, cmd.Run())
+	}
+
+	cmd := exec.Command(todo, "rm", "1")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.Error(t, err)
+	assert.Contains(t, string(out), "active lease is owned by worker")
 }
 
 func buildTodo(t *testing.T) string {

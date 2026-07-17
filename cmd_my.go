@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/store"
 )
 
 func cmdMy(args []string) {

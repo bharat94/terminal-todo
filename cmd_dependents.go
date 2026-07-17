@@ -2,7 +2,8 @@ package main
 
 import (
 	"fmt"
-	"terminal-todo/dag"
+
+	"github.com/bharat94/terminal-todo/dag"
 )
 
 type dependentItem struct {

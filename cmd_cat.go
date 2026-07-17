@@ -3,7 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"terminal-todo/store"
+
+	"github.com/bharat94/terminal-todo/store"
 )
 
 func cmdCat(args []string) {

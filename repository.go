@@ -6,10 +6,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"terminal-todo/dag"
-	"terminal-todo/fsutil"
-	"terminal-todo/lock"
-	"terminal-todo/store"
+	"github.com/bharat94/terminal-todo/dag"
+
+	"github.com/bharat94/terminal-todo/fsutil"
+	"github.com/bharat94/terminal-todo/lock"
+
+	"github.com/bharat94/terminal-todo/store"
 )
 
 type repositoryRegistry struct {

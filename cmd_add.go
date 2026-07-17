@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
+
+	"github.com/bharat94/terminal-todo/dag"
+	"github.com/bharat94/terminal-todo/store"
 	"os"
 	"strconv"
-	"terminal-todo/dag"
-	"terminal-todo/store"
 )
 
 func cmdAdd(args []string) {
@@ -26,7 +27,7 @@ func cmdAdd(args []string) {
 				fail(ErrInvalidArgs, "--priority requires a value")
 			}
 			value, err := strconv.ParseFloat(args[i+1], 32)
-			if err != nil || value < 0 || value > 1 {
+			if err != nil || !validPriority(value) {
 				fail(ErrInvalidArgs, "--priority must be between 0 and 1")
 			}
 			priority = value
