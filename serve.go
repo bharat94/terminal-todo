@@ -71,11 +71,13 @@ type addParams struct {
 	Priority     *float32 `json:"priority,omitempty"`
 	Capabilities []string `json:"capabilities,omitempty"`
 	Tags         []string `json:"tags,omitempty"`
+	Receipt      bool     `json:"receipt,omitempty"`
 }
 
 type doneParams struct {
-	IDs   []uint64 `json:"ids"`
-	Actor string   `json:"actor,omitempty"`
+	IDs     []uint64 `json:"ids"`
+	Actor   string   `json:"actor,omitempty"`
+	Receipt bool     `json:"receipt,omitempty"`
 }
 
 type statusParams struct {
@@ -97,12 +99,14 @@ type updateParams struct {
 	Extra        map[string]string `json:"extra,omitempty"`
 	AddDeps      []string          `json:"addDeps,omitempty"`
 	RemoveDeps   []string          `json:"removeDeps,omitempty"`
+	Receipt      bool              `json:"receipt,omitempty"`
 }
 
 type claimParams struct {
-	ID    uint64 `json:"id"`
-	Actor string `json:"actor"`
-	TTL   string `json:"ttl,omitempty"`
+	ID      uint64 `json:"id"`
+	Actor   string `json:"actor"`
+	TTL     string `json:"ttl,omitempty"`
+	Receipt bool   `json:"receipt,omitempty"`
 }
 
 type acquireParams struct {
@@ -110,29 +114,34 @@ type acquireParams struct {
 	RequestID    string   `json:"requestId"`
 	TTL          string   `json:"ttl,omitempty"`
 	Capabilities []string `json:"capabilities,omitempty"`
+	Receipt      bool     `json:"receipt,omitempty"`
 }
 
 type heartbeatParams struct {
-	ID    uint64 `json:"id"`
-	Actor string `json:"actor"`
-	TTL   string `json:"ttl,omitempty"`
+	ID      uint64 `json:"id"`
+	Actor   string `json:"actor"`
+	TTL     string `json:"ttl,omitempty"`
+	Receipt bool   `json:"receipt,omitempty"`
 }
 
 type releaseParams struct {
-	ID    uint64 `json:"id"`
-	Actor string `json:"actor"`
-	Error string `json:"error,omitempty"`
+	ID      uint64 `json:"id"`
+	Actor   string `json:"actor"`
+	Error   string `json:"error,omitempty"`
+	Receipt bool   `json:"receipt,omitempty"`
 }
 
 type blockParams struct {
-	ID     uint64 `json:"id"`
-	Reason string `json:"reason"`
-	Actor  string `json:"actor,omitempty"`
+	ID      uint64 `json:"id"`
+	Reason  string `json:"reason"`
+	Actor   string `json:"actor,omitempty"`
+	Receipt bool   `json:"receipt,omitempty"`
 }
 
 type unblockParams struct {
-	ID    uint64 `json:"id"`
-	Actor string `json:"actor,omitempty"`
+	ID      uint64 `json:"id"`
+	Actor   string `json:"actor,omitempty"`
+	Receipt bool   `json:"receipt,omitempty"`
 }
 
 type nextParams struct {
@@ -143,6 +152,7 @@ type logParams struct {
 	ID      uint64 `json:"id"`
 	Message string `json:"message"`
 	Actor   string `json:"actor,omitempty"`
+	Receipt bool   `json:"receipt,omitempty"`
 }
 
 type myParams struct {
@@ -165,6 +175,7 @@ type decomposeParams struct {
 	ID       uint64             `json:"id"`
 	Subtasks []decomposeSubtask `json:"subtasks"`
 	Actor    string             `json:"actor,omitempty"`
+	Receipt  bool               `json:"receipt,omitempty"`
 }
 
 type decomposeSubtask struct {
@@ -174,10 +185,6 @@ type decomposeSubtask struct {
 
 type lineageParams struct {
 	ID uint64 `json:"id"`
-}
-
-type eventsParams struct {
-	Since uint64 `json:"since,omitempty"`
 }
 
 type whatIfParams struct {
@@ -223,6 +230,10 @@ type compactParams struct {
 	KeepEvents     *int   `json:"keepEvents,omitempty"`
 	ReceiptsBefore string `json:"receiptsBefore,omitempty"`
 	DryRun         bool   `json:"dryRun,omitempty"`
+}
+
+type pruneParams struct {
+	Receipt bool `json:"receipt,omitempty"`
 }
 
 type doctorResult map[string]interface{}
@@ -598,7 +609,9 @@ func (srv *server) handlePing(params json.RawMessage) (interface{}, *rpcError) {
 			"atomic_acquire",
 			"idempotent_acquire",
 			"session_bootstrap",
+			"compact_receipts",
 			"events",
+			"event_pages",
 			"cross_repository_dependencies",
 		},
 	}, nil
@@ -704,6 +717,12 @@ func (srv *server) handleAdd(params json.RawMessage) (interface{}, *rpcError) {
 		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 	}
 
+	if p.Receipt {
+		receipt := newMutationReceipt("add", []uint64{taskID})
+		receipt.Task = &mutationTaskReference{ID: taskID, Status: "pending"}
+		receipt.DetailFollowUp = taskDetailFollowUp(taskID)
+		return receipt, nil
+	}
 	return map[string]interface{}{"id": taskID, "title": taskTitle}, nil
 }
 
@@ -715,6 +734,7 @@ func (srv *server) handleDone(params json.RawMessage) (interface{}, *rpcError) {
 	if len(p.IDs) == 0 {
 		return nil, rpcErrorf(rpcInvalidParams, "ids is required")
 	}
+	p.IDs = uniqueTaskIDs(p.IDs)
 
 	if err := srv.ensureInitialized(); err != nil {
 		return nil, err
@@ -768,6 +788,15 @@ func (srv *server) handleDone(params json.RawMessage) (interface{}, *rpcError) {
 		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 	}
 
+	if p.Receipt {
+		receipt := newMutationReceipt("complete", completed)
+		receipt.DetailFollowUp = graphDetailFollowUp()
+		if len(completed) == 1 {
+			receipt.Task = &mutationTaskReference{ID: completed[0], Status: "completed"}
+			receipt.DetailFollowUp = taskDetailFollowUp(completed[0])
+		}
+		return receipt, nil
+	}
 	return map[string]interface{}{
 		"completed": completed,
 		"unblocked": []uint64{},
@@ -1044,6 +1073,9 @@ func (srv *server) handleUpdate(params json.RawMessage) (interface{}, *rpcError)
 		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 	}
 
+	if p.Receipt {
+		return newTaskMutationReceipt("update", updated), nil
+	}
 	return newProtocolTask(updated), nil
 }
 
@@ -1138,6 +1170,17 @@ func (srv *server) handleClaim(params json.RawMessage) (interface{}, *rpcError) 
 		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 	}
 
+	if p.Receipt {
+		receipt := newMutationReceipt("claim", []uint64{result.ID})
+		receipt.Task = &mutationTaskReference{
+			ID:           result.ID,
+			Status:       "in_progress",
+			LeaseExpires: &result.Expires,
+			RetryCount:   result.RetryCount,
+		}
+		receipt.DetailFollowUp = taskDetailFollowUp(result.ID)
+		return receipt, nil
+	}
 	return result, nil
 }
 
@@ -1212,7 +1255,13 @@ func (srv *server) handleAcquire(params json.RawMessage) (interface{}, *rpcError
 			return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 		}
 	}
-	return acquireEnvelope{SchemaVersion: protocolVersion, RequestID: p.RequestID, Replayed: replayed, Task: newProtocolTask(acquired)}, nil
+	envelope := acquireEnvelope{SchemaVersion: protocolVersion, RequestID: p.RequestID, Replayed: replayed, Task: newProtocolTask(acquired)}
+	if p.Receipt {
+		receipt := newTaskMutationReceipt("acquire", acquired)
+		receipt.Replayed = &replayed
+		return receipt, nil
+	}
+	return envelope, nil
 }
 
 func (srv *server) handleHeartbeat(params json.RawMessage) (interface{}, *rpcError) {
@@ -1263,6 +1312,9 @@ func (srv *server) handleHeartbeat(params json.RawMessage) (interface{}, *rpcErr
 			return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 		}
 	}
+	if p.Receipt {
+		return newTaskMutationReceipt("heartbeat", renewed), nil
+	}
 	return taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(renewed)}, nil
 }
 
@@ -1282,6 +1334,7 @@ func (srv *server) handleRelease(params json.RawMessage) (interface{}, *rpcError
 		return nil, err
 	}
 
+	var released *store.Task
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
 		task, ok := s.GetTask(p.ID)
 		if !ok {
@@ -1307,6 +1360,7 @@ func (srv *server) handleRelease(params json.RawMessage) (interface{}, *rpcError
 		task.Owner = ""
 		task.LeaseExpires = 0
 		task.Status = store.StatusPending
+		released = task
 		return nil
 	})
 	if err != nil {
@@ -1319,6 +1373,9 @@ func (srv *server) handleRelease(params json.RawMessage) (interface{}, *rpcError
 		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 	}
 
+	if p.Receipt {
+		return newTaskMutationReceipt("release", released), nil
+	}
 	return releaseResult{ID: p.ID, Status: "pending"}, nil
 }
 
@@ -1338,6 +1395,7 @@ func (srv *server) handleBlock(params json.RawMessage) (interface{}, *rpcError) 
 		return nil, err
 	}
 
+	var blocked *store.Task
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
 		task, ok := s.GetTask(p.ID)
 		if !ok {
@@ -1356,6 +1414,7 @@ func (srv *server) handleBlock(params json.RawMessage) (interface{}, *rpcError) 
 		task.LeaseExpires = 0
 		s.AddLog(p.ID, p.Actor, fmt.Sprintf("blocked: %s", p.Reason))
 		s.AddEvent(store.EventTaskBlocked, p.ID, p.Actor, map[string]string{"reason": p.Reason})
+		blocked = task
 		return nil
 	})
 	if err != nil {
@@ -1368,6 +1427,9 @@ func (srv *server) handleBlock(params json.RawMessage) (interface{}, *rpcError) 
 		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 	}
 
+	if p.Receipt {
+		return newTaskMutationReceipt("block", blocked), nil
+	}
 	return blockResult{ID: p.ID, Status: "blocked"}, nil
 }
 
@@ -1384,6 +1446,7 @@ func (srv *server) handleUnblock(params json.RawMessage) (interface{}, *rpcError
 		return nil, err
 	}
 
+	var unblocked *store.Task
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
 		task, ok := s.GetTask(p.ID)
 		if !ok {
@@ -1400,6 +1463,7 @@ func (srv *server) handleUnblock(params json.RawMessage) (interface{}, *rpcError
 		task.LeaseExpires = 0
 		s.AddLog(p.ID, p.Actor, "unblocked")
 		s.AddEvent(store.EventTaskUnblocked, p.ID, p.Actor, nil)
+		unblocked = task
 		return nil
 	})
 	if err != nil {
@@ -1412,6 +1476,9 @@ func (srv *server) handleUnblock(params json.RawMessage) (interface{}, *rpcError
 		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 	}
 
+	if p.Receipt {
+		return newTaskMutationReceipt("unblock", unblocked), nil
+	}
 	return unblockResult{ID: p.ID, Status: "pending"}, nil
 }
 
@@ -1472,6 +1539,7 @@ func (srv *server) handleLog(params json.RawMessage) (interface{}, *rpcError) {
 		return nil, err
 	}
 
+	var logged *store.Task
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
 		task, ok := s.GetTask(p.ID)
 		if !ok {
@@ -1481,6 +1549,7 @@ func (srv *server) handleLog(params json.RawMessage) (interface{}, *rpcError) {
 			return fmt.Errorf("task %d is claimed by %s", p.ID, task.Owner)
 		}
 		s.AddLog(p.ID, p.Actor, p.Message)
+		logged = task
 		return nil
 	})
 	if err != nil {
@@ -1493,6 +1562,9 @@ func (srv *server) handleLog(params json.RawMessage) (interface{}, *rpcError) {
 		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 	}
 
+	if p.Receipt {
+		return newTaskMutationReceipt("log", logged), nil
+	}
 	return logResult{ID: p.ID}, nil
 }
 
@@ -1674,6 +1746,9 @@ func (srv *server) handleDecompose(params json.RawMessage) (interface{}, *rpcErr
 	if len(p.Subtasks) == 0 {
 		return nil, rpcErrorf(rpcInvalidParams, "at least one subtask is required")
 	}
+	if len(p.Subtasks) > maxMutationReceiptIDs {
+		return nil, rpcErrorf(rpcInvalidParams, "at most %d subtasks can be created in one decomposition", maxMutationReceiptIDs)
+	}
 	for _, sub := range p.Subtasks {
 		if strings.TrimSpace(sub.Title) == "" {
 			return nil, rpcErrorf(rpcInvalidParams, "subtask title is required")
@@ -1739,6 +1814,17 @@ func (srv *server) handleDecompose(params json.RawMessage) (interface{}, *rpcErr
 		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 	}
 
+	if p.Receipt {
+		ids := make([]uint64, 0, len(subtaskProtocols))
+		for _, subtask := range subtaskProtocols {
+			ids = append(ids, subtask.ID)
+		}
+		receipt := newMutationReceipt("decompose", ids)
+		taskReceipt := newProtocolTaskMutationReceipt("decompose", parentProtocol)
+		receipt.Task = taskReceipt.Task
+		receipt.DetailFollowUp = lineageDetailFollowUp(parentProtocol.ID)
+		return receipt, nil
+	}
 	return decomposeResult{Parent: parentProtocol, Subtasks: subtaskProtocols}, nil
 }
 
@@ -1794,6 +1880,17 @@ func (srv *server) handleEvents(params json.RawMessage) (interface{}, *rpcError)
 	s, err := loadStoreSafe()
 	if err != nil {
 		return nil, rpcErrorf(rpcStoreCorrupted, "loading store: %v", err)
+	}
+
+	if p.Limit != nil && !p.Page {
+		return nil, rpcErrorf(rpcInvalidParams, "limit requires page=true")
+	}
+	if p.Page {
+		limit, err := eventPageLimit(p.Limit)
+		if err != nil {
+			return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+		}
+		return buildEventPage(s, p.Since, limit), nil
 	}
 
 	events := s.EventsSince(p.Since)
@@ -2018,7 +2115,7 @@ func (srv *server) handleConfigSet(params json.RawMessage) (interface{}, *rpcErr
 }
 
 func (srv *server) handlePrune(params json.RawMessage) (interface{}, *rpcError) {
-	var p struct{}
+	var p pruneParams
 	if err := unmarshalParams(params, &p); err != nil {
 		return nil, err
 	}
@@ -2027,7 +2124,7 @@ func (srv *server) handlePrune(params json.RawMessage) (interface{}, *rpcError) 
 		return nil, err
 	}
 
-	var removedCount int
+	var removedIDs []uint64
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
 		completed := make(map[uint64]struct{})
 		for _, t := range s.GetAllTasks() {
@@ -2051,7 +2148,7 @@ func (srv *server) handlePrune(params json.RawMessage) (interface{}, *rpcError) 
 		}
 		for id := range completed {
 			s.RemoveTask(id)
-			removedCount++
+			removedIDs = append(removedIDs, id)
 		}
 		return nil
 	})
@@ -2059,7 +2156,11 @@ func (srv *server) handlePrune(params json.RawMessage) (interface{}, *rpcError) 
 		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 	}
 
-	return pruneResult{RemovedCount: removedCount}, nil
+	sort.Slice(removedIDs, func(i, j int) bool { return removedIDs[i] < removedIDs[j] })
+	if p.Receipt {
+		return newMutationReceipt("prune", removedIDs), nil
+	}
+	return pruneResult{RemovedCount: len(removedIDs)}, nil
 }
 
 func (srv *server) handleCompact(params json.RawMessage) (interface{}, *rpcError) {

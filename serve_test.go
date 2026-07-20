@@ -217,6 +217,8 @@ func TestServerPingAdvertisesProtocolAndCapabilities(t *testing.T) {
 	assert.Contains(t, ping.Capabilities, "lease_heartbeat")
 	assert.Contains(t, ping.Capabilities, "atomic_acquire")
 	assert.Contains(t, ping.Capabilities, "idempotent_acquire")
+	assert.Contains(t, ping.Capabilities, "compact_receipts")
+	assert.Contains(t, ping.Capabilities, "event_pages")
 	assert.Contains(t, ping.Capabilities, "cross_repository_dependencies")
 }
 

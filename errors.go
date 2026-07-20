@@ -52,7 +52,7 @@ func failData(code ErrorCode, message string, data interface{}) {
 
 func failWithData(code ErrorCode, message, details string, data interface{}) {
 	args := os.Args[1:]
-	if hasFlag(args, "--json") {
+	if hasFlag(args, "--json") || hasFlag(args, "--receipt") {
 		output, err := json.MarshalIndent(errorEnvelope{
 			SchemaVersion: protocolVersion,
 			Error: ErrorResponse{
@@ -102,11 +102,10 @@ func exitCode(code ErrorCode) int {
 	}
 }
 
-// isJSONOutput returns true when either --json appears anywhere in os.Args
-// or when the first positional argument contains --json (helpful for tests).
+// isJSONOutput returns true when structured output appears anywhere in os.Args.
 func isJSONOutput() bool {
 	for _, arg := range os.Args {
-		if arg == "--json" {
+		if arg == "--json" || arg == "--receipt" {
 			return true
 		}
 	}

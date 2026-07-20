@@ -41,6 +41,14 @@ func cmdPrune(args []string) {
 	sort.Slice(removed, func(i, j int) bool {
 		return removed[i].ID < removed[j].ID
 	})
+	if receiptRequested(args) {
+		ids := make([]uint64, 0, len(removed))
+		for _, task := range removed {
+			ids = append(ids, task.ID)
+		}
+		writeJSON(newMutationReceipt("prune", ids))
+		return
+	}
 	if hasFlag(args, "--json") {
 		tasks := make([]protocolTask, 0, len(removed))
 		for _, task := range removed {

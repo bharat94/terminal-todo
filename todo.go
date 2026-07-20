@@ -170,9 +170,9 @@ Task Management:
   done <id>           Mark complete (--as owner for claimed tasks)
   status              Show all tasks (--json, --all, --as, --tag)
   cat <id>            Show task details
-  rm <id>             Remove a task (--json)
+  rm <id>             Remove a task (--json, --receipt)
   update <id>         Update metadata (--set, --title, --priority, --caps)
-  log <id>            Append to task audit trail (--msg, --as, --json)
+  log <id>            Append to task audit trail (--msg, --as, --json, --receipt)
   next                Show tasks ready to work (--json, --capabilities)
   search <query>      Search tasks by title or tag
 
@@ -187,20 +187,20 @@ Agent Operations:
   bootstrap --as <n>   Get a bounded worker session brief (--json, --objective)
   agent-card [--as <n>] Register or query agent identity (--caps, --desc, --max-load)
   caps [--all]          Show capability demand across all tasks
-  block <id>           Mark a task as blocked (--reason, --as, --json)
-  unblock <id>         Unblock a task (--as, --json)
+  block <id>           Mark a task as blocked (--reason, --as, --json, --receipt)
+  unblock <id>         Unblock a task (--as, --json, --receipt)
 
 DAG & Dependency:
   depends <id>        Show what this task depends on
   dependents <id>     Show tasks that depend on this
-  decompose <id>      Split a task into sub-tasks (--into, --as, --json)
+  decompose <id>      Split a task into sub-tasks (--into, --as, --json, --receipt)
   lineage <id>        Show recursive decomposition tree (--json)
   what-if <id>        Simulate completing/blocking a task
   graph [--dot]       Visualize the DAG topology (DOT/JSON/text)
 
 Reactivity:
   watch [<id>]        Live-refresh task dashboard (--poll)
-  events [<since>]    Show the event log (--json)
+  events [<since>]    Show the event log (bounded with --limit, --json)
 
 Integrations:
   mcp --stdio         Start the Model Context Protocol server
@@ -210,7 +210,7 @@ Integrations:
 Project:
   config [key=value]  View or set project configuration
   export              Export tasks (--markdown)
-  prune               Remove all completed tasks (--json)
+  prune               Remove all completed tasks (--json, --receipt)
   backup [--output]   Snapshot the task store
   restore <path>      Restore tasks from a backup
   compact             Apply explicit audit/receipt retention policy (--json)
@@ -253,6 +253,7 @@ func updateStore(mutate func(*store.TaskStore) error) *store.TaskStore {
 
 func parseIDs(args []string) []uint64 {
 	var ids []uint64
+	seen := make(map[uint64]struct{})
 	valueOptions := map[string]bool{
 		"--after": true, "--as": true, "--ttl": true,
 		"--capabilities": true, "--caps": true, "--priority": true,
@@ -272,6 +273,10 @@ func parseIDs(args []string) []uint64 {
 			continue
 		}
 		if id, err := strconv.ParseUint(arg, 10, 64); err == nil && id > 0 {
+			if _, exists := seen[id]; exists {
+				continue
+			}
+			seen[id] = struct{}{}
 			ids = append(ids, id)
 		}
 	}
@@ -301,25 +306,26 @@ func validateCommandArgs(command string, args []string) error {
 		"caps":       {"--as": true},
 		"integrate":  {"--command": true},
 		"compact":    {"--keep-events": true, "--receipts-before": true},
+		"events":     {"--limit": true},
 	}
 	booleanFlags := map[string]map[string]bool{
-		"add":        {"--json": true},
-		"claim":      {"--json": true},
-		"acquire":    {"--json": true},
-		"heartbeat":  {"--json": true},
-		"done":       {"--json": true},
-		"release":    {"--json": true},
-		"block":      {"--json": true},
-		"unblock":    {"--json": true},
-		"log":        {"--json": true},
-		"decompose":  {"--json": true},
-		"rm":         {"--json": true},
-		"prune":      {"--json": true},
+		"add":        {"--json": true, "--receipt": true},
+		"claim":      {"--json": true, "--receipt": true},
+		"acquire":    {"--json": true, "--receipt": true},
+		"heartbeat":  {"--json": true, "--receipt": true},
+		"done":       {"--json": true, "--receipt": true},
+		"release":    {"--json": true, "--receipt": true},
+		"block":      {"--json": true, "--receipt": true},
+		"unblock":    {"--json": true, "--receipt": true},
+		"log":        {"--json": true, "--receipt": true},
+		"decompose":  {"--json": true, "--receipt": true},
+		"rm":         {"--json": true, "--receipt": true},
+		"prune":      {"--json": true, "--receipt": true},
 		"cat":        {"--json": true},
 		"status":     {"--json": true, "--all": true},
 		"next":       {"--json": true, "--ready": true},
 		"lineage":    {"--json": true},
-		"update":     {"--json": true},
+		"update":     {"--json": true, "--receipt": true},
 		"export":     {"--markdown": true},
 		"graph":      {"--dot": true, "--json": true},
 		"events":     {"--json": true},

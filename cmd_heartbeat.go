@@ -53,6 +53,10 @@ func cmdHeartbeat(args []string) {
 		}
 	}
 
+	if receiptRequested(args) {
+		writeJSON(newTaskMutationReceipt("heartbeat", renewed))
+		return
+	}
 	if hasFlag(args, "--json") {
 		writeJSON(taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(renewed)})
 		return

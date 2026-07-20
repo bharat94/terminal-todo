@@ -273,6 +273,10 @@ func terminalTodoMCPTools() []mcpTool {
 	stringList := func(description string) map[string]interface{} {
 		return map[string]interface{}{"type": "array", "items": map[string]string{"type": "string"}, "description": description}
 	}
+	receiptProp := map[string]interface{}{
+		"type":        "boolean",
+		"description": "Return a bounded versioned mutation receipt. Follow detail_follow_up when full detail is needed.",
+	}
 
 	return []mcpTool{
 		{
@@ -330,6 +334,7 @@ func terminalTodoMCPTools() []mcpTool {
 				"priority":     map[string]interface{}{"type": "number", "description": "Higher values are allocated first."},
 				"capabilities": stringList("Capabilities an actor must advertise to acquire this task."),
 				"tags":         stringList("User-defined task tags."),
+				"receipt":      receiptProp,
 			}, "title"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: false, OpenWorldHint: false},
 		},
@@ -342,6 +347,7 @@ func terminalTodoMCPTools() []mcpTool {
 				"requestId":    stringProp("Unique idempotency key for this allocation attempt."),
 				"ttl":          stringProp("Lease duration such as 30m or 2h."),
 				"capabilities": stringList("Capabilities available to this worker."),
+				"receipt":      receiptProp,
 			}, "actor", "requestId"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: true, OpenWorldHint: false},
 		},
@@ -350,9 +356,10 @@ func terminalTodoMCPTools() []mcpTool {
 			Title:       "Renew task lease",
 			Description: "Renew an active lease before it expires. Use periodically during long-running work.",
 			InputSchema: object(map[string]interface{}{
-				"id":    idProp,
-				"actor": stringProp("Current lease owner."),
-				"ttl":   stringProp("New lease duration such as 30m or 2h."),
+				"id":      idProp,
+				"actor":   stringProp("Current lease owner."),
+				"ttl":     stringProp("New lease duration such as 30m or 2h."),
+				"receipt": receiptProp,
 			}, "id", "actor"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
 		},
@@ -369,6 +376,7 @@ func terminalTodoMCPTools() []mcpTool {
 				"extra":        map[string]interface{}{"type": "object", "additionalProperties": map[string]string{"type": "string"}, "description": "Structured durable handoff fields."},
 				"addDeps":      stringList("Dependencies to add."),
 				"removeDeps":   stringList("Dependencies to remove."),
+				"receipt":      receiptProp,
 			}, "id"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
 		},
@@ -380,6 +388,7 @@ func terminalTodoMCPTools() []mcpTool {
 				"id":      idProp,
 				"message": stringProp("Concise progress, decision, risk, or handoff note."),
 				"actor":   stringProp("Actor recording the note."),
+				"receipt": receiptProp,
 			}, "id", "message"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: false, OpenWorldHint: false},
 		},
@@ -393,12 +402,14 @@ func terminalTodoMCPTools() []mcpTool {
 				"subtasks": map[string]interface{}{
 					"type":        "array",
 					"minItems":    1,
+					"maxItems":    maxMutationReceiptIDs,
 					"description": "Child work items.",
 					"items": object(map[string]interface{}{
 						"title":        stringProp("Outcome-oriented child title."),
 						"capabilities": stringList("Capabilities required for this child."),
 					}, "title"),
 				},
+				"receipt": receiptProp,
 			}, "id", "subtasks"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
 		},
@@ -407,9 +418,10 @@ func terminalTodoMCPTools() []mcpTool {
 			Title:       "Block task",
 			Description: "Mark work explicitly blocked and preserve the reason for coordinators and future sessions.",
 			InputSchema: object(map[string]interface{}{
-				"id":     idProp,
-				"reason": stringProp("Concrete blocking condition and what would unblock it."),
-				"actor":  stringProp("Actor reporting the blocker."),
+				"id":      idProp,
+				"reason":  stringProp("Concrete blocking condition and what would unblock it."),
+				"actor":   stringProp("Actor reporting the blocker."),
+				"receipt": receiptProp,
 			}, "id", "reason"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
 		},
@@ -418,9 +430,10 @@ func terminalTodoMCPTools() []mcpTool {
 			Title:       "Release task lease",
 			Description: "Yield an owned lease back to the ready pool, optionally recording a failed-attempt error for retries and recovery.",
 			InputSchema: object(map[string]interface{}{
-				"id":    idProp,
-				"actor": stringProp("Current lease owner."),
-				"error": stringProp("Failure summary when releasing after an unsuccessful attempt."),
+				"id":      idProp,
+				"actor":   stringProp("Current lease owner."),
+				"error":   stringProp("Failure summary when releasing after an unsuccessful attempt."),
+				"receipt": receiptProp,
 			}, "id", "actor"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: true, OpenWorldHint: false},
 		},
@@ -429,17 +442,20 @@ func terminalTodoMCPTools() []mcpTool {
 			Title:       "Complete tasks",
 			Description: "Complete one or more tasks after verifying their outcome and dependencies. Claimed tasks require the owning actor.",
 			InputSchema: object(map[string]interface{}{
-				"ids":   map[string]interface{}{"type": "array", "minItems": 1, "items": map[string]interface{}{"type": "integer", "minimum": 1}},
-				"actor": stringProp("Current lease owner for claimed tasks."),
+				"ids":     map[string]interface{}{"type": "array", "minItems": 1, "items": map[string]interface{}{"type": "integer", "minimum": 1}},
+				"actor":   stringProp("Current lease owner for claimed tasks."),
+				"receipt": receiptProp,
 			}, "ids"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
 		},
 		{
 			Name:        "terminal_todo_events",
 			Title:       "Read coordination events",
-			Description: "Read the append-only coordination event stream for audit, recovery, monitoring, or incremental synchronization.",
+			Description: "Read coordination events. Set page=true for a bounded, versioned page, continue from cursor.next_since, and resynchronize current status when cursor.history_gap is true.",
 			InputSchema: object(map[string]interface{}{
 				"since": map[string]interface{}{"type": "integer", "minimum": 0, "description": "Return events after this event sequence."},
+				"limit": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": maxEventPageLimit, "description": "Maximum events to return; defaults to 100."},
+				"page":  map[string]interface{}{"type": "boolean", "description": "Return the bounded, versioned page envelope. Recommended for agent callers."},
 			}),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false},
 		},

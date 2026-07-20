@@ -87,6 +87,10 @@ func cmdAdd(args []string) {
 		return nil
 	})
 
+	if receiptRequested(args) {
+		writeJSON(newTaskMutationReceipt("add", created))
+		return
+	}
 	if hasFlag(args, "--json") {
 		writeJSON(taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(created)})
 		return

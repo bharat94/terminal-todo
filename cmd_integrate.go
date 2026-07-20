@@ -360,7 +360,9 @@ var requiredMCPIntegrationCapabilities = []string{
 	"atomic_acquire",
 	"idempotent_acquire",
 	"session_bootstrap",
+	"compact_receipts",
 	"events",
+	"event_pages",
 	"cross_repository_dependencies",
 }
 

@@ -44,6 +44,14 @@ func cmdRm(args []string) {
 		}
 		return nil
 	})
+	if receiptRequested(args) {
+		removedIDs := make([]uint64, 0, len(removed))
+		for _, task := range removed {
+			removedIDs = append(removedIDs, task.ID)
+		}
+		writeJSON(newMutationReceipt("remove", removedIDs))
+		return
+	}
 	if hasFlag(args, "--json") {
 		tasks := make([]protocolTask, 0, len(removed))
 		for _, task := range removed {

@@ -78,6 +78,10 @@ func cmdClaim(args []string) {
 		claimed = task
 		return nil
 	})
+	if receiptRequested(args) {
+		writeJSON(newTaskMutationReceipt("claim", claimed))
+		return
+	}
 	if hasFlag(args, "--json") {
 		writeJSON(taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(claimed)})
 		return

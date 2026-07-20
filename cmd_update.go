@@ -152,6 +152,10 @@ func cmdUpdate(args []string) {
 		return nil
 	})
 
+	if receiptRequested(args) {
+		writeJSON(newTaskMutationReceipt("update", updated))
+		return
+	}
 	if hasFlag(args, "--json") {
 		output, err := json.MarshalIndent(taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(updated)}, "", "  ")
 		if err != nil {

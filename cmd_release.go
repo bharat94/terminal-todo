@@ -44,6 +44,21 @@ func cmdRelease(args []string) {
 		}
 		return nil
 	})
+	if receiptRequested(args) {
+		ids := make([]uint64, 0, len(released))
+		for _, task := range released {
+			ids = append(ids, task.ID)
+		}
+		receipt := newMutationReceipt("release", ids)
+		if len(released) == 1 {
+			receipt.Task = newMutationTaskReference(released[0])
+			receipt.DetailFollowUp = taskDetailFollowUp(released[0].ID)
+		} else {
+			receipt.DetailFollowUp = graphDetailFollowUp()
+		}
+		writeJSON(receipt)
+		return
+	}
 	if hasFlag(args, "--json") {
 		protocolTasks := make([]protocolTask, 0, len(released))
 		for _, task := range released {

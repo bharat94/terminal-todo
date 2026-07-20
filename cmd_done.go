@@ -46,6 +46,20 @@ func cmdDone(args []string) {
 		}
 		return nil
 	})
+	if receiptRequested(args) {
+		completedIDs := make([]uint64, 0, len(completed))
+		for _, task := range completed {
+			completedIDs = append(completedIDs, task.ID)
+		}
+		receipt := newMutationReceipt("complete", completedIDs)
+		receipt.DetailFollowUp = graphDetailFollowUp()
+		if len(completed) == 1 {
+			receipt.Task = newMutationTaskReference(completed[0])
+			receipt.DetailFollowUp = taskDetailFollowUp(completed[0].ID)
+		}
+		writeJSON(receipt)
+		return
+	}
 	if hasFlag(args, "--json") {
 		protocolTasks := make([]protocolTask, 0, len(completed))
 		for _, task := range completed {

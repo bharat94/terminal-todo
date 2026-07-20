@@ -31,9 +31,9 @@ func TestMCPVisibleNoiseBudgetAcrossCoordinationCycle(t *testing.T) {
 	requestID := "private-idempotency-key"
 	calls := []string{
 		`{"name":"terminal_todo_acquire","arguments":{"actor":"` + actor + `","requestId":"` + requestID + `","ttl":"30m"}}`,
-		`{"name":"terminal_todo_heartbeat","arguments":{"id":1,"actor":"` + actor + `","ttl":"30m"}}`,
-		`{"name":"terminal_todo_update","arguments":{"id":1,"actor":"` + actor + `","extra":{"finding":"verified the server-controlled visible-output budget"}}}`,
-		`{"name":"terminal_todo_complete","arguments":{"ids":[1],"actor":"` + actor + `"}}`,
+		`{"name":"terminal_todo_heartbeat","arguments":{"id":1,"actor":"` + actor + `","ttl":"30m","receipt":true}}`,
+		`{"name":"terminal_todo_update","arguments":{"id":1,"actor":"` + actor + `","extra":{"finding":"verified the server-controlled visible-output budget"},"receipt":true}}`,
+		`{"name":"terminal_todo_complete","arguments":{"ids":[1],"actor":"` + actor + `","receipt":true}}`,
 	}
 
 	visibleBytes := 0
@@ -55,6 +55,9 @@ func TestMCPVisibleNoiseBudgetAcrossCoordinationCycle(t *testing.T) {
 
 		encoded, err := json.Marshal(call.StructuredContent)
 		require.NoError(t, err)
+		if _, ok := call.StructuredContent.(mutationReceipt); ok {
+			assert.Less(t, len(encoded), 2_000)
+		}
 		structuredBytes += len(encoded)
 	}
 

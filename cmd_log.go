@@ -33,6 +33,10 @@ func cmdLog(args []string) {
 		return nil
 	})
 
+	if receiptRequested(args) {
+		writeJSON(newTaskMutationReceipt("log", logged))
+		return
+	}
 	if hasFlag(args, "--json") {
 		writeJSON(taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(logged)})
 		return

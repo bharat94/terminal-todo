@@ -35,6 +35,10 @@ func cmdUnblock(args []string) {
 		return nil
 	})
 
+	if receiptRequested(args) {
+		writeJSON(newTaskMutationReceipt("unblock", unblocked))
+		return
+	}
 	if hasFlag(args, "--json") {
 		writeJSON(taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(unblocked)})
 		return

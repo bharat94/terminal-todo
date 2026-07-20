@@ -95,6 +95,12 @@ func cmdAcquire(args []string) {
 		}
 	}
 
+	if receiptRequested(args) {
+		receipt := newTaskMutationReceipt("acquire", acquired)
+		receipt.Replayed = &replayed
+		writeJSON(receipt)
+		return
+	}
 	if hasFlag(args, "--json") {
 		writeJSON(acquireEnvelope{SchemaVersion: protocolVersion, RequestID: requestID, Replayed: replayed, Task: newProtocolTask(acquired)})
 		return

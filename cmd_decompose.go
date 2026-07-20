@@ -47,6 +47,9 @@ func cmdDecompose(args []string) {
 	if len(payload.Subtasks) == 0 {
 		fail(ErrInvalidArgs, "at least one subtask is required")
 	}
+	if len(payload.Subtasks) > maxMutationReceiptIDs {
+		fail(ErrInvalidArgs, "at most %d subtasks can be created in one decomposition", maxMutationReceiptIDs)
+	}
 	for _, sub := range payload.Subtasks {
 		if strings.TrimSpace(sub.Title) == "" {
 			fail(ErrInvalidArgs, "subtask title is required")
@@ -88,6 +91,17 @@ func cmdDecompose(args []string) {
 		parent = parentTask
 		return nil
 	})
+	if receiptRequested(args) {
+		ids := make([]uint64, 0, len(added))
+		for _, subtask := range added {
+			ids = append(ids, subtask.ID)
+		}
+		receipt := newMutationReceipt("decompose", ids)
+		receipt.Task = newMutationTaskReference(parent)
+		receipt.DetailFollowUp = lineageDetailFollowUp(parent.ID)
+		writeJSON(receipt)
+		return
+	}
 	if hasFlag(args, "--json") {
 		subtasks := make([]protocolTask, 0, len(added))
 		for _, subtask := range added {

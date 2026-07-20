@@ -41,6 +41,10 @@ func cmdBlock(args []string) {
 		return nil
 	})
 
+	if receiptRequested(args) {
+		writeJSON(newTaskMutationReceipt("block", blocked))
+		return
+	}
 	if hasFlag(args, "--json") {
 		writeJSON(taskEnvelope{SchemaVersion: protocolVersion, Task: newProtocolTask(blocked)})
 		return

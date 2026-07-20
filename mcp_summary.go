@@ -12,6 +12,9 @@ func mcpResultSummary(toolName string, value interface{}, isError bool) string {
 	if isError {
 		return compactMCPResultSummary(mcpErrorSummary(value))
 	}
+	if receipt, ok := value.(mutationReceipt); ok {
+		return compactMCPResultSummary(mcpMutationReceiptSummary(receipt))
+	}
 
 	var summary string
 	switch toolName {
@@ -105,6 +108,33 @@ func mcpResultSummary(toolName string, value interface{}, isError bool) string {
 		summary = "terminal-todo operation completed."
 	}
 	return compactMCPResultSummary(summary)
+}
+
+func mcpMutationReceiptSummary(receipt mutationReceipt) string {
+	if receipt.Task != nil {
+		switch receipt.Operation {
+		case "acquire":
+			verb := "Acquired"
+			if receipt.Replayed != nil && *receipt.Replayed {
+				verb = "Replayed acquisition for"
+			}
+			return fmt.Sprintf("%s task %d.", verb, receipt.Task.ID)
+		case "heartbeat":
+			return fmt.Sprintf("Renewed task %d lease.", receipt.Task.ID)
+		case "decompose":
+			return fmt.Sprintf("Decomposed task %d into %d subtask(s).", receipt.Task.ID, receipt.Affected.Total)
+		default:
+			return fmt.Sprintf("%s task %d.", mutationVerb(receipt.Operation), receipt.Task.ID)
+		}
+	}
+	return fmt.Sprintf("%s affected %d task(s).", mutationVerb(receipt.Operation), receipt.Affected.Total)
+}
+
+func mutationVerb(operation string) string {
+	if operation == "" {
+		return "Mutation"
+	}
+	return strings.ToUpper(operation[:1]) + operation[1:]
 }
 
 func summarizeMCPTasks(tasks []protocolTask) string {
