@@ -76,6 +76,13 @@ tools, event types, and error codes may be added without a protocol-version
 change. Removing or changing an existing value requires a new protocol
 version.
 
+Optional compact forms do not replace legacy defaults. Mutation receipts
+require `--receipt` or `receipt:true`; bounded native/MCP event pages require
+`page:true`; and CLI event pages require `--limit`. Without those opt-ins,
+version 1 preserves the existing full result shape. Event records are
+append-only within the retained window, but an explicit compaction may remove
+an old prefix; sequence IDs remain monotonic and are never reused.
+
 MCP exposes a curated coordination surface. Administrative native methods are
 not automatically MCP tools. Tool order is deterministic, but clients should
 select tools by name rather than position.

@@ -35,8 +35,8 @@ agent narration while preserving structured results for the host.
 
 Project state lives under `.terminal-todo/`:
 
-- `tasks.bin` contains the MessagePack task collection, append-only audit
-  events, and idempotent mutation receipts;
+- `tasks.bin` contains the MessagePack task collection, ordered audit events,
+  and idempotent acquisition receipts;
 - `agents.json` stores reusable agent profiles;
 - `config.json` stores project defaults;
 - `repositories.json` maps cross-repository aliases to paths; and
@@ -44,6 +44,11 @@ Project state lives under `.terminal-todo/`:
 
 Backups and compacted state use the same schemas. State is deliberately
 portable and controlled by the user.
+
+Event IDs append monotonically and are never reused. Events are append-only
+within the retained window; explicit compaction may remove an old prefix.
+Agent-facing mutations can opt into compact acknowledgements that omit
+unbounded task history, while legacy full results remain available.
 
 A task contains an ID, title, status, dependencies, timestamps, capability
 requirements, priority, lineage, findings, retry metadata, and optional

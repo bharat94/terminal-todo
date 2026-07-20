@@ -23,6 +23,8 @@ Treat routine coordination as background bookkeeping:
 - Keep progress updates about product work, not task-manager mechanics.
 - Read decisions from structured MCP content. The short text block is for a
   compact trace, not the complete result.
+- Request compact mutation receipts for routine acknowledgements. Fetch full
+  task detail only when the next decision needs it.
 
 ## Establish the session
 
@@ -52,9 +54,14 @@ If bootstrap is unavailable in an older installation, fall back to
 
 ```bash
 todo status --json
-todo events --json
+todo events --limit 20 --json
 todo my --as <actor> --json
 ```
+
+Over MCP, call `terminal_todo_events` with `{"page":true,"limit":20}` and
+continue from `cursor.next_since` while `cursor.has_more` is true. If
+`cursor.history_gap` is true, retained event history is incomplete; resync
+from current status instead of assuming the missing prefix.
 
 Never recreate work already represented in the graph.
 
@@ -76,12 +83,13 @@ todo decompose <parent-id> --as <actor> --into '{
     {"title": "Reproduce the failure", "caps": ["testing"]},
     {"title": "Implement the fix", "caps": ["go"]}
   ]
-}'
+}' --receipt
 ```
 
 Decomposition releases the parent lease and makes its new subtasks
-prerequisites. Reacquire a ready subtask rather than continuing to act as the
-parent owner.
+prerequisites. One call accepts at most 20 children. Reacquire a ready subtask
+rather than continuing to act as the parent owner. Over MCP, request
+`receipt:true`.
 
 ## Acquire work safely
 
@@ -104,6 +112,10 @@ todo acquire \
 
 Over MCP, call `terminal_todo_acquire` with the same actor, request ID,
 capabilities, and TTL fields.
+
+Keep acquisition's full result: the selected task content is the input to the
+next work decision. Compact receipts are for later lifecycle mutations, not
+the initial allocation.
 
 Do not implement allocation as `todo next` followed by `todo claim`; another
 worker can win between those commands.
@@ -129,10 +141,11 @@ Choose a TTL longer than the expected interval between checkpoints. Renew an
 active lease before it expires:
 
 ```bash
-todo heartbeat <id> --as <actor> --ttl 30m --json
+todo heartbeat <id> --as <actor> --ttl 30m --receipt
 ```
 
-Prefer `terminal_todo_heartbeat` over MCP.
+Prefer the `terminal_todo_heartbeat` MCP tool over the CLI and send
+`receipt:true`.
 
 Heartbeat before and after long-running commands or extended reasoning. A
 stale lease cannot be revived; if renewal returns `LEASE_NOT_ACTIVE`, inspect
@@ -143,10 +156,17 @@ Record durable context as soon as it becomes useful to another session:
 ```bash
 todo update <id> --as <actor> \
   --set finding="rename invalidates the original lock inode" \
-  --set file=store/store.go
+  --set file=store/store.go \
+  --receipt
 
-todo log <id> --as <actor> --msg "Race reproduced under concurrent writers"
+todo log <id> --as <actor> --msg "Race reproduced under concurrent writers" \
+  --receipt
 ```
+
+Send `receipt:true` for the corresponding MCP update and log calls. Receipts
+return bounded acknowledgement fields and never echo large log messages or
+task metadata. Use the receipt's `detail_follow_up` only when full detail is
+needed.
 
 Do not store secrets, credentials, tokens, or unnecessary personal data in
 task metadata.
@@ -156,13 +176,13 @@ task metadata.
 Verify the work before completion, then use the same actor identity:
 
 ```bash
-todo done <id> --as <actor> --json
+todo done <id> --as <actor> --receipt
 ```
 
 If the work should return to the queue:
 
 ```bash
-todo release <id> --as <actor> --error "concise retry context" --json
+todo release <id> --as <actor> --error "concise retry context" --receipt
 ```
 
 If progress requires an external condition that no worker can currently
@@ -170,13 +190,17 @@ resolve:
 
 ```bash
 todo block <id> --as <actor> \
-  --reason "waiting for API credentials" --json
+  --reason "waiting for API credentials" --receipt
 ```
 
 Prefer `release` for retryable execution failures and `block` for durable
 external blockers. Blocking releases the active lease so another worker can
 unblock and reacquire the task later. Never leave owned work silently in
 progress when ending a session.
+
+Over MCP, send `receipt:true` for completion, release, block, and other routine
+mutations. Compact receipts acknowledge what changed; they do not replace
+detail reads.
 
 ## Preserve invariants
 
@@ -187,5 +211,9 @@ progress when ending a session.
 - Record findings before context can be lost.
 - Use MCP structured content or CLI JSON for machine decisions; do not scrape
   human-readable tables.
+- Treat `status`, `cat`, `lineage`, `export`, legacy unpaged `events`, and
+  acquisition results as potentially large reads. Request them deliberately,
+  and prefer bootstrap, event pages, or mutation receipts when those bounded
+  views answer the decision.
 - Inspect `todo status --json` after ambiguous failures before retrying a
   mutation.

@@ -29,7 +29,8 @@ the linked path from the current OS user.
 - task titles, dependencies, status, priority, and tags;
 - actor names, ownership leases, retry errors, and capabilities;
 - structured metadata and human-readable task logs;
-- the append-only coordination event stream;
+- the ordered coordination event stream within its user-selected retention
+  window;
 - successful atomic-acquisition receipts, including immutable task snapshots.
 
 `agents.json`, `repositories.json`, and `config.json` contain their respective

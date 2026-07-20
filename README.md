@@ -198,20 +198,25 @@ capacity and idempotency errors return immediately.
 When work finishes:
 
 ```bash
-todo done 7 --as go-worker-1 --json
+todo done 7 --as go-worker-1 --receipt
 ```
 
 For work that runs longer than its lease, renew ownership before expiry:
 
 ```bash
-todo heartbeat 7 --as go-worker-1 --ttl 30m --json
+todo heartbeat 7 --as go-worker-1 --ttl 30m --receipt
 ```
 
 When work should return to the queue:
 
 ```bash
-todo release 7 --as go-worker-1 --error "upstream API is unavailable" --json
+todo release 7 --as go-worker-1 --error "upstream API is unavailable" --receipt
 ```
+
+`--receipt` returns a bounded acknowledgement—operation, affected IDs,
+lifecycle state, and an explicit detail follow-up—without repeating task logs,
+metadata, error text, or request IDs. Legacy `--json` results remain available
+when the next decision needs the complete task.
 
 Machine clients should treat these acquisition errors as scheduler outcomes:
 
@@ -397,10 +402,11 @@ bootstrap, status, task detail, creation, atomic acquisition, heartbeats,
 updates, logs, decomposition, blocking, release, completion, and events. Every
 tool advertises an MCP title and explicit read-only, destructive, idempotent,
 and open-world hints. Tool calls return both text and structured JSON: the
-text is a compact human trace, while the full result stays in
-`structuredContent` for the agent. The bundled skill keeps routine
-coordination in the background so user-facing updates stay focused on the
-work.
+text is a compact human trace, while `structuredContent` contains the
+machine result. The bundled skill requests compact receipts for routine
+mutations and bounded event pages, then fetches full detail only for decisions
+that require it. Coordination stays in the background so user-facing updates
+remain focused on the work.
 
 Register it in Codex:
 
@@ -430,7 +436,8 @@ todo next --capabilities go,testing --json
 todo status --as go-worker-1 --json
 todo block 7 --as go-worker-1 --reason "waiting for credentials" --json
 todo decompose 8 --as go-worker-1 --into '{"subtasks":[{"title":"Reproduce"}]}' --json
-todo events 120 --json
+todo heartbeat 7 --as go-worker-1 --ttl 30m --receipt
+todo events 120 --limit 100 --json
 todo graph --json
 ```
 
@@ -439,6 +446,12 @@ Every structured response includes:
 ```json
 {"schema_version": "1"}
 ```
+
+Mutation receipts are explicit and additive; without `--receipt`, existing
+version 1 result shapes are unchanged. Event pagination is likewise opt-in
+with `--limit`. Continue from `cursor.next_since`; if
+`cursor.history_gap` is true, resynchronize from current status because the
+user has compacted an older event prefix.
 
 Errors use stable identifiers:
 
@@ -467,7 +480,7 @@ Requests and responses are newline-delimited JSON-RPC 2.0:
 {"jsonrpc":"2.0","id":1,"method":"todo.bootstrap","params":{"actor":"go-worker-1"}}
 {"jsonrpc":"2.0","id":2,"method":"todo.next","params":{"capabilities":["go"]}}
 {"jsonrpc":"2.0","id":3,"method":"todo.acquire","params":{"actor":"go-worker-1","requestId":"alloc-42"}}
-{"jsonrpc":"2.0","id":4,"method":"todo.events","params":{"since":120}}
+{"jsonrpc":"2.0","id":4,"method":"todo.events","params":{"since":120,"page":true,"limit":100}}
 ```
 
 This native API supports the complete task, graph, project, diagnostics, and

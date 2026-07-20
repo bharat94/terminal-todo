@@ -195,10 +195,15 @@ presentation regression is assigned to the layer that can fix it.
 
 The second dogfood pass confirmed the intended split: bootstrap made discovery
 small, allocation diagnostics made empty work actionable, and MCP summaries
-made routine transitions terse. The remaining context-size risk is complete
-structured task payloads with very large logs or bulk prune results. Address
-that with compact mutation receipts and paginated detail reads rather than
-removing audit history or hiding it from operators.
+made routine transitions terse. A third pass addressed the remaining
+mutation/event amplification: routine lifecycle calls can now return compact
+receipts, and event consumers can opt into cursor-based bounded pages with
+retention-gap detection. Legacy full results remain available for operators
+and compatible version 1 clients.
+
+This bounds receipt cardinality, not arbitrary user-authored value sizes in
+full detail reads. `status`, `cat`, `lineage`, `export`, acquisition results,
+and legacy unpaged events remain deliberate potentially-large operations.
 
 ### P2: remote coordination boundary
 

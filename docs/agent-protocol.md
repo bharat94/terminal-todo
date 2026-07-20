@@ -130,6 +130,47 @@ Used by: `acquire --json`
 Retrying the same request ID with identical parameters returns the original
 task with `replayed: true`; it does not extend the original lease.
 
+### Compact Mutation Receipt
+
+Used by supported lifecycle mutations when the CLI receives `--receipt`, or
+the native/MCP request includes `"receipt": true`:
+
+```json
+{
+  "schema_version": "1",
+  "operation": "heartbeat",
+  "task": {
+    "id": 101,
+    "status": "in_progress",
+    "lease_expires": "2026-04-04T14:30:00Z",
+    "retry_count": 0
+  },
+  "affected": {
+    "total": 1,
+    "ids": [101],
+    "truncated": false
+  },
+  "detail_follow_up": {
+    "available": true,
+    "cli": "todo cat 101 --json",
+    "native_method": "todo.cat",
+    "mcp_tool": "terminal_todo_cat"
+  }
+}
+```
+
+Receipts are bounded acknowledgements: `affected.ids` is sorted, unique, and
+capped at 20; `task` contains only lifecycle fields; and caller input such as
+log messages, metadata, errors, and request IDs is not echoed. `replayed`
+appears for idempotent acquisition. For destructive `rm` and `prune`
+operations, `detail_follow_up.available` is false because removed detail
+cannot be reconstructed after the mutation. Capture a full read or backup
+first when that detail matters.
+
+The legacy `--json` and native/MCP results remain the default. `--receipt`
+implies structured output and structured errors; it is an explicit opt-in
+when acknowledgement is sufficient.
+
 ### Next Envelope
 
 Used by: `next --json`
@@ -373,7 +414,7 @@ used. The `if_blocked` section is present when no filter is specified or
 
 ### Events Envelope
 
-Used by: `events --json`
+Used by: legacy `events --json`
 
 ```json
 {
@@ -394,6 +435,31 @@ Used by: `events --json`
 Event types: `created`, `completed`, `claimed`, `released`, `lease_expired`,
 `lease_renewed`, `blocked`, `unblocked`, `updated`, `decomposed`, `removed`,
 `dep_added`, `dep_removed`.
+
+With `events --limit <n> --json`, or native/MCP `{page:true, limit?:n}`, the
+result is a bounded page:
+
+```json
+{
+  "schema_version": "1",
+  "events": [ ... ],
+  "limit": 100,
+  "returned": 100,
+  "cursor": {
+    "requested_since": 120,
+    "next_since": 220,
+    "oldest_available": 1,
+    "latest_event_id": 300,
+    "has_more": true,
+    "history_gap": false
+  }
+}
+```
+
+`limit` defaults to 100 and must be between 1 and 1000. Continue with
+`cursor.next_since` while `has_more` is true. After explicit event compaction,
+`history_gap` and `retention_gap` report when the requested sequence prefix is
+no longer retained. Event IDs remain monotonic and are never reused.
 
 ### Graph Envelope
 
@@ -471,7 +537,8 @@ by any registered agent.
 
 ## 3. Error Format
 
-All errors output to stderr when `--json` is present anywhere in CLI args.
+All errors output to stderr when `--json` or `--receipt` is present anywhere
+in CLI args.
 The error envelope is:
 
 ```json
@@ -564,7 +631,8 @@ All query commands support `--json` for structured output.
 | `my --as <owner> --json` | `tasksEnvelope` | Tasks claimed by a specific agent |
 | `what-if <id> --json` | `whatifEnvelope` | Simulation of completion/blocking |
 | `graph --json` | `graphEnvelope` | DAG topology as nodes + edges |
-| `events [<since>] --json` | `eventsEnvelope` | Append-only event log since ID |
+| `events [<since>] --json` | legacy `eventsEnvelope` | All retained events since ID |
+| `events [<since>] --limit <n> --json` | paged `eventsEnvelope` | Bounded event page with continuation and retention-gap metadata |
 | `update <id> --json` | `taskEnvelope` | Updated task after mutation |
 | `agent-card --json` | `agentCardEnvelope` | Agent identity and computed load |
 | `caps --json` | `capsEnvelope` | Capability demand and gaps |
@@ -576,7 +644,9 @@ All query commands support `--json` for structured output.
 
 Mutation commands output human-readable text by default. Core lifecycle
 mutations accept `--json` and return a versioned envelope. All errors are
-structured via the error envelope when `--json` is present.
+structured via the error envelope when `--json` or `--receipt` is present.
+Adding `--receipt` returns the compact mutation receipt instead of the legacy
+full result.
 
 | Command | Effect | JSON result |
 |---------|--------|-------------|
@@ -591,7 +661,7 @@ structured via the error envelope when `--json` is present.
 | `block <id> --reason <text> [--as <owner>]` | Preserve a blocker and release any active lease | `taskEnvelope` |
 | `unblock <id> [--as <owner>]` | Return manually blocked work to pending | `taskEnvelope` |
 | `log <id> --msg <text> --as <owner>` | Append to the task audit trail | `taskEnvelope` |
-| `decompose <id> --into <json> [--as]` | Create children and make them prerequisites of the parent | `{schema_version, parent, subtasks}` |
+| `decompose <id> --into <json> [--as]` | Create at most 20 children and make them prerequisites of the parent | `{schema_version, parent, subtasks}` |
 | `prune` | Remove completed tasks and rewrite local dependencies | `tasksEnvelope` snapshot of removed tasks |
 | `compact --keep-events <n> [--receipts-before <duration>] [--dry-run]` | Apply explicit audit/idempotency retention | `{schema_version, events_removed, receipts_removed, dry_run}` |
 
@@ -633,18 +703,22 @@ capabilities no registered agent provides.
 
 ## 7. Events & Logs
 
-The event log is an append-only sequence of structured events. Events are
-numbered sequentially and never modified or deleted.
+The event log is an ordered sequence of structured events. New events append
+with monotonic IDs. Existing event IDs are never modified or reused, while an
+explicit `todo compact --keep-events <n>` may delete an old prefix.
 
 **Query:**
 ```bash
 todo events              # All events
 todo events 42           # Events since ID 42
 todo events --json       # Structured output
+todo events 42 --limit 100 --json  # Bounded page with cursor metadata
 ```
 
-Events are used by the `watch` command internally. Agents can poll for new
-events to detect state changes without polling the full task set.
+Events are used by the `watch` command internally. Agents should use bounded
+pages to detect state changes without polling the full task set. If a page
+reports `history_gap: true`, resynchronize from current task status before
+continuing from the retained event window.
 
 The task-level `log` field is distinct from events — it's an agent-authored
 audit trail stored on each individual task.
@@ -700,7 +774,7 @@ advertises a stable, deterministic tool list:
 | `terminal_todo_block` | `todo.block` | Preserve an explicit blocker |
 | `terminal_todo_release` | `todo.release` | Yield work or record a failed attempt |
 | `terminal_todo_complete` | `todo.done` | Complete verified work |
-| `terminal_todo_events` | `todo.events` | Read the append-only event stream |
+| `terminal_todo_events` | `todo.events` | Read retained events; agents should request `page:true` |
 
 Every successful `tools/call` result contains a compact text summary for host
 traces and the complete machine-readable value in `structuredContent`. Text
@@ -749,31 +823,31 @@ processed but no response is written. Stdio requests may be up to 4 MiB.
 | `todo.ping` | `{}` | `{version, protocol_version, project, initialized, capabilities}` |
 | `todo.init` | `{}` | `{path}` |
 | `todo.bootstrap` | `{actor, capabilities?, objectiveId?, limit?, eventLimit?}` | `bootstrapEnvelope` |
-| `todo.add` | `{title, after?, priority?, capabilities?, tags?}` | `{id, title}` |
-| `todo.done` | `{ids, actor?}` | `{completed, unblocked}` |
+| `todo.add` | `{title, after?, priority?, capabilities?, tags?, receipt?}` | `{id, title}` or compact receipt |
+| `todo.done` | `{ids, actor?, receipt?}` | `{completed, unblocked}` or compact receipt |
 | `todo.status` | `{tag?, actor?, all?}` | `tasksEnvelope` or `projectsEnvelope` |
 | `todo.cat` | `{id}` | `protocolTask` |
-| `todo.update` | `{id, title?, priority?, capabilities?, actor?, extra?, addDeps?, removeDeps?}` | `protocolTask` |
-| `todo.claim` | `{id, actor, ttl?}` | `{id, owner, expires, retryCount, lastError}` |
-| `todo.acquire` | `{actor, requestId, ttl?, capabilities?}` | Versioned task envelope for the atomically selected task; repeated request IDs return the original result |
-| `todo.heartbeat` | `{id, actor, ttl?}` | Versioned task envelope with the renewed lease |
-| `todo.release` | `{id, actor, error?}` | `{id, status}` |
-| `todo.block` | `{id, reason, actor?}` | `{id, status}` |
-| `todo.unblock` | `{id, actor?}` | `{id, status}` |
+| `todo.update` | `{id, title?, priority?, capabilities?, actor?, extra?, addDeps?, removeDeps?, receipt?}` | `protocolTask` or compact receipt |
+| `todo.claim` | `{id, actor, ttl?, receipt?}` | `{id, owner, expires, retryCount, lastError}` or compact receipt |
+| `todo.acquire` | `{actor, requestId, ttl?, capabilities?, receipt?}` | Versioned task envelope or compact receipt for the atomically selected task; repeated request IDs return the original result |
+| `todo.heartbeat` | `{id, actor, ttl?, receipt?}` | Versioned task envelope or compact receipt with the renewed lease |
+| `todo.release` | `{id, actor, error?, receipt?}` | `{id, status}` or compact receipt |
+| `todo.block` | `{id, reason, actor?, receipt?}` | `{id, status}` or compact receipt |
+| `todo.unblock` | `{id, actor?, receipt?}` | `{id, status}` or compact receipt |
 | `todo.next` | `{capabilities?}` | `nextEnvelope` |
-| `todo.log` | `{id, message, actor?}` | `{id}` |
+| `todo.log` | `{id, message, actor?, receipt?}` | `{id}` or compact receipt |
 | `todo.my` | `{actor}` | `tasksEnvelope` |
 | `todo.search` | `{query}` | `tasksEnvelope` |
 | `todo.depends` | `{id}` | `dependsEnvelope` |
 | `todo.dependents` | `{id}` | `dependentsEnvelope` |
-| `todo.decompose` | `{id, subtasks, actor?}` | `{parent, subtasks}` |
+| `todo.decompose` | `{id, subtasks, actor?, receipt?}` | `{parent, subtasks}` or compact receipt; at most 20 subtasks |
 | `todo.lineage` | `{id}` | `lineageEnvelope` |
-| `todo.events` | `{since?}` | `{events}` |
+| `todo.events` | `{since?, page?, limit?}` | Legacy `{events}` by default; versioned bounded event page when `page:true` |
 | `todo.whatIf` | `{id, scenario?}` | `whatifEnvelope` |
 | `todo.graph` | `{format?}` | `graphEnvelope` |
 | `todo.config.get` | `{key?}` | `{config}` |
 | `todo.config.set` | `{key, value}` | `{key, value}` |
-| `todo.prune` | `{}` | `{removedCount}` |
+| `todo.prune` | `{receipt?}` | `{removedCount}` or compact receipt |
 | `todo.compact` | `{keepEvents?, receiptsBefore?, dryRun?}` | `{events_removed, receipts_removed, dry_run}` |
 | `todo.export` | `{format?}` | `tasksEnvelope` |
 | `todo.link` | `{alias, path}` | `{alias, path}` |
@@ -829,9 +903,10 @@ other coordination messages.
 
 `todo.ping` is available before project initialization and advertises these
 protocol capabilities: `dag`, `leases`, `lease_heartbeat`, `atomic_acquire`,
-`idempotent_acquire`, `events`, and `cross_repository_dependencies`. Clients
-should use `protocol_version` and this list for feature negotiation; `version`
-identifies the binary build and can change independently.
+`idempotent_acquire`, `session_bootstrap`, `compact_receipts`, `events`,
+`event_pages`, and `cross_repository_dependencies`. Clients should use
+`protocol_version` and this list for feature negotiation; `version` identifies
+the binary build and can change independently.
 
 Acquire request IDs are opaque, project-wide identifiers of 1–128 bytes; a
 UUID or ULID is recommended. A successful acquisition stores its request

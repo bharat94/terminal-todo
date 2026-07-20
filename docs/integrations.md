@@ -22,6 +22,12 @@ todo integrate --check
 todo integrate --check --live
 ```
 
+Start a new Codex or Claude Code session from the project after installation;
+an already-running host may not refresh its tool inventory. Codex documents
+that it loads project-scoped configuration only for a trusted project. In the
+2026-07-16 evaluation, Claude Code 2.1.212 discovered `.mcp.json` but reported
+the server as `Pending approval` until an interactive approval could occur.
+
 The default target is `all`. Use `codex` or `claude` to install one runtime:
 
 ```bash
@@ -100,7 +106,9 @@ todo integrate --check --live
 The live check starts the configured binary in MCP stdio mode, negotiates the
 protocol, lists its tools, calls `terminal_todo_ping`, and verifies that the
 server resolved the current project root. It times out rather than leaving a
-stalled host process behind.
+stalled host process behind. This is a client-neutral transport probe: it does
+not grant or verify a host's project-trust approval, start an agent turn, or
+test how that host renders tool calls.
 
 ## Runtime lifecycle
 
@@ -163,3 +171,16 @@ Run `todo integrate --check` after upgrading the binary so skill and client
 configuration drift is visible. Use `todo integrate --check --live` when
 debugging process launch, MCP negotiation, tool discovery, or project-root
 resolution.
+
+Inspect host discovery separately:
+
+```bash
+codex mcp get terminal-todo
+claude mcp get terminal-todo
+```
+
+If Claude reports `Pending approval`, start an interactive session in the
+project and approve the shared server. If an already-running Codex session
+does not expose the tools after installation, start a new session from the
+trusted project. Neither host-discovery command measures whether the host UI
+expands or collapses tool-call rows.
