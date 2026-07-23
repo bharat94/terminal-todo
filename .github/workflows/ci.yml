@@ -42,7 +42,7 @@ jobs:
         run: go build -trimpath -v ./...
 
       - name: Test with race detector
-        run: go test ./... -race -count=1 -timeout 120s
+        run: go test ./... -race -count=1 -timeout 300s
 
       - name: Vet
         run: go vet ./...

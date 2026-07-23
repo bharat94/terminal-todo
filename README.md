@@ -643,7 +643,7 @@ Before opening a pull request:
 
 ```bash
 gofmt -w .
-go test ./... -race -count=1 -timeout 120s
+go test ./... -race -count=1 -timeout 300s
 go vet ./...
 ```
 

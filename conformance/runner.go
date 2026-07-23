@@ -297,9 +297,13 @@ func runCommand(
 	go func() { readErrors <- collector.read(stdout, StreamStdout, limits.MaxEventBytes, cancel) }()
 	go func() { readErrors <- collector.read(stderr, StreamStderr, limits.MaxEventBytes, cancel) }()
 
-	waitErr := command.Wait()
 	firstReadError := <-readErrors
 	secondReadError := <-readErrors
+	// StdoutPipe and StderrPipe require their readers to reach EOF before Wait
+	// closes the descriptors. Reversing this order intermittently turns a
+	// successful short-lived process into a platform-specific "file already
+	// closed" capture error.
+	waitErr := command.Wait()
 	capture := collector.capture()
 	result := ExecutionResult{
 		Process: ProcessResult{ExitCode: exitCode(waitErr)},

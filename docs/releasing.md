@@ -21,7 +21,7 @@ publication and OIDC attestation test.
 
 ```bash
 go mod verify
-go test ./... -race -count=1 -timeout 120s
+go test ./... -race -count=1 -timeout 300s
 go vet ./...
 goreleaser check
 goreleaser release --snapshot --clean
