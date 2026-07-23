@@ -361,6 +361,26 @@ todo integrate --command /absolute/path/to/todo
 See [Agent integrations](docs/integrations.md) for lifecycle details,
 generated files, and troubleshooting.
 
+### Verify real-agent behavior
+
+`todo conformance` checks which supported agent hosts are locally available
+without contacting a model. Real execution requires an explicit flag:
+
+```bash
+todo conformance
+todo conformance --run --host codex --json
+```
+
+The opt-in run creates a disposable synthetic project and grades the persisted
+task state and audit trail after a real Codex or Claude Code turn. It measures
+bounded bootstrap, atomic acquisition, structured handoff data, ownership
+cleanup, and quiet outcome narration. Authentication or MCP approval problems
+are reported separately as infrastructure skips. The controlled prompt may
+consume host usage; repository source is not placed in the fixture.
+
+See [Real-agent conformance](docs/conformance.md) for the safety model, current
+lifecycle smoke evaluation, and the nine-scenario vendor-neutral contract.
+
 ### Reusable agent skill
 
 The repository includes a canonical
@@ -559,7 +579,7 @@ Run `todo help` for the concise built-in reference.
 | Coordination | `block`, `unblock`, `log`, `events`, `watch` |
 | Agents | `bootstrap`, `agent-card`, `caps` |
 | Projects | `init`, `link`, `unlink`, `config` |
-| Operations | `serve`, `mcp`, `integrate`, `export`, `backup`, `restore`, `compact`, `doctor` |
+| Operations | `serve`, `mcp`, `integrate`, `conformance`, `export`, `backup`, `restore`, `compact`, `doctor` |
 
 Common configuration:
 
@@ -612,10 +632,12 @@ go vet ./...
 
 The test suite includes CLI integration tests, concurrent process tests,
 storage migration coverage, cross-platform locking code, DAG semantics, and
-MCP/JSON-RPC protocol tests. CI runs trimmed builds, race-enabled tests,
-process-level MCP and integration smoke tests, and `go vet` on Linux, macOS,
-and Windows. It also validates release configuration and scans reachable code
-against the Go vulnerability database.
+MCP/JSON-RPC protocol tests. The conformance package additionally checks the
+real-host adapter contract, bounded event capture, redaction, persisted-state
+grading, and all nine catalog fixtures without contacting a model. CI runs
+trimmed builds, race-enabled tests, process-level MCP and integration smoke
+tests, and `go vet` on Linux, macOS, and Windows. It also validates release
+configuration and scans reachable code against the Go vulnerability database.
 
 Before opening a pull request:
 
@@ -639,6 +661,7 @@ the [Agent Protocol](docs/agent-protocol.md).
 - [Compatibility contract](docs/compatibility.md) — supported platforms, filesystems, schemas, and CI evidence
 - [Security and data lifecycle](docs/security-and-data.md) — trust boundary, permissions, retention, and recovery
 - [Agent integrations](docs/integrations.md) — Codex, Claude Code, skills, and MCP
+- [Real-agent conformance](docs/conformance.md) — opt-in host evaluation and behavioral contract
 - [Releasing](docs/releasing.md) — verified artifacts and maintainer workflow
 - [Production readiness](docs/production-readiness.md) — evidence, release gate, and known boundaries
 - [Dogfooding retrospective](docs/dogfooding-retrospective.md) — observed UX friction and improvement plan

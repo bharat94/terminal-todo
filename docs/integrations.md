@@ -28,6 +28,18 @@ that it loads project-scoped configuration only for a trusted project. In the
 2026-07-16 evaluation, Claude Code 2.1.212 discovered `.mcp.json` but reported
 the server as `Pending approval` until an interactive approval could occur.
 
+To evaluate the agent boundary itself, use the separate conformance command:
+
+```bash
+todo conformance
+todo conformance --run --host codex
+```
+
+The first form is a local, zero-model-call host probe. The second creates a
+disposable synthetic project and grades a real turn from terminal-todo's
+persisted state. See [Real-agent conformance](conformance.md) before enabling
+`--run`, which can consume host usage.
+
 The default target is `all`. Use `codex` or `claude` to install one runtime:
 
 ```bash

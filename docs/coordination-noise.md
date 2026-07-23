@@ -90,8 +90,9 @@ freshly built binary and an explicit absolute `--command`, demonstrating why
 
 The installed client help exposes machine-readable agent-event modes
 (`codex exec --json` and Claude Code `--output-format stream-json`). Those
-streams can support a future opt-in host evaluation, but invoking them sends a
-prompt to an agent and therefore was outside this read-only baseline. The
+streams now drive the opt-in `todo conformance --run` lifecycle evaluation.
+Invoking them sends a prompt to an agent and therefore remained outside this
+historical read-only baseline. The
 official [Codex configuration reference][codex-config] fetched during the
 evaluation covers MCP discovery, tool allowlists, approvals, and timeouts, but
 no project setting for collapsing tool rows. The official
@@ -100,9 +101,8 @@ consistent with the installed client's local help, likewise exposes
 text/JSON/streaming and verbose output modes, not a project-controlled
 collapsing policy.
 
-For a repeatable opt-in evaluation, use a disposable initialized project and
-one read-only `terminal_todo_ping` turn per host, capture the documented event
-stream, and record:
+The repeatable evaluation uses a disposable initialized project, captures the
+documented event stream, and records:
 
 1. UTF-8 bytes in the MCP result's text content;
 2. the number of tool-use and tool-result events;
@@ -110,8 +110,10 @@ stream, and record:
 4. assistant sentences that merely narrate coordination.
 
 The event stream can automate the first two counts. The interactive host UI
-must provide or be observed for the third, and the fourth should be reviewed
-against the bundled skill's outcome-only narration rule.
+must provide or be observed for the third, and the fourth is checked against
+the bundled skill's outcome-only narration rule. See
+[Real-agent conformance](conformance.md) for the executable safety and scoring
+contract.
 
 [codex-config]: https://developers.openai.com/codex/config-reference
 [claude-cli]: https://docs.anthropic.com/en/docs/claude-code/cli-usage

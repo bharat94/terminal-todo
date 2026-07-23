@@ -17,6 +17,11 @@ real-world compatibility history across many repositories, agent hosts, and
 filesystems. The first release should establish that feedback loop without
 pretending the interface can never evolve.
 
+The initial opt-in lifecycle smoke run passed against local Codex 0.144.5.
+Claude Code 2.1.215 was correctly skipped before model invocation because the
+local client was unauthenticated. See [Real-agent conformance](conformance.md)
+for the measured boundary and the remaining full-suite work.
+
 ## Evidence
 
 | Area | Evidence | Status |
@@ -24,7 +29,7 @@ pretending the interface can never evolve.
 | State integrity | Stable sidecar locks, flushed temporary files, atomic replacement, migrations, backups, restore, doctor | Ready |
 | Coordination | DAG validation, atomic acquisition, idempotent receipts, leases, heartbeats, retries, recovery events | Ready |
 | Protocols | Versioned CLI JSON and JSON-RPC, additive compact receipts and event pages, MCP 2025-06-18 lifecycle and tool annotations, strict parameter decoding, stable errors | Ready |
-| Agent integration | Bundled MCP-first skill, bounded session bootstrap, compact routine mutations, allocation diagnostics, and idempotent Codex and Claude installers with static and live checks | Ready |
+| Agent integration | Bundled MCP-first skill, bounded session bootstrap, compact routine mutations, allocation diagnostics, idempotent Codex and Claude installers, and an opt-in persisted-state real-agent conformance runner | Ready for lifecycle smoke validation |
 | Platforms | Native Linux, macOS, and Windows race/build/vet matrix; six release targets | Ready |
 | Supply chain | Pinned release tools, snapshot checksums and SPDX SBOMs, configured provenance attestations, reachable-vulnerability scan | Ready for tagged validation |
 | Operations | Backup, restore, retention, compaction, compatibility, security, and incident guidance | Ready |
