@@ -36,14 +36,28 @@ func TestCLIReceiptBoundsHistoricTaskStateAndLeavesJSONDetailCompatible(t *testi
 	runLifecycleCommand(t, todo, root, "add", "History-heavy task")
 
 	largeValue := strings.Repeat("historic-context-", 4_000)
+	storePath := filepath.Join(root, ".terminal-todo", "tasks.bin")
+	taskStore, err := store.Load(storePath)
+	require.NoError(t, err)
+	task := taskStore.Tasks[1]
+	task.Extra["finding"] = largeValue
+	task.Log = append(task.Log, store.LogEntry{
+		Timestamp: uint64(time.Now().UnixMilli()),
+		Agent:     "historic-worker",
+		Message:   largeValue,
+	})
+	require.NoError(t, taskStore.Save(storePath))
+
 	var receipt mutationReceipt
-	runLifecycleJSONCommand(t, todo, root, &receipt,
-		"update", "1", "--set", "finding="+largeValue, "--receipt")
+	updateOutput := runReceiptJSONCommand(t, todo, root, &receipt,
+		"update", "1", "--set", "checkpoint=current", "--receipt")
 	assertMutationReceipt(t, receipt, "update", 1)
+	assert.Less(t, len(updateOutput), 2_000)
+	assert.NotContains(t, string(updateOutput), largeValue)
 
 	receipt = mutationReceipt{}
 	output := runReceiptJSONCommand(t, todo, root, &receipt,
-		"log", "1", "--as", "worker", "--msg", largeValue, "--receipt")
+		"log", "1", "--as", "worker", "--msg", "checkpoint recorded", "--receipt")
 	assertMutationReceipt(t, receipt, "log", 1)
 	assert.Less(t, len(output), 2_000)
 	assert.NotContains(t, string(output), largeValue)
@@ -67,7 +81,11 @@ func TestCLIReceiptBoundsHistoricTaskStateAndLeavesJSONDetailCompatible(t *testi
 	assert.Greater(t, len(detailOutput), len(output)*20)
 	assert.Equal(t, largeValue, detail.Task.Metadata.Extra["finding"])
 	require.NotEmpty(t, detail.Task.Metadata.Log)
-	assert.Equal(t, largeValue, detail.Task.Metadata.Log[len(detail.Task.Metadata.Log)-3].Message)
+	assert.Contains(t, detail.Task.Metadata.Log, protocolLogEntry{
+		Timestamp: detail.Task.Metadata.Log[0].Timestamp,
+		Agent:     "historic-worker",
+		Message:   largeValue,
+	})
 }
 
 func TestCLIBulkReceiptCapsIDsWhileReportingExactTotal(t *testing.T) {
