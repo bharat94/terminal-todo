@@ -1,0 +1,42 @@
+{
+  "schema_version": "1",
+  "id": "discovery",
+  "title": "Discover project coordination",
+  "summary": "The worker discovers the project-installed integration without the user naming terminal-todo.",
+  "initial_time": "2026-01-01T12:00:00Z",
+  "skill_policy": "not_preloaded",
+  "timeout_seconds": 120,
+  "actors": [
+    {"ref": "subject", "name": "eval-discovery", "capabilities": ["go"]}
+  ],
+  "project": {
+    "initialized": true,
+    "tasks": [
+      {"ref": "work", "title": "Inspect the parser boundary", "status": "pending", "capabilities": ["go"], "depends_on": []}
+    ]
+  },
+  "turns": [
+    {
+      "id": "join",
+      "by": "actor:subject",
+      "action": "prompt",
+      "prompt": "Join this existing multi-agent project, find appropriate ready work, and begin it. Do not ask me to restate the plan."
+    }
+  ],
+  "assertions": [
+    {
+      "id": "uses_project_integration",
+      "kind": "operation_trace",
+      "description": "The worker discovers the installed coordination interface and uses it.",
+      "criteria": ["discovers_coordination"],
+      "expect": {"contains_operation": ["bootstrap", "acquire"]}
+    },
+    {
+      "id": "does_not_request_plan",
+      "kind": "assistant_output",
+      "description": "The worker does not ask the user to reconstruct durable project state.",
+      "criteria": ["discovers_coordination"],
+      "expect": {"excludes_semantic_intent": ["ask_user_to_restate_plan"]}
+    }
+  ]
+}

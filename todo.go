@@ -136,6 +136,8 @@ func main() {
 		cmdRestore(args)
 	case "doctor":
 		cmdDoctor(args)
+	case "conformance":
+		cmdConformance(args)
 	case "config":
 		cmdConfig(args)
 	case "link":
@@ -153,7 +155,7 @@ func main() {
 
 func commandAllowsUninitializedProject(command string) bool {
 	switch command {
-	case "init", "serve", "mcp", "integrate", "--version", "-v", "help", "--help", "-h":
+	case "init", "serve", "mcp", "integrate", "conformance", "--version", "-v", "help", "--help", "-h":
 		return true
 	default:
 		return false
@@ -206,6 +208,7 @@ Integrations:
   mcp --stdio         Start the Model Context Protocol server
   serve --stdio       Start the native JSON-RPC server
   integrate [target]  Install Codex/Claude project integration (--check, --live)
+  conformance         Probe real-agent hosts; --run performs the opt-in lifecycle evaluation
 
 Project:
   config [key=value]  View or set project configuration
@@ -285,64 +288,66 @@ func parseIDs(args []string) []uint64 {
 
 func validateCommandArgs(command string, args []string) error {
 	valueFlags := map[string]map[string]bool{
-		"add":        {"--after": true, "--priority": true, "--caps": true, "--tag": true},
-		"backup":     {"--output": true},
-		"block":      {"--reason": true, "--as": true},
-		"claim":      {"--as": true, "--ttl": true},
-		"acquire":    {"--as": true, "--request-id": true, "--ttl": true, "--capabilities": true, "--wait": true},
-		"heartbeat":  {"--as": true, "--ttl": true},
-		"decompose":  {"--into": true, "--as": true},
-		"done":       {"--as": true},
-		"log":        {"--msg": true, "--as": true},
-		"next":       {"--capabilities": true},
-		"release":    {"--as": true, "--error": true},
-		"unblock":    {"--as": true},
-		"update":     {"--title": true, "--priority": true, "--caps": true, "--set": true, "--as": true, "--add-dep": true, "--remove-dep": true},
-		"status":     {"--tag": true, "--as": true},
-		"watch":      {"--poll": true},
-		"my":         {"--as": true},
-		"bootstrap":  {"--as": true, "--capabilities": true, "--objective": true, "--limit": true, "--events": true},
-		"agent-card": {"--as": true, "--caps": true, "--desc": true, "--max-load": true},
-		"caps":       {"--as": true},
-		"integrate":  {"--command": true},
-		"compact":    {"--keep-events": true, "--receipts-before": true},
-		"events":     {"--limit": true},
+		"add":         {"--after": true, "--priority": true, "--caps": true, "--tag": true},
+		"backup":      {"--output": true},
+		"block":       {"--reason": true, "--as": true},
+		"claim":       {"--as": true, "--ttl": true},
+		"acquire":     {"--as": true, "--request-id": true, "--ttl": true, "--capabilities": true, "--wait": true},
+		"heartbeat":   {"--as": true, "--ttl": true},
+		"decompose":   {"--into": true, "--as": true},
+		"done":        {"--as": true},
+		"log":         {"--msg": true, "--as": true},
+		"next":        {"--capabilities": true},
+		"release":     {"--as": true, "--error": true},
+		"unblock":     {"--as": true},
+		"update":      {"--title": true, "--priority": true, "--caps": true, "--set": true, "--as": true, "--add-dep": true, "--remove-dep": true},
+		"status":      {"--tag": true, "--as": true},
+		"watch":       {"--poll": true},
+		"my":          {"--as": true},
+		"bootstrap":   {"--as": true, "--capabilities": true, "--objective": true, "--limit": true, "--events": true},
+		"agent-card":  {"--as": true, "--caps": true, "--desc": true, "--max-load": true},
+		"caps":        {"--as": true},
+		"integrate":   {"--command": true},
+		"conformance": {"--host": true, "--timeout": true, "--model": true},
+		"compact":     {"--keep-events": true, "--receipts-before": true},
+		"events":      {"--limit": true},
 	}
 	booleanFlags := map[string]map[string]bool{
-		"add":        {"--json": true, "--receipt": true},
-		"claim":      {"--json": true, "--receipt": true},
-		"acquire":    {"--json": true, "--receipt": true},
-		"heartbeat":  {"--json": true, "--receipt": true},
-		"done":       {"--json": true, "--receipt": true},
-		"release":    {"--json": true, "--receipt": true},
-		"block":      {"--json": true, "--receipt": true},
-		"unblock":    {"--json": true, "--receipt": true},
-		"log":        {"--json": true, "--receipt": true},
-		"decompose":  {"--json": true, "--receipt": true},
-		"rm":         {"--json": true, "--receipt": true},
-		"prune":      {"--json": true, "--receipt": true},
-		"cat":        {"--json": true},
-		"status":     {"--json": true, "--all": true},
-		"next":       {"--json": true, "--ready": true},
-		"lineage":    {"--json": true},
-		"update":     {"--json": true, "--receipt": true},
-		"export":     {"--markdown": true},
-		"graph":      {"--dot": true, "--json": true},
-		"events":     {"--json": true},
-		"doctor":     {"--fix": true},
-		"what-if":    {"--done": true, "--claim": true, "--block": true, "--json": true},
-		"whatif":     {"--done": true, "--claim": true, "--block": true, "--json": true},
-		"depends":    {"--json": true},
-		"dependents": {"--json": true},
-		"search":     {"--json": true},
-		"my":         {"--json": true},
-		"bootstrap":  {"--json": true},
-		"agent-card": {"--json": true},
-		"caps":       {"--json": true, "--all": true},
-		"serve":      {"--stdio": true},
-		"mcp":        {"--stdio": true},
-		"integrate":  {"--force": true, "--check": true, "--live": true},
-		"compact":    {"--dry-run": true, "--json": true},
+		"add":         {"--json": true, "--receipt": true},
+		"claim":       {"--json": true, "--receipt": true},
+		"acquire":     {"--json": true, "--receipt": true},
+		"heartbeat":   {"--json": true, "--receipt": true},
+		"done":        {"--json": true, "--receipt": true},
+		"release":     {"--json": true, "--receipt": true},
+		"block":       {"--json": true, "--receipt": true},
+		"unblock":     {"--json": true, "--receipt": true},
+		"log":         {"--json": true, "--receipt": true},
+		"decompose":   {"--json": true, "--receipt": true},
+		"rm":          {"--json": true, "--receipt": true},
+		"prune":       {"--json": true, "--receipt": true},
+		"cat":         {"--json": true},
+		"status":      {"--json": true, "--all": true},
+		"next":        {"--json": true, "--ready": true},
+		"lineage":     {"--json": true},
+		"update":      {"--json": true, "--receipt": true},
+		"export":      {"--markdown": true},
+		"graph":       {"--dot": true, "--json": true},
+		"events":      {"--json": true},
+		"doctor":      {"--fix": true},
+		"what-if":     {"--done": true, "--claim": true, "--block": true, "--json": true},
+		"whatif":      {"--done": true, "--claim": true, "--block": true, "--json": true},
+		"depends":     {"--json": true},
+		"dependents":  {"--json": true},
+		"search":      {"--json": true},
+		"my":          {"--json": true},
+		"bootstrap":   {"--json": true},
+		"agent-card":  {"--json": true},
+		"caps":        {"--json": true, "--all": true},
+		"serve":       {"--stdio": true},
+		"mcp":         {"--stdio": true},
+		"integrate":   {"--force": true, "--check": true, "--live": true},
+		"conformance": {"--run": true, "--json": true, "--include-events": true, "--keep-workspace": true},
+		"compact":     {"--dry-run": true, "--json": true},
 	}
 	knownCommands := map[string]bool{
 		"init": true, "add": true, "done": true, "status": true,
@@ -354,9 +359,10 @@ func validateCommandArgs(command string, args []string) error {
 		"log": true, "search": true, "doctor": true, "backup": true,
 		"restore": true, "what-if": true, "whatif": true, "events": true,
 		"watch": true, "my": true, "graph": true, "serve": true, "mcp": true,
-		"bootstrap": true,
-		"integrate": true,
-		"compact":   true,
+		"bootstrap":   true,
+		"integrate":   true,
+		"conformance": true,
+		"compact":     true,
 	}
 	if !knownCommands[command] {
 		return nil

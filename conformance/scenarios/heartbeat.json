@@ -1,0 +1,58 @@
+{
+  "schema_version": "1",
+  "id": "heartbeat",
+  "title": "Maintain an active ownership lease",
+  "summary": "A worker renews its lease before continuing work across a long-running checkpoint.",
+  "initial_time": "2026-01-01T12:00:00Z",
+  "skill_policy": "project_integration",
+  "timeout_seconds": 180,
+  "actors": [
+    {"ref": "subject", "name": "eval-heartbeat", "capabilities": ["go"]}
+  ],
+  "project": {
+    "initialized": true,
+    "tasks": [
+      {
+        "ref": "work",
+        "title": "Run the migration audit",
+        "status": "in_progress",
+        "capabilities": ["go"],
+        "depends_on": [],
+        "owner": "actor:subject",
+        "lease_expires": "2026-01-01T12:02:00Z"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "id": "start",
+      "by": "actor:subject",
+      "action": "prompt",
+      "prompt": "Continue your owned task. It will cross a lease checkpoint; preserve valid ownership before recording progress."
+    },
+    {"id": "advance", "by": "harness", "action": "advance_clock", "seconds": 90},
+    {
+      "id": "continue",
+      "by": "actor:subject",
+      "action": "resume",
+      "instruction": "Continue the same turn after the long-running checkpoint."
+    }
+  ],
+  "assertions": [
+    {
+      "id": "renews_before_mutation",
+      "kind": "operation_trace",
+      "description": "The worker heartbeats before the post-checkpoint update.",
+      "criteria": ["maintains_lease"],
+      "hard_gate": "invalid_lease_mutation",
+      "expect": {"ordered_operations": ["heartbeat", "update"], "actor": "actor:subject", "task": "task:work"}
+    },
+    {
+      "id": "lease_stays_valid",
+      "kind": "task_state",
+      "description": "The renewed lease remains valid at the checkpoint.",
+      "criteria": ["maintains_lease"],
+      "expect": {"task": "task:work", "owner": "actor:subject", "lease_after": "2026-01-01T12:01:30Z"}
+    }
+  ]
+}

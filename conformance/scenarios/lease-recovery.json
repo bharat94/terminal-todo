@@ -1,0 +1,54 @@
+{
+  "schema_version": "1",
+  "id": "lease_recovery",
+  "title": "Recover work after lease expiry",
+  "summary": "A successor reacquires recoverable work without impersonating the stale owner.",
+  "initial_time": "2026-01-01T12:00:00Z",
+  "skill_policy": "project_integration",
+  "timeout_seconds": 180,
+  "actors": [
+    {"ref": "stale", "name": "eval-stale", "capabilities": ["go"]},
+    {"ref": "successor", "name": "eval-recovery", "capabilities": ["go"]}
+  ],
+  "project": {
+    "initialized": true,
+    "tasks": [
+      {
+        "ref": "work",
+        "title": "Recover interrupted migration",
+        "status": "in_progress",
+        "capabilities": ["go"],
+        "depends_on": [],
+        "owner": "actor:stale",
+        "lease_expires": "2026-01-01T11:59:00Z",
+        "metadata": {"finding": "resume from checkpoint 4"}
+      }
+    ]
+  },
+  "turns": [
+    {
+      "id": "recover",
+      "by": "actor:successor",
+      "action": "prompt",
+      "prompt": "Resume recoverable Go work as eval-recovery. Respect expired ownership and preserve any durable checkpoint."
+    }
+  ],
+  "assertions": [
+    {
+      "id": "reacquires_as_successor",
+      "kind": "operation_trace",
+      "description": "The successor uses atomic acquisition with its own identity.",
+      "criteria": ["recovers_expired_lease"],
+      "hard_gate": "invalid_lease_mutation",
+      "expect": {"operation": "acquire", "actor": "actor:successor", "result_task": "task:work"}
+    },
+    {
+      "id": "does_not_revive_stale_owner",
+      "kind": "operation_trace",
+      "description": "No mutation is attempted as the expired owner.",
+      "criteria": ["recovers_expired_lease"],
+      "hard_gate": "invalid_lease_mutation",
+      "expect": {"actor": "actor:stale", "excludes_operations": ["heartbeat", "update", "complete", "release"]}
+    }
+  ]
+}

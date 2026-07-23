@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "id": "no_work",
+  "title": "Handle structured no-work control flow",
+  "summary": "A worker stops cleanly when atomic acquisition reports that no compatible work is ready.",
+  "initial_time": "2026-01-01T12:00:00Z",
+  "skill_policy": "project_integration",
+  "timeout_seconds": 120,
+  "actors": [
+    {"ref": "subject", "name": "eval-no-work", "capabilities": ["go"]}
+  ],
+  "project": {"initialized": true, "tasks": []},
+  "turns": [
+    {
+      "id": "acquire",
+      "by": "actor:subject",
+      "action": "prompt",
+      "prompt": "Atomically acquire compatible ready work. If no work is available, stop without inventing tasks or polling."
+    }
+  ],
+  "assertions": [
+    {
+      "id": "accepts_no_work",
+      "kind": "domain_error",
+      "description": "The worker treats NO_WORK as expected control flow.",
+      "criteria": ["handles_no_work"],
+      "expect": {"code": "NO_WORK", "terminal": true}
+    },
+    {
+      "id": "no_fabrication",
+      "kind": "operation_trace",
+      "description": "The worker neither creates work nor retries acquisition in a busy loop.",
+      "criteria": ["handles_no_work"],
+      "hard_gate": "fabricated_work",
+      "expect": {"operation_count": {"acquire": 1}, "excludes_operations": ["add", "decompose", "claim"]}
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "schema_version": "1",
+  "model_id": "terminal-todo-agent-conformance-v1",
+  "maximum_score": 100,
+  "criterion_rule": "all_assertions",
+  "criteria": [
+    {
+      "id": "discovers_coordination",
+      "points": 10,
+      "dimension": "discovery",
+      "description": "Discovers and invokes the project integration without the prompt naming terminal-todo."
+    },
+    {
+      "id": "starts_bounded",
+      "points": 10,
+      "dimension": "protocol",
+      "description": "Starts a coordinated session with one bounded bootstrap rather than broad graph reads."
+    },
+    {
+      "id": "allocates_atomically",
+      "points": 15,
+      "dimension": "safety",
+      "description": "Uses idempotent atomic acquisition and does not race next plus claim."
+    },
+    {
+      "id": "maintains_lease",
+      "points": 10,
+      "dimension": "liveness",
+      "description": "Renews active ownership before work crosses the lease checkpoint."
+    },
+    {
+      "id": "hands_off_durably",
+      "points": 15,
+      "dimension": "handoff",
+      "description": "Persists useful context before release and the next worker consumes it."
+    },
+    {
+      "id": "handles_no_work",
+      "points": 10,
+      "dimension": "control_flow",
+      "description": "Treats structured NO_WORK as control flow without fabricating or busy-looping."
+    },
+    {
+      "id": "recovers_expired_lease",
+      "points": 15,
+      "dimension": "recovery",
+      "description": "Does not revive stale ownership and safely reacquires after recovery."
+    },
+    {
+      "id": "coordinates_quietly",
+      "points": 10,
+      "dimension": "user_experience",
+      "description": "Keeps routine coordination out of user-facing narration and avoids raw protocol leaks."
+    },
+    {
+      "id": "closes_ownership",
+      "points": 5,
+      "dimension": "cleanup",
+      "description": "Ends every acquired-work session with complete, block, or release."
+    }
+  ],
+  "hard_gates": [
+    {
+      "id": "race_prone_allocation",
+      "score_cap": 49,
+      "description": "The agent substitutes next plus claim for autonomous atomic acquisition."
+    },
+    {
+      "id": "invalid_lease_mutation",
+      "score_cap": 49,
+      "description": "The agent mutates work it does not own or assumes an expired lease is still valid."
+    },
+    {
+      "id": "fabricated_work",
+      "score_cap": 49,
+      "description": "The agent invents or starts work after NO_WORK instead of following structured diagnostics."
+    },
+    {
+      "id": "lost_handoff",
+      "score_cap": 49,
+      "description": "The agent releases work with a material finding that was not persisted."
+    },
+    {
+      "id": "abandoned_ownership",
+      "score_cap": 49,
+      "description": "The evaluated session ends with a task still owned and no explicit continuation checkpoint."
+    }
+  ],
+  "levels": [
+    {
+      "id": "conformant",
+      "minimum_score": 90,
+      "maximum_score": 100,
+      "requires_no_hard_gate_failures": true
+    },
+    {
+      "id": "provisional",
+      "minimum_score": 75,
+      "maximum_score": 89,
+      "requires_no_hard_gate_failures": true
+    },
+    {
+      "id": "non_conformant",
+      "minimum_score": 0,
+      "maximum_score": 74,
+      "requires_no_hard_gate_failures": false
+    }
+  ],
+  "reporting": {
+    "required": [
+      "host",
+      "host_version",
+      "model",
+      "integration_version",
+      "transport",
+      "scenario_results",
+      "raw_score",
+      "capped_score",
+      "level",
+      "hard_gate_failures",
+      "infrastructure_failures"
+    ],
+    "infrastructure_failures_are_unscored": true
+  }
+}

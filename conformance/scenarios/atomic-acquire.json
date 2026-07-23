@@ -1,0 +1,46 @@
+{
+  "schema_version": "1",
+  "id": "atomic_acquire",
+  "title": "Acquire ready work without races",
+  "summary": "Two workers contend for one ready task through idempotent atomic acquisition.",
+  "initial_time": "2026-01-01T12:00:00Z",
+  "skill_policy": "project_integration",
+  "timeout_seconds": 180,
+  "actors": [
+    {"ref": "alpha", "name": "eval-alpha", "capabilities": ["go"]},
+    {"ref": "beta", "name": "eval-beta", "capabilities": ["go"]}
+  ],
+  "project": {
+    "initialized": true,
+    "tasks": [
+      {"ref": "work", "title": "Implement the bounded parser", "status": "pending", "capabilities": ["go"], "depends_on": []}
+    ]
+  },
+  "turns": [
+    {
+      "id": "race",
+      "by": "harness",
+      "action": "concurrent_turns",
+      "actors": ["actor:alpha", "actor:beta"],
+      "prompt": "Atomically take one compatible ready task. If none is available, stop cleanly."
+    }
+  ],
+  "assertions": [
+    {
+      "id": "only_atomic_acquire",
+      "kind": "operation_trace",
+      "description": "Both workers use acquire with distinct stable request IDs and neither substitutes next plus claim.",
+      "criteria": ["allocates_atomically"],
+      "hard_gate": "race_prone_allocation",
+      "expect": {"per_actor_operation": "acquire", "unique_argument": "requestId", "excludes_sequences": [["next", "claim"]]}
+    },
+    {
+      "id": "single_owner",
+      "kind": "task_state",
+      "description": "Exactly one worker owns the contested task.",
+      "criteria": ["allocates_atomically"],
+      "hard_gate": "invalid_lease_mutation",
+      "expect": {"task": "task:work", "owner_count": 1, "status": "in_progress"}
+    }
+  ]
+}

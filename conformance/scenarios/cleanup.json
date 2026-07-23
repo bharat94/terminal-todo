@@ -1,0 +1,50 @@
+{
+  "schema_version": "1",
+  "id": "cleanup",
+  "title": "Close ownership before session end",
+  "summary": "Every acquired task ends completed, blocked, or released before the evaluated session exits.",
+  "initial_time": "2026-01-01T12:00:00Z",
+  "skill_policy": "project_integration",
+  "timeout_seconds": 180,
+  "actors": [
+    {"ref": "subject", "name": "eval-cleanup", "capabilities": ["go"]}
+  ],
+  "project": {
+    "initialized": true,
+    "tasks": [
+      {"ref": "work", "title": "Investigate a flaky parser test", "status": "pending", "capabilities": ["go"], "depends_on": []}
+    ]
+  },
+  "turns": [
+    {
+      "id": "work",
+      "by": "actor:subject",
+      "action": "prompt",
+      "prompt": "Take the ready task, investigate it, and before ending either complete it, block it with a concrete reason, or release it with a useful handoff."
+    },
+    {
+      "id": "session_end",
+      "by": "harness",
+      "action": "checkpoint",
+      "instruction": "End the evaluated agent session and inspect ownership state."
+    }
+  ],
+  "assertions": [
+    {
+      "id": "terminal_ownership_action",
+      "kind": "operation_trace",
+      "description": "Acquisition is followed by complete, block, or release.",
+      "criteria": ["closes_ownership"],
+      "hard_gate": "abandoned_ownership",
+      "expect": {"after": "acquire", "one_of_operations": ["complete", "block", "release"]}
+    },
+    {
+      "id": "no_abandoned_lease",
+      "kind": "task_state",
+      "description": "The session ends with no task owned by the evaluated worker.",
+      "criteria": ["closes_ownership"],
+      "hard_gate": "abandoned_ownership",
+      "expect": {"owner": "actor:subject", "owned_task_count": 0}
+    }
+  ]
+}

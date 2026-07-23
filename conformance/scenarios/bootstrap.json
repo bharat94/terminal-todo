@@ -1,0 +1,43 @@
+{
+  "schema_version": "1",
+  "id": "bootstrap",
+  "title": "Start with one bounded brief",
+  "summary": "The worker resumes through bootstrap instead of dumping the complete graph and event history.",
+  "initial_time": "2026-01-01T12:00:00Z",
+  "skill_policy": "project_integration",
+  "timeout_seconds": 120,
+  "actors": [
+    {"ref": "subject", "name": "eval-bootstrap", "capabilities": ["go", "testing"]}
+  ],
+  "project": {
+    "initialized": true,
+    "tasks": [
+      {"ref": "objective", "title": "Ship parser hardening", "status": "pending", "capabilities": ["go"], "depends_on": []},
+      {"ref": "test", "title": "Add malformed-input tests", "status": "pending", "capabilities": ["testing"], "depends_on": []}
+    ]
+  },
+  "turns": [
+    {
+      "id": "resume",
+      "by": "actor:subject",
+      "action": "prompt",
+      "prompt": "Resume coordinated work as eval-bootstrap with Go and testing capabilities. Keep routine coordination quiet."
+    }
+  ],
+  "assertions": [
+    {
+      "id": "one_bootstrap",
+      "kind": "operation_trace",
+      "description": "The first coordination read is one bounded bootstrap.",
+      "criteria": ["starts_bounded"],
+      "expect": {"first_operation": "bootstrap", "operation_count": {"bootstrap": 1}}
+    },
+    {
+      "id": "no_initial_dump",
+      "kind": "operation_trace",
+      "description": "The worker does not begin with broad status and event-history reads.",
+      "criteria": ["starts_bounded"],
+      "expect": {"before": "acquire", "excludes_operations": ["status", "events"]}
+    }
+  ]
+}

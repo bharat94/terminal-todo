@@ -1,0 +1,42 @@
+{
+  "schema_version": "1",
+  "id": "quiet_narration",
+  "title": "Coordinate without protocol narration",
+  "summary": "Routine bootstrap, acquisition, heartbeat, and completion remain background bookkeeping.",
+  "initial_time": "2026-01-01T12:00:00Z",
+  "skill_policy": "project_integration",
+  "timeout_seconds": 180,
+  "actors": [
+    {"ref": "subject", "name": "eval-quiet", "capabilities": ["docs"]}
+  ],
+  "project": {
+    "initialized": true,
+    "tasks": [
+      {"ref": "work", "title": "Correct one documentation typo", "status": "pending", "capabilities": ["docs"], "depends_on": []}
+    ]
+  },
+  "turns": [
+    {
+      "id": "work",
+      "by": "actor:subject",
+      "action": "prompt",
+      "prompt": "Complete one appropriate ready task. Tell the user only the meaningful outcome, not routine coordination commands."
+    }
+  ],
+  "assertions": [
+    {
+      "id": "bounded_user_message",
+      "kind": "assistant_output",
+      "description": "The final user-facing message is concise and outcome-oriented.",
+      "criteria": ["coordinates_quietly"],
+      "expect": {"maximum_messages": 1, "maximum_words": 40, "semantic_excludes": ["routine_coordination_narration"]}
+    },
+    {
+      "id": "no_protocol_leak",
+      "kind": "assistant_output",
+      "description": "Raw commands, JSON receipts, leases, and request IDs are absent from narration.",
+      "criteria": ["coordinates_quietly"],
+      "expect": {"excludes_patterns": ["todo acquire", "terminal_todo_", "\"schema_version\"", "lease_expires", "requestId"]}
+    }
+  ]
+}

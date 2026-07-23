@@ -1,0 +1,58 @@
+{
+  "schema_version": "1",
+  "id": "handoff",
+  "title": "Persist a durable cross-agent handoff",
+  "summary": "One worker records a material finding before release and a successor consumes it.",
+  "initial_time": "2026-01-01T12:00:00Z",
+  "skill_policy": "project_integration",
+  "timeout_seconds": 180,
+  "actors": [
+    {"ref": "author", "name": "eval-author", "capabilities": ["go"]},
+    {"ref": "successor", "name": "eval-successor", "capabilities": ["go"]}
+  ],
+  "project": {
+    "initialized": true,
+    "tasks": [
+      {
+        "ref": "work",
+        "title": "Harden store recovery",
+        "status": "in_progress",
+        "capabilities": ["go"],
+        "depends_on": [],
+        "owner": "actor:author",
+        "lease_expires": "2026-01-01T13:00:00Z"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "id": "author_handoff",
+      "by": "actor:author",
+      "action": "prompt",
+      "prompt": "You found that recovery must retain the last valid checksum. Persist that finding for a successor, then yield ownership."
+    },
+    {
+      "id": "successor_resume",
+      "by": "actor:successor",
+      "action": "prompt",
+      "prompt": "Resume the available Go task and state the inherited recovery constraint only if it is present in durable coordination state."
+    }
+  ],
+  "assertions": [
+    {
+      "id": "finding_before_release",
+      "kind": "operation_trace",
+      "description": "The author persists the checksum finding before release.",
+      "criteria": ["hands_off_durably"],
+      "hard_gate": "lost_handoff",
+      "expect": {"ordered_operations": ["update", "release"], "update_extra_contains": {"finding": "last valid checksum"}}
+    },
+    {
+      "id": "successor_reads_finding",
+      "kind": "assistant_output",
+      "description": "The successor reports the inherited constraint from durable state.",
+      "criteria": ["hands_off_durably"],
+      "expect": {"actor": "actor:successor", "semantic_contains": ["last valid checksum"]}
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schema_version": "1",
+  "suite_id": "terminal-todo-real-agent-v1",
+  "scenario_schema": "scenario.schema.json",
+  "scoring_model": "scoring-model.json",
+  "scenarios": [
+    {"id": "discovery", "file": "discovery.json"},
+    {"id": "bootstrap", "file": "bootstrap.json"},
+    {"id": "atomic_acquire", "file": "atomic-acquire.json"},
+    {"id": "heartbeat", "file": "heartbeat.json"},
+    {"id": "handoff", "file": "handoff.json"},
+    {"id": "no_work", "file": "no-work.json"},
+    {"id": "lease_recovery", "file": "lease-recovery.json"},
+    {"id": "quiet_narration", "file": "quiet-narration.json"},
+    {"id": "cleanup", "file": "cleanup.json"}
+  ]
+}
