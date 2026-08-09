@@ -26,7 +26,7 @@ for the measured boundary and the remaining full-suite work.
 
 | Area | Evidence | Status |
 |------|----------|--------|
-| State integrity | Stable sidecar locks, flushed temporary files, atomic replacement, migrations, backups, restore, doctor | Ready |
+| State integrity | Stable sidecar locks, flushed temporary files, atomic replacement, migrations, bounded persisted input, backups, restore, doctor | Ready |
 | Coordination | DAG validation, atomic acquisition, idempotent receipts, leases, heartbeats, retries, recovery events | Ready |
 | Protocols | Versioned CLI JSON and JSON-RPC, additive compact receipts and event pages, MCP 2025-06-18 lifecycle and tool annotations, strict parameter decoding, stable errors | Ready |
 | Agent integration | Bundled MCP-first skill, bounded session bootstrap, compact routine mutations, allocation diagnostics, idempotent Codex and Claude installers, and an opt-in persisted-state real-agent conformance runner | Ready for lifecycle smoke validation |

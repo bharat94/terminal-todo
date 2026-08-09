@@ -40,7 +40,11 @@ func cmdConfig(args []string) {
 				}
 				cfg.DefaultPriority = float32(p)
 			case "default_caps":
-				cfg.DefaultCapCaps = value
+				capabilities := normalizeCapabilities(value)
+				if err := validateCapabilities(capabilities); err != nil {
+					return err
+				}
+				cfg.DefaultCapCaps = strings.Join(capabilities, ",")
 			default:
 				return fmt.Errorf("unknown config key %q (valid: default_ttl, default_priority, default_caps)", key)
 			}

@@ -650,8 +650,19 @@ func (srv *server) handleAdd(params json.RawMessage) (interface{}, *rpcError) {
 		return nil, err
 	}
 	p.Title = strings.TrimSpace(p.Title)
-	if p.Title == "" {
-		return nil, rpcErrorf(rpcInvalidParams, "title is required")
+	if err := validateRequiredPersistedString("title", p.Title, maxTaskTitleBytes); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+	}
+	p.Capabilities = normalizePersistedValues(p.Capabilities)
+	p.Tags = normalizePersistedValues(p.Tags)
+	if err := validateDependencies(p.After); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+	}
+	if err := validateCapabilities(p.Capabilities); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+	}
+	if err := validateTags(p.Tags); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
 	}
 	if p.Priority != nil && !validPriority32(*p.Priority) {
 		return nil, rpcErrorf(rpcInvalidParams, "priority must be between 0 and 1")
@@ -673,6 +684,9 @@ func (srv *server) handleAdd(params json.RawMessage) (interface{}, *rpcError) {
 	capabilities := p.Capabilities
 	if capabilities == nil && cfg != nil && cfg.DefaultCapCaps != "" {
 		capabilities = normalizeCapabilities(cfg.DefaultCapCaps)
+	}
+	if err := validateCapabilities(capabilities); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
 	}
 
 	var taskID uint64
@@ -733,6 +747,9 @@ func (srv *server) handleDone(params json.RawMessage) (interface{}, *rpcError) {
 	}
 	if len(p.IDs) == 0 {
 		return nil, rpcErrorf(rpcInvalidParams, "ids is required")
+	}
+	if err := validateActor(p.Actor, false); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
 	}
 	p.IDs = uniqueTaskIDs(p.IDs)
 
@@ -949,8 +966,28 @@ func (srv *server) handleUpdate(params json.RawMessage) (interface{}, *rpcError)
 	if p.Title == nil && p.Priority == nil && p.Capabilities == nil && len(p.Extra) == 0 && len(p.AddDeps) == 0 && len(p.RemoveDeps) == 0 {
 		return nil, rpcErrorf(rpcInvalidParams, "nothing to update")
 	}
-	if p.Title != nil && strings.TrimSpace(*p.Title) == "" {
-		return nil, rpcErrorf(rpcInvalidParams, "title cannot be empty")
+	if p.Title != nil {
+		title := strings.TrimSpace(*p.Title)
+		p.Title = &title
+		if err := validateRequiredPersistedString("title", title, maxTaskTitleBytes); err != nil {
+			return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+		}
+	}
+	p.Capabilities = normalizePersistedValues(p.Capabilities)
+	if err := validateActor(p.Actor, false); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+	}
+	if err := validateCapabilities(p.Capabilities); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+	}
+	if err := validateExtra(p.Extra); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+	}
+	if err := validateDependencies(p.AddDeps); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+	}
+	if err := validateDependencies(p.RemoveDeps); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
 	}
 	if p.Priority != nil && !validPriority32(*p.Priority) {
 		return nil, rpcErrorf(rpcInvalidParams, "priority must be between 0 and 1")
@@ -996,6 +1033,9 @@ func (srv *server) handleUpdate(params json.RawMessage) (interface{}, *rpcError)
 					}
 				}
 				depSet[dep] = true
+			}
+			if err := validateProjectedCardinality("dependencies", len(task.Depends), len(depSet), maxTaskDependencies); err != nil {
+				return persistedInputFailure(err)
 			}
 
 			newDeps := make([]string, 0, len(depSet))
@@ -1050,6 +1090,9 @@ func (srv *server) handleUpdate(params json.RawMessage) (interface{}, *rpcError)
 		if task.Extra == nil {
 			task.Extra = make(map[string]string)
 		}
+		if err := validateProjectedCardinality("extra", len(task.Extra), projectedExtraCount(task.Extra, p.Extra), maxTaskExtraEntries); err != nil {
+			return persistedInputFailure(err)
+		}
 		for key, value := range p.Extra {
 			task.Extra[key] = value
 		}
@@ -1061,6 +1104,9 @@ func (srv *server) handleUpdate(params json.RawMessage) (interface{}, *rpcError)
 		return nil
 	})
 	if err != nil {
+		if isPersistedInputFailure(err) {
+			return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+		}
 		if strings.Contains(err.Error(), "not found") {
 			return nil, rpcErrorf(rpcTaskNotFound, "%v", err)
 		}
@@ -1089,6 +1135,9 @@ func (srv *server) handleClaim(params json.RawMessage) (interface{}, *rpcError) 
 	}
 	if p.Actor == "" {
 		return nil, rpcErrorf(rpcInvalidParams, "actor is required")
+	}
+	if err := validateActor(p.Actor, true); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
 	}
 	if err := srv.ensureInitialized(); err != nil {
 		return nil, err
@@ -1192,6 +1241,9 @@ func (srv *server) handleAcquire(params json.RawMessage) (interface{}, *rpcError
 	if p.Actor == "" {
 		return nil, rpcErrorf(rpcInvalidParams, "actor is required")
 	}
+	if err := validateActor(p.Actor, true); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+	}
 	if err := validateAcquireRequestID(p.RequestID); err != nil {
 		return nil, rpcErrorf(rpcInvalidParams, "requestId: %v", err)
 	}
@@ -1217,11 +1269,14 @@ func (srv *server) handleAcquire(params json.RawMessage) (interface{}, *rpcError
 	var explicitCapabilities []string
 	capabilitiesMode := "registered"
 	if p.Capabilities != nil {
-		explicitCapabilities = normalizeCapabilities(strings.Join(p.Capabilities, ","))
+		explicitCapabilities = normalizePersistedValues(p.Capabilities)
 		if explicitCapabilities == nil {
 			explicitCapabilities = []string{}
 		}
 		capabilitiesMode = "explicit"
+	}
+	if err := validateCapabilities(explicitCapabilities); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
 	}
 	capabilities, maxLoad, err := agentAllocationProfile(p.Actor, explicitCapabilities)
 	if err != nil {
@@ -1274,6 +1329,9 @@ func (srv *server) handleHeartbeat(params json.RawMessage) (interface{}, *rpcErr
 	}
 	if p.Actor == "" {
 		return nil, rpcErrorf(rpcInvalidParams, "actor is required")
+	}
+	if err := validateActor(p.Actor, true); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
 	}
 	if err := srv.ensureInitialized(); err != nil {
 		return nil, err
@@ -1328,6 +1386,12 @@ func (srv *server) handleRelease(params json.RawMessage) (interface{}, *rpcError
 	}
 	if p.Actor == "" {
 		return nil, rpcErrorf(rpcInvalidParams, "actor is required")
+	}
+	if err := validateActor(p.Actor, true); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+	}
+	if err := validatePersistedString("error", p.Error, maxErrorBytes); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
 	}
 
 	if err := srv.ensureInitialized(); err != nil {
@@ -1387,8 +1451,11 @@ func (srv *server) handleBlock(params json.RawMessage) (interface{}, *rpcError) 
 	if p.ID == 0 {
 		return nil, rpcErrorf(rpcInvalidParams, "id is required")
 	}
-	if p.Reason == "" {
-		return nil, rpcErrorf(rpcInvalidParams, "reason is required")
+	if err := validateRequiredPersistedString("reason", p.Reason, maxReasonBytes); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+	}
+	if err := validateActor(p.Actor, false); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
 	}
 
 	if err := srv.ensureInitialized(); err != nil {
@@ -1440,6 +1507,9 @@ func (srv *server) handleUnblock(params json.RawMessage) (interface{}, *rpcError
 	}
 	if p.ID == 0 {
 		return nil, rpcErrorf(rpcInvalidParams, "id is required")
+	}
+	if err := validateActor(p.Actor, false); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
 	}
 
 	if err := srv.ensureInitialized(); err != nil {
@@ -1531,8 +1601,11 @@ func (srv *server) handleLog(params json.RawMessage) (interface{}, *rpcError) {
 	if p.ID == 0 {
 		return nil, rpcErrorf(rpcInvalidParams, "id is required")
 	}
-	if p.Message == "" {
-		return nil, rpcErrorf(rpcInvalidParams, "message is required")
+	if err := validateRequiredPersistedString("message", p.Message, maxLogMessageBytes); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+	}
+	if err := validateActor(p.Actor, false); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
 	}
 
 	if err := srv.ensureInitialized(); err != nil {
@@ -1749,9 +1822,17 @@ func (srv *server) handleDecompose(params json.RawMessage) (interface{}, *rpcErr
 	if len(p.Subtasks) > maxMutationReceiptIDs {
 		return nil, rpcErrorf(rpcInvalidParams, "at most %d subtasks can be created in one decomposition", maxMutationReceiptIDs)
 	}
-	for _, sub := range p.Subtasks {
-		if strings.TrimSpace(sub.Title) == "" {
-			return nil, rpcErrorf(rpcInvalidParams, "subtask title is required")
+	if err := validateActor(p.Actor, false); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+	}
+	for i := range p.Subtasks {
+		p.Subtasks[i].Title = strings.TrimSpace(p.Subtasks[i].Title)
+		p.Subtasks[i].Capabilities = normalizePersistedValues(p.Subtasks[i].Capabilities)
+		if err := validateRequiredPersistedString("subtask title", p.Subtasks[i].Title, maxTaskTitleBytes); err != nil {
+			return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+		}
+		if err := validateCapabilities(p.Subtasks[i].Capabilities); err != nil {
+			return nil, rpcErrorf(rpcInvalidParams, "subtask %d: %v", i+1, err)
 		}
 	}
 
@@ -1771,6 +1852,9 @@ func (srv *server) handleDecompose(params json.RawMessage) (interface{}, *rpcErr
 		}
 		if parentTask.Owner != "" && parentTask.Owner != p.Actor {
 			return fmt.Errorf("task %d is claimed by %s", p.ID, parentTask.Owner)
+		}
+		if err := validateProjectedCardinality("dependencies", len(parentTask.Depends), len(parentTask.Depends)+len(p.Subtasks), maxTaskDependencies); err != nil {
+			return persistedInputFailure(err)
 		}
 
 		var added []*store.Task
@@ -1802,6 +1886,9 @@ func (srv *server) handleDecompose(params json.RawMessage) (interface{}, *rpcErr
 		return nil
 	})
 	if err != nil {
+		if isPersistedInputFailure(err) {
+			return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+		}
 		if strings.Contains(err.Error(), "not found") {
 			return nil, rpcErrorf(rpcTaskNotFound, "%v", err)
 		}
@@ -2078,6 +2165,7 @@ func (srv *server) handleConfigSet(params json.RawMessage) (interface{}, *rpcErr
 	}
 
 	var normalizedValue interface{}
+	resultValue := p.Value
 	switch p.Key {
 	case "default_ttl":
 		d, err := time.ParseDuration(p.Value)
@@ -2092,7 +2180,12 @@ func (srv *server) handleConfigSet(params json.RawMessage) (interface{}, *rpcErr
 		}
 		normalizedValue = float32(val)
 	case "default_caps":
-		normalizedValue = p.Value
+		capabilities := normalizeCapabilities(p.Value)
+		if err := validateCapabilities(capabilities); err != nil {
+			return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+		}
+		normalizedValue = strings.Join(capabilities, ",")
+		resultValue = normalizedValue.(string)
 	default:
 		return nil, rpcErrorf(rpcInvalidParams, "unknown config key %q", p.Key)
 	}
@@ -2111,7 +2204,7 @@ func (srv *server) handleConfigSet(params json.RawMessage) (interface{}, *rpcErr
 		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 	}
 
-	return configSetResult{Key: p.Key, Value: p.Value}, nil
+	return configSetResult{Key: p.Key, Value: resultValue}, nil
 }
 
 func (srv *server) handlePrune(params json.RawMessage) (interface{}, *rpcError) {
@@ -2446,6 +2539,21 @@ func (srv *server) handleAgentCard(params json.RawMessage) (interface{}, *rpcErr
 	}
 
 	if p.Caps != nil || p.Desc != nil || p.MaxLoad != nil {
+		if err := validateActor(p.Actor, true); err != nil {
+			return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+		}
+		if p.Caps != nil {
+			normalized := normalizePersistedValues(*p.Caps)
+			p.Caps = &normalized
+			if err := validateCapabilities(normalized); err != nil {
+				return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+			}
+		}
+		if p.Desc != nil {
+			if err := validatePersistedString("description", *p.Desc, maxAgentDescriptionBytes); err != nil {
+				return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+			}
+		}
 		now := nowTimestamp()
 		if err := updateAgentRegistry(func(registry *AgentRegistry) error {
 			card, exists := registry.Agents[p.Actor]
@@ -2453,7 +2561,7 @@ func (srv *server) handleAgentCard(params json.RawMessage) (interface{}, *rpcErr
 				card = AgentCard{Name: p.Actor, CreatedAt: now}
 			}
 			if p.Caps != nil {
-				card.Capabilities = normalizeCapabilities(strings.Join(*p.Caps, ","))
+				card.Capabilities = *p.Caps
 				if card.Capabilities == nil {
 					card.Capabilities = []string{}
 				}

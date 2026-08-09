@@ -14,6 +14,9 @@ func cmdDone(args []string) {
 		fail(ErrInvalidArgs, "task ID required")
 	}
 	owner := optionValue(args, "--as")
+	if err := validateActor(owner, false); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
+	}
 	preflight := loadStore()
 	remoteTasks := make([]*store.Task, 0, len(ids))
 	for _, id := range ids {

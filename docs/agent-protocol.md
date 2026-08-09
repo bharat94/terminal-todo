@@ -1,7 +1,7 @@
 # terminal-todo Agent Protocol
 
 **Protocol Version:** `1` (stable)
-**Last Updated:** 2026-07-16
+**Last Updated:** 2026-08-08
 
 This document defines the stable machine interfaces for agent-to-agent and
 agent-to-CLI communication via `terminal-todo`. CLI `--json` responses use a
@@ -69,6 +69,12 @@ for tasks in linked repositories.
 
 Fields with no value are generally omitted. For example, pending work omits
 `completed`, and unowned work omits `owner` and `lease_expires`.
+
+Persisted strings are valid UTF-8 and bounded by encoded byte length; task
+collections and structured metadata are bounded by item count. All three
+write transports enforce the same policy. See
+[Security and data lifecycle](security-and-data.md#persisted-input-limits) for
+the exact limits and legacy-store compatibility rule.
 
 **Metadata fields:**
 - `capabilities`: what the task requires (matching via `todo next --capabilities`)

@@ -13,6 +13,9 @@ func cmdAcquire(args []string) {
 	if actor == "" {
 		fail(ErrInvalidArgs, "--as <owner> is required")
 	}
+	if err := validateActor(actor, true); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
+	}
 	requestID := optionValue(args, "--request-id")
 	if err := validateAcquireRequestID(requestID); err != nil {
 		fail(ErrInvalidArgs, "--request-id: %v", err)
@@ -49,6 +52,9 @@ func cmdAcquire(args []string) {
 			explicitCapabilities = []string{}
 		}
 		capabilitiesMode = "explicit"
+	}
+	if err := validateCapabilities(explicitCapabilities); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
 	}
 	capabilities, maxLoad, err := agentAllocationProfile(actor, explicitCapabilities)
 	if err != nil {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/bharat94/terminal-todo/dag"
 	"github.com/bharat94/terminal-todo/store"
@@ -10,12 +11,15 @@ import (
 )
 
 func cmdAdd(args []string) {
-	title := extractTitle(args)
-	if title == "" {
-		fail(ErrInvalidArgs, "title is required")
+	title := strings.TrimSpace(extractTitle(args))
+	if err := validateRequiredPersistedString("title", title, maxTaskTitleBytes); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
 	}
 
 	afterIDs := extractAfterIDs(args)
+	if err := validateDependencies(afterIDs); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
+	}
 	hasPriority := false
 	var priority float64
 	var capabilities []string
@@ -54,6 +58,12 @@ func cmdAdd(args []string) {
 	}
 	if capabilities == nil && cfg != nil && cfg.DefaultCapCaps != "" {
 		capabilities = normalizeCapabilities(cfg.DefaultCapCaps)
+	}
+	if err := validateCapabilities(capabilities); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
+	}
+	if err := validateTags(tags); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
 	}
 
 	var created *store.Task

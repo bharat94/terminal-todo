@@ -13,11 +13,14 @@ func cmdLog(args []string) {
 	}
 
 	message := optionValue(args, "--msg")
-	if message == "" {
-		fail(ErrInvalidArgs, "--msg <text> is required")
+	if err := validateRequiredPersistedString("message", message, maxLogMessageBytes); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
 	}
 
 	owner := optionValue(args, "--as")
+	if err := validateActor(owner, false); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
+	}
 
 	var logged *store.Task
 	updateLifecycleStore(func(s *store.TaskStore) error {

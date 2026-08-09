@@ -249,6 +249,9 @@ func saveStore(s *store.TaskStore) {
 func updateStore(mutate func(*store.TaskStore) error) *store.TaskStore {
 	s, err := store.Update(tasksBinPath(), mutate)
 	if err != nil {
+		if isPersistedInputFailure(err) {
+			fail(ErrInvalidArgs, "%v", err)
+		}
 		fail(ErrStoreCorrupted, "%v", err)
 	}
 	return s

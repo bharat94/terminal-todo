@@ -34,9 +34,21 @@ func cmdUpdate(args []string) {
 	}
 	if hasTitle {
 		title = strings.TrimSpace(title)
-		if title == "" {
-			fail(ErrInvalidArgs, "--title cannot be empty")
+		if err := validateRequiredPersistedString("title", title, maxTaskTitleBytes); err != nil {
+			fail(ErrInvalidArgs, "%v", err)
 		}
+	}
+	if err := validateActor(owner, false); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
+	}
+	if err := validateExtra(extra); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
+	}
+	if err := validateDependencies(addDeps); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
+	}
+	if err := validateDependencies(removeDeps); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
 	}
 
 	var priority float64
@@ -49,6 +61,9 @@ func cmdUpdate(args []string) {
 	var capabilities []string
 	if hasCapabilities {
 		capabilities = normalizeCapabilities(capsValue)
+		if err := validateCapabilities(capabilities); err != nil {
+			fail(ErrInvalidArgs, "%v", err)
+		}
 	}
 
 	var updated *store.Task
@@ -90,6 +105,9 @@ func cmdUpdate(args []string) {
 					}
 				}
 				depSet[dep] = true
+			}
+			if err := validateProjectedCardinality("dependencies", len(task.Depends), len(depSet), maxTaskDependencies); err != nil {
+				return persistedInputFailure(err)
 			}
 
 			// Build new deps and detect cycles
@@ -140,6 +158,9 @@ func cmdUpdate(args []string) {
 		}
 		if task.Extra == nil {
 			task.Extra = make(map[string]string)
+		}
+		if err := validateProjectedCardinality("extra", len(task.Extra), projectedExtraCount(task.Extra, extra), maxTaskExtraEntries); err != nil {
+			return persistedInputFailure(err)
 		}
 		for key, value := range extra {
 			task.Extra[key] = value

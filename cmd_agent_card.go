@@ -46,6 +46,25 @@ func cmdAgentCard(args []string) {
 	isModification := hasFlag(args, "--caps") || hasFlag(args, "--desc") || hasFlag(args, "--max-load")
 
 	if isModification {
+		if err := validateActor(agentName, true); err != nil {
+			fail(ErrInvalidArgs, "%v", err)
+		}
+		var capabilities []string
+		if hasFlag(args, "--caps") {
+			capabilities = normalizeCapabilities(optionValue(args, "--caps"))
+			if capabilities == nil {
+				capabilities = []string{}
+			}
+			if err := validateCapabilities(capabilities); err != nil {
+				fail(ErrInvalidArgs, "%v", err)
+			}
+		}
+		description := optionValue(args, "--desc")
+		if hasFlag(args, "--desc") {
+			if err := validatePersistedString("description", description, maxAgentDescriptionBytes); err != nil {
+				fail(ErrInvalidArgs, "%v", err)
+			}
+		}
 		now := nowTimestamp()
 		err := updateAgentRegistry(func(r *AgentRegistry) error {
 			card, exists := r.Agents[agentName]
@@ -56,24 +75,10 @@ func cmdAgentCard(args []string) {
 				}
 			}
 			if hasFlag(args, "--caps") {
-				capsStr := optionValue(args, "--caps")
-				parts := strings.Split(capsStr, ",")
-				cleaned := make([]string, 0, len(parts))
-				seen := make(map[string]bool)
-				for _, p := range parts {
-					p = strings.TrimSpace(p)
-					if p != "" && !seen[p] {
-						cleaned = append(cleaned, p)
-						seen[p] = true
-					}
-				}
-				if cleaned == nil {
-					cleaned = []string{}
-				}
-				card.Capabilities = cleaned
+				card.Capabilities = capabilities
 			}
 			if hasFlag(args, "--desc") {
-				card.Description = optionValue(args, "--desc")
+				card.Description = description
 			}
 			if hasFlag(args, "--max-load") {
 				ml, err := strconv.Atoi(optionValue(args, "--max-load"))

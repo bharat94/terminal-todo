@@ -13,6 +13,9 @@ func cmdUnblock(args []string) {
 	}
 
 	owner := optionValue(args, "--as")
+	if err := validateActor(owner, false); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
+	}
 
 	var unblocked *store.Task
 	updateLifecycleStore(func(s *store.TaskStore) error {

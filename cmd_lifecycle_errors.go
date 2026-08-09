@@ -26,6 +26,9 @@ func lifecycleError(code ErrorCode, format string, args ...interface{}) error {
 func updateLifecycleStore(mutate func(*store.TaskStore) error) *store.TaskStore {
 	s, err := store.Update(tasksBinPath(), mutate)
 	if err != nil {
+		if isPersistedInputFailure(err) {
+			fail(ErrInvalidArgs, "%v", err)
+		}
 		var commandErr *lifecycleCommandError
 		if errors.As(err, &commandErr) {
 			fail(commandErr.code, "%s", commandErr.message)

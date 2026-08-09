@@ -17,6 +17,9 @@ func cmdHeartbeat(args []string) {
 	if actor == "" {
 		fail(ErrInvalidArgs, "--as <owner> is required")
 	}
+	if err := validateActor(actor, true); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
+	}
 
 	cfg, err := loadConfig()
 	if err != nil {

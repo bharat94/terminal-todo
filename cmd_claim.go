@@ -37,6 +37,9 @@ func cmdClaim(args []string) {
 	if owner == "" {
 		fail(ErrInvalidArgs, "--as <owner> is required")
 	}
+	if err := validateActor(owner, true); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
+	}
 	if err := touchAgent(owner); err != nil {
 		fail(ErrStoreCorrupted, "registering agent %s: %v", owner, err)
 	}

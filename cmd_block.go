@@ -13,11 +13,14 @@ func cmdBlock(args []string) {
 	}
 
 	reason := optionValue(args, "--reason")
-	if reason == "" {
-		fail(ErrInvalidArgs, "--reason <text> is required")
+	if err := validateRequiredPersistedString("reason", reason, maxReasonBytes); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
 	}
 
 	owner := optionValue(args, "--as")
+	if err := validateActor(owner, false); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
+	}
 
 	var blocked *store.Task
 	updateLifecycleStore(func(s *store.TaskStore) error {

@@ -13,6 +13,12 @@ func cmdRelease(args []string) {
 	}
 	owner := optionValue(args, "--as")
 	errorMsg := optionValue(args, "--error")
+	if err := validateActor(owner, false); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
+	}
+	if err := validatePersistedString("error", errorMsg, maxErrorBytes); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
+	}
 
 	released := make([]*store.Task, 0, len(ids))
 	updateStore(func(s *store.TaskStore) error {

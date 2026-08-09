@@ -50,14 +50,22 @@ func cmdDecompose(args []string) {
 	if len(payload.Subtasks) > maxMutationReceiptIDs {
 		fail(ErrInvalidArgs, "at most %d subtasks can be created in one decomposition", maxMutationReceiptIDs)
 	}
-	for _, sub := range payload.Subtasks {
-		if strings.TrimSpace(sub.Title) == "" {
-			fail(ErrInvalidArgs, "subtask title is required")
+	for i := range payload.Subtasks {
+		payload.Subtasks[i].Title = strings.TrimSpace(payload.Subtasks[i].Title)
+		payload.Subtasks[i].Caps = normalizePersistedValues(payload.Subtasks[i].Caps)
+		if err := validateRequiredPersistedString("subtask title", payload.Subtasks[i].Title, maxTaskTitleBytes); err != nil {
+			fail(ErrInvalidArgs, "%v", err)
+		}
+		if err := validateCapabilities(payload.Subtasks[i].Caps); err != nil {
+			fail(ErrInvalidArgs, "subtask %d: %v", i+1, err)
 		}
 	}
 
 	parentID := ids[0]
 	agent := optionValue(args, "--as")
+	if err := validateActor(agent, false); err != nil {
+		fail(ErrInvalidArgs, "%v", err)
+	}
 	var parent *store.Task
 	var added []*store.Task
 	updateLifecycleStore(func(s *store.TaskStore) error {
@@ -71,8 +79,11 @@ func cmdDecompose(args []string) {
 		if parentTask.Owner != "" && parentTask.Owner != agent {
 			return lifecycleError(ErrNotOwner, "task %d is claimed by %s (use --as %s to decompose)", parentID, parentTask.Owner, parentTask.Owner)
 		}
+		if err := validateProjectedCardinality("dependencies", len(parentTask.Depends), len(parentTask.Depends)+len(payload.Subtasks), maxTaskDependencies); err != nil {
+			return persistedInputFailure(err)
+		}
 		for _, sub := range payload.Subtasks {
-			subTask := s.AddTask(strings.TrimSpace(sub.Title), nil)
+			subTask := s.AddTask(sub.Title, nil)
 			subTask.Capabilities = sub.Caps
 			subTask.Lineage = fmt.Sprintf("todo://local/%d", parentID)
 			parentTask.Depends = append(parentTask.Depends, fmt.Sprintf("todo://local/%d", subTask.ID))

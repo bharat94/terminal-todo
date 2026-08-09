@@ -41,6 +41,38 @@ All data is stored in cleartext. Never put passwords, tokens, private keys,
 credentials, or unnecessary personal data in titles, errors, logs, actor
 names, or metadata. Use a secret manager and record only a reference.
 
+## Persisted input limits
+
+The CLI, native JSON-RPC server, and MCP tools apply the same UTF-8 byte and
+collection limits before writing user-controlled coordination data. These
+limits are independent of the native and MCP transports' 4 MiB frame bound.
+
+| Field | Limit |
+|------|------:|
+| Task or subtask title | 1,024 bytes |
+| Actor name | 128 bytes |
+| Block reason or release error | 8,192 bytes |
+| Log message | 16,384 bytes |
+| Structured metadata key / value | 128 / 16,384 bytes |
+| Dependency URI | 512 bytes |
+| Capability or tag | 128 bytes |
+| Agent description | 4,096 bytes |
+| Dependencies / capabilities / tags per task | 128 / 64 / 64 items |
+| Structured metadata entries per task | 128 entries |
+| Subtasks per decomposition | 20 items |
+
+Invalid UTF-8, oversized values, and oversized request collections are
+rejected as invalid input before a store or agent-registry mutation begins.
+MCP schemas advertise the applicable string and collection bounds; the server
+still enforces UTF-8 byte counts because JSON Schema `maxLength` counts
+characters rather than encoded bytes.
+
+Stores created by an older version remain readable even when they already
+contain a value or collection above a current limit. Updates validate only
+incoming values. An oversized legacy metadata or dependency collection may be
+left unchanged or reduced, but cannot be grown further. This permits targeted
+repair without requiring whole-store conformance as an upgrade gate.
+
 ## Local permissions
 
 New stores use restrictive POSIX modes:

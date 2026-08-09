@@ -269,9 +269,20 @@ func terminalTodoMCPTools() []mcpTool {
 	stringProp := func(description string) map[string]interface{} {
 		return map[string]interface{}{"type": "string", "description": description}
 	}
+	boundedStringProp := func(description string, maxLength int) map[string]interface{} {
+		return map[string]interface{}{"type": "string", "maxLength": maxLength, "description": description}
+	}
 	idProp := map[string]interface{}{"type": "integer", "minimum": 1, "description": "Positive task ID."}
 	stringList := func(description string) map[string]interface{} {
 		return map[string]interface{}{"type": "array", "items": map[string]string{"type": "string"}, "description": description}
+	}
+	boundedStringList := func(description string, maxItems, maxLength int) map[string]interface{} {
+		return map[string]interface{}{
+			"type":        "array",
+			"maxItems":    maxItems,
+			"items":       map[string]interface{}{"type": "string", "maxLength": maxLength},
+			"description": description,
+		}
 	}
 	receiptProp := map[string]interface{}{
 		"type":        "boolean",
@@ -329,11 +340,11 @@ func terminalTodoMCPTools() []mcpTool {
 			Title:       "Add task",
 			Description: "Add durable work to the shared DAG, optionally with dependencies, priority, required capabilities, and tags.",
 			InputSchema: object(map[string]interface{}{
-				"title":        stringProp("Clear outcome-oriented task title."),
-				"after":        stringList("Task IDs or todo:// dependency URIs that must complete first."),
+				"title":        boundedStringProp("Clear outcome-oriented task title, at most 1024 UTF-8 bytes.", maxTaskTitleBytes),
+				"after":        boundedStringList("Task IDs or todo:// dependency URIs that must complete first.", maxTaskDependencies, maxDependencyBytes),
 				"priority":     map[string]interface{}{"type": "number", "description": "Higher values are allocated first."},
-				"capabilities": stringList("Capabilities an actor must advertise to acquire this task."),
-				"tags":         stringList("User-defined task tags."),
+				"capabilities": boundedStringList("Capabilities an actor must advertise to acquire this task.", maxTaskCapabilities, maxCapabilityBytes),
+				"tags":         boundedStringList("User-defined task tags.", maxTaskTags, maxTagBytes),
 				"receipt":      receiptProp,
 			}, "title"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: false, OpenWorldHint: false},
@@ -343,10 +354,10 @@ func terminalTodoMCPTools() []mcpTool {
 			Title:       "Acquire ready work",
 			Description: "Atomically select and lease one ready task. Always use this instead of separately listing and claiming work. Reuse requestId when retrying the same allocation.",
 			InputSchema: object(map[string]interface{}{
-				"actor":        stringProp("Stable identity for this worker or session."),
-				"requestId":    stringProp("Unique idempotency key for this allocation attempt."),
+				"actor":        boundedStringProp("Stable identity for this worker or session.", maxActorBytes),
+				"requestId":    boundedStringProp("Unique idempotency key for this allocation attempt.", 128),
 				"ttl":          stringProp("Lease duration such as 30m or 2h."),
-				"capabilities": stringList("Capabilities available to this worker."),
+				"capabilities": boundedStringList("Capabilities available to this worker.", maxTaskCapabilities, maxCapabilityBytes),
 				"receipt":      receiptProp,
 			}, "actor", "requestId"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: true, OpenWorldHint: false},
@@ -357,7 +368,7 @@ func terminalTodoMCPTools() []mcpTool {
 			Description: "Renew an active lease before it expires. Use periodically during long-running work.",
 			InputSchema: object(map[string]interface{}{
 				"id":      idProp,
-				"actor":   stringProp("Current lease owner."),
+				"actor":   boundedStringProp("Current lease owner.", maxActorBytes),
 				"ttl":     stringProp("New lease duration such as 30m or 2h."),
 				"receipt": receiptProp,
 			}, "id", "actor"),
@@ -369,13 +380,13 @@ func terminalTodoMCPTools() []mcpTool {
 			Description: "Update owned task metadata, dependencies, or structured findings. Use extra for durable handoff facts such as tests, commit, files, or decisions.",
 			InputSchema: object(map[string]interface{}{
 				"id":           idProp,
-				"title":        stringProp("Replacement task title."),
+				"title":        boundedStringProp("Replacement task title.", maxTaskTitleBytes),
 				"priority":     map[string]interface{}{"type": "number"},
-				"capabilities": stringList("Replacement required capabilities."),
-				"actor":        stringProp("Actor making the update; required when another actor owns the task."),
-				"extra":        map[string]interface{}{"type": "object", "additionalProperties": map[string]string{"type": "string"}, "description": "Structured durable handoff fields."},
-				"addDeps":      stringList("Dependencies to add."),
-				"removeDeps":   stringList("Dependencies to remove."),
+				"capabilities": boundedStringList("Replacement required capabilities.", maxTaskCapabilities, maxCapabilityBytes),
+				"actor":        boundedStringProp("Actor making the update; required when another actor owns the task.", maxActorBytes),
+				"extra":        map[string]interface{}{"type": "object", "maxProperties": maxTaskExtraEntries, "additionalProperties": map[string]interface{}{"type": "string", "maxLength": maxMetadataValueBytes}, "description": "Structured durable handoff fields; keys are at most 128 UTF-8 bytes and values at most 16384."},
+				"addDeps":      boundedStringList("Dependencies to add.", maxTaskDependencies, maxDependencyBytes),
+				"removeDeps":   boundedStringList("Dependencies to remove.", maxTaskDependencies, maxDependencyBytes),
 				"receipt":      receiptProp,
 			}, "id"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
@@ -386,8 +397,8 @@ func terminalTodoMCPTools() []mcpTool {
 			Description: "Append an immutable human-readable progress note or finding to a task's audit trail.",
 			InputSchema: object(map[string]interface{}{
 				"id":      idProp,
-				"message": stringProp("Concise progress, decision, risk, or handoff note."),
-				"actor":   stringProp("Actor recording the note."),
+				"message": boundedStringProp("Concise progress, decision, risk, or handoff note.", maxLogMessageBytes),
+				"actor":   boundedStringProp("Actor recording the note.", maxActorBytes),
 				"receipt": receiptProp,
 			}, "id", "message"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: false, OpenWorldHint: false},
@@ -398,15 +409,15 @@ func terminalTodoMCPTools() []mcpTool {
 			Description: "Split a broad task into child tasks. The parent becomes pending on the children and any active parent lease is safely released.",
 			InputSchema: object(map[string]interface{}{
 				"id":    idProp,
-				"actor": stringProp("Current parent lease owner when claimed."),
+				"actor": boundedStringProp("Current parent lease owner when claimed.", maxActorBytes),
 				"subtasks": map[string]interface{}{
 					"type":        "array",
 					"minItems":    1,
 					"maxItems":    maxMutationReceiptIDs,
 					"description": "Child work items.",
 					"items": object(map[string]interface{}{
-						"title":        stringProp("Outcome-oriented child title."),
-						"capabilities": stringList("Capabilities required for this child."),
+						"title":        boundedStringProp("Outcome-oriented child title.", maxTaskTitleBytes),
+						"capabilities": boundedStringList("Capabilities required for this child.", maxTaskCapabilities, maxCapabilityBytes),
 					}, "title"),
 				},
 				"receipt": receiptProp,
@@ -419,8 +430,8 @@ func terminalTodoMCPTools() []mcpTool {
 			Description: "Mark work explicitly blocked and preserve the reason for coordinators and future sessions.",
 			InputSchema: object(map[string]interface{}{
 				"id":      idProp,
-				"reason":  stringProp("Concrete blocking condition and what would unblock it."),
-				"actor":   stringProp("Actor reporting the blocker."),
+				"reason":  boundedStringProp("Concrete blocking condition and what would unblock it.", maxReasonBytes),
+				"actor":   boundedStringProp("Actor reporting the blocker.", maxActorBytes),
 				"receipt": receiptProp,
 			}, "id", "reason"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
@@ -431,8 +442,8 @@ func terminalTodoMCPTools() []mcpTool {
 			Description: "Yield an owned lease back to the ready pool, optionally recording a failed-attempt error for retries and recovery.",
 			InputSchema: object(map[string]interface{}{
 				"id":      idProp,
-				"actor":   stringProp("Current lease owner."),
-				"error":   stringProp("Failure summary when releasing after an unsuccessful attempt."),
+				"actor":   boundedStringProp("Current lease owner.", maxActorBytes),
+				"error":   boundedStringProp("Failure summary when releasing after an unsuccessful attempt.", maxErrorBytes),
 				"receipt": receiptProp,
 			}, "id", "actor"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: true, OpenWorldHint: false},
@@ -443,7 +454,7 @@ func terminalTodoMCPTools() []mcpTool {
 			Description: "Complete one or more tasks after verifying their outcome and dependencies. Claimed tasks require the owning actor.",
 			InputSchema: object(map[string]interface{}{
 				"ids":     map[string]interface{}{"type": "array", "minItems": 1, "items": map[string]interface{}{"type": "integer", "minimum": 1}},
-				"actor":   stringProp("Current lease owner for claimed tasks."),
+				"actor":   boundedStringProp("Current lease owner for claimed tasks.", maxActorBytes),
 				"receipt": receiptProp,
 			}, "ids"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
