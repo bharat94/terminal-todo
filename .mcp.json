@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "terminal-todo": {
+      "args": [
+        "mcp",
+        "--stdio"
+      ],
+      "command": "todo",
+      "type": "stdio"
+    }
+  }
+}

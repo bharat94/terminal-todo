@@ -1,0 +1,4 @@
+interface:
+  display_name: "Terminal Todo"
+  short_description: "Coordinate durable multi-agent project work"
+  default_prompt: "Use $terminal-todo to coordinate and persist this project’s work."
