@@ -2,9 +2,8 @@
 
 ## Verdict
 
-terminal-todo is a candidate for a `v0.1.0-beta.1` public prerelease. It is not
-yet a `v1.0.0` maturity claim, and the first tagged workflow must pass before
-the release itself can be called production-validated.
+terminal-todo `v0.1.0-beta.1` is published and production-validated within the
+documented beta operating boundary. It is not yet a `v1.0.0` maturity claim.
 
 The core is designed and tested as production software: state mutations are
 serialized and crash-safe within the documented platform boundary, task
@@ -14,7 +13,7 @@ attested.
 
 The beta label is appropriate because the project has not yet accumulated
 real-world compatibility history across many repositories, agent hosts, and
-filesystems. The first release should establish that feedback loop without
+filesystems. The first release establishes that feedback loop without
 pretending the interface can never evolve.
 
 The initial opt-in lifecycle smoke run passed against local Codex 0.144.5.
@@ -29,13 +28,13 @@ for the measured boundary and the remaining full-suite work.
 | State integrity | Stable sidecar locks, flushed temporary files, atomic replacement, migrations, bounded persisted input, backups, restore, doctor | Ready |
 | Coordination | DAG validation, atomic acquisition, idempotent receipts, leases, heartbeats, retries, recovery events | Ready |
 | Protocols | Versioned CLI JSON and JSON-RPC, additive compact receipts and event pages, MCP 2025-06-18 lifecycle and tool annotations, strict parameter decoding, stable errors | Ready |
-| Agent integration | Bundled MCP-first skill, bounded session bootstrap, compact routine mutations, allocation diagnostics, idempotent Codex and Claude installers, and an opt-in persisted-state real-agent conformance runner | Ready for lifecycle smoke validation |
+| Agent integration | Bundled MCP-first skill, bounded session bootstrap, compact routine mutations, allocation diagnostics, idempotent Codex and Claude installers, and an opt-in persisted-state real-agent conformance runner | Codex lifecycle smoke validated; broader host conformance remains beta evidence |
 | Platforms | Native Linux, macOS, and Windows race/build/vet matrix; six release targets | Ready |
-| Supply chain | Pinned release tools, snapshot checksums and SPDX SBOMs, configured provenance attestations, reachable-vulnerability scan | Ready for tagged validation |
+| Supply chain | Pinned release tools, checksums, per-archive SPDX SBOMs, provenance attestations, reachable-vulnerability scan | Tagged pipeline and downloaded artifacts validated |
 | Operations | Backup, restore, retention, compaction, compatibility, security, and incident guidance | Ready |
 | Open source | MIT license, contribution and support guides, security policy, conduct policy, issue forms, PR template | Ready |
-| Repository security | Private vulnerability reporting, vulnerability alerts, Dependabot security updates, secret scanning, push protection | Enabled |
-| Distribution | Tag-triggered GoReleaser workflow validated locally with snapshot artifacts; public publishing and OIDC remain unproven | Ready for prerelease validation |
+| Repository security | Private vulnerability reporting, vulnerability alerts, Dependabot security updates, secret scanning, push protection, protected `master` with strict required checks | Enabled |
+| Distribution | Public `v0.1.0-beta.1` release with six platform archives, verified checksums, SBOMs, embedded version, and attestations | Beta validated |
 
 ## Verified operating boundary
 
@@ -57,17 +56,21 @@ Cloud-synchronized directories and ordinary network mounts are best effort
 until their semantics are validated in the deployment environment. Copying a
 task store between machines is transfer, not live consensus.
 
-## Release gate
+## Beta release validation
 
-Before creating the first tag:
+The first-tag gate was completed for
+[`v0.1.0-beta.1`](https://github.com/bharat94/terminal-todo/releases/tag/v0.1.0-beta.1):
 
-1. Require the green CI workflow on the default branch.
-2. Run the release checklist in [releasing.md](releasing.md) from a clean
-   checkout.
-3. Create the immutable semantic-version tag only as an explicit publication
-   decision.
-4. Download and verify at least one published archive, checksum, SBOM, binary
-   version, and attestation.
+1. The tagged commit passed the full Linux, macOS, Windows, release-contract,
+   and reachable-vulnerability CI matrix.
+2. The release workflow built and published all six configured archives.
+3. Every downloaded artifact matched `checksums.txt`; all six SBOMs parsed as
+   SPDX 2.3 documents.
+4. The native macOS arm64 binary reported `todo v0.1.0-beta.1`, and provenance
+   verification passed for all six archives.
+5. The `master` branch now requires the five strict CI checks, pull-request
+   review flow, conversation resolution, linear history, and administrator
+   enforcement; force pushes and deletion are disabled.
 
 ## What blocks a 1.0 claim
 
