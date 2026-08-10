@@ -73,10 +73,9 @@ boundary:
 
 ### 1. Install
 
-For tagged versions, download the archive for your platform from
-[GitHub Releases](https://github.com/bharat94/terminal-todo/releases), verify
-it against `checksums.txt`, and place `todo` on your `PATH`. If no tagged
-release is available yet, build the current release candidate from source.
+Download the `v0.1.0-beta.1` archive for your platform from
+[GitHub Releases](https://github.com/bharat94/terminal-todo/releases/tag/v0.1.0-beta.1),
+verify it against `checksums.txt`, and place `todo` on your `PATH`.
 
 To build from source, install Go 1.26.1 or newer:
 

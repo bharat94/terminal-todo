@@ -9,9 +9,24 @@ release workflow produces the `todo` binary for:
 
 Unix archives use `tar.gz`; Windows archives use `zip`. The workflow is
 configured to publish SHA-256 checksums, per-archive SPDX JSON SBOMs, and
-GitHub build provenance attestations. Snapshot generation has validated the
-archive and SBOM configuration; the first public tag remains the end-to-end
-publication and OIDC attestation test.
+GitHub build provenance attestations. Snapshot generation and the first public
+tag have validated the archive, SBOM, publication, and OIDC attestation path.
+
+## Published release evidence
+
+[`v0.1.0-beta.1`](https://github.com/bharat94/terminal-todo/releases/tag/v0.1.0-beta.1)
+was published from commit `1b2ed698bed52bb9e636854f7d7990b2d039370a` by the
+[release workflow](https://github.com/bharat94/terminal-todo/actions/runs/31297477889).
+Independent post-publication verification downloaded the release and confirmed:
+
+- every archive and SBOM matches `checksums.txt`;
+- all six SBOMs are valid SPDX 2.3 documents;
+- the macOS arm64 binary reports `todo v0.1.0-beta.1` and renders help outside
+  a project; and
+- GitHub provenance verification succeeds for all six platform archives.
+
+The tagged commit also passed the complete required
+[CI matrix](https://github.com/bharat94/terminal-todo/actions/runs/31297348237).
 
 ## Prepare a release
 
