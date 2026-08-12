@@ -40,7 +40,7 @@ func cmdHeartbeat(args []string) {
 	var renewed *store.Task
 	_, err = store.Update(tasksBinPath(), func(s *store.TaskStore) error {
 		var renewErr error
-		renewed, renewErr = renewLease(s, id, actor, ttl, time.Now())
+		renewed, renewErr = renewLease(s, id, actor, ttl, projectNow())
 		return renewErr
 	})
 	if err != nil {

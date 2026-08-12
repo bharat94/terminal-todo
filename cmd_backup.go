@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/bharat94/terminal-todo/store"
 )
@@ -12,7 +11,7 @@ import (
 func cmdBackup(args []string) {
 	output := optionValue(args, "--output")
 	if output == "" {
-		output = filepath.Join(projectRoot, ".terminal-todo", fmt.Sprintf("backup-%d.bin", time.Now().UnixMilli()))
+		output = filepath.Join(projectRoot, ".terminal-todo", fmt.Sprintf("backup-%d.bin", projectNow().UnixMilli()))
 	}
 
 	s := loadStore()

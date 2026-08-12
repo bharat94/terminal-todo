@@ -336,7 +336,7 @@ func acquireFromStore(s *store.TaskStore, actor, requestID, fingerprint string, 
 	}
 
 	task := ready[0]
-	now := uint64(time.Now().UnixMilli())
+	now := uint64(projectNow().UnixMilli())
 	task.Owner = actor
 	task.Status = store.StatusInProgress
 	task.LeaseExpires = now + uint64(ttl.Milliseconds())

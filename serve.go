@@ -783,7 +783,7 @@ func (srv *server) handleDone(params json.RawMessage) (interface{}, *rpcError) {
 				return fmt.Errorf("task %d is claimed by %s", id, task.Owner)
 			}
 			task.Status = store.StatusCompleted
-			task.Completed = uint64(time.Now().UnixMilli())
+			task.Completed = uint64(projectNow().UnixMilli())
 			task.Owner = ""
 			task.LeaseExpires = 0
 			task.BlockReason = ""
@@ -1183,7 +1183,7 @@ func (srv *server) handleClaim(params json.RawMessage) (interface{}, *rpcError) 
 		if !dag.DependenciesCompleteWithResolver(task, s.Tasks, resolver) {
 			return fmt.Errorf("task %d has incomplete dependencies", p.ID)
 		}
-		now := uint64(time.Now().UnixMilli())
+		now := uint64(projectNow().UnixMilli())
 		if task.Owner != "" && task.Owner != p.Actor && task.LeaseExpires > now {
 			return fmt.Errorf("task %d already claimed by %s", p.ID, task.Owner)
 		}
@@ -1355,7 +1355,7 @@ func (srv *server) handleHeartbeat(params json.RawMessage) (interface{}, *rpcErr
 	var renewed *store.Task
 	_, err = updateStoreSafe(func(s *store.TaskStore) error {
 		var renewErr error
-		renewed, renewErr = renewLease(s, p.ID, p.Actor, ttl, time.Now())
+		renewed, renewErr = renewLease(s, p.ID, p.Actor, ttl, projectNow())
 		return renewErr
 	})
 	if err != nil {
@@ -2284,12 +2284,12 @@ func (srv *server) handleCompact(params json.RawMessage) (interface{}, *rpcError
 		if err != nil {
 			return nil, rpcErrorf(rpcStoreCorrupted, "loading store: %v", err)
 		}
-		return compactTaskStore(s, options, false, time.Now()), nil
+		return compactTaskStore(s, options, false, projectNow()), nil
 	}
 
 	var result compactResult
 	if _, err := updateStoreSafe(func(s *store.TaskStore) error {
-		result = compactTaskStore(s, options, true, time.Now())
+		result = compactTaskStore(s, options, true, projectNow())
 		return nil
 	}); err != nil {
 		return nil, rpcErrorf(rpcStoreCorrupted, "compacting store: %v", err)
@@ -2414,7 +2414,7 @@ func (srv *server) handleBackup(params json.RawMessage) (interface{}, *rpcError)
 
 	output := p.Output
 	if output == "" {
-		output = filepath.Join(projectRoot, ".terminal-todo", fmt.Sprintf("backup-%d.bin", time.Now().UnixMilli()))
+		output = filepath.Join(projectRoot, ".terminal-todo", fmt.Sprintf("backup-%d.bin", projectNow().UnixMilli()))
 	}
 
 	s, err := loadStoreSafe()

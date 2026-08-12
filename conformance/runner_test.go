@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bharat94/terminal-todo/internal/projectclock"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -260,6 +262,19 @@ func TestValidateEvaluationRejectsInvalidAssertions(t *testing.T) {
 	assert.ErrorContains(t, err, "duplicate")
 }
 
+func TestRunnerPropagatesFixtureClockToHostProcess(t *testing.T) {
+	initial := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	evaluation := baseEvaluation("clock")
+	evaluation.Fixture.Files = append(evaluation.Fixture.Files, ClockFixture(initial))
+	evaluation.Assertions = []Assertion{
+		Contains("fixture_clock", StreamStdout, initial.Format(time.RFC3339Nano), 1, true),
+	}
+
+	report, err := (Runner{}).Run(context.Background(), evaluation)
+	require.NoError(t, err)
+	assert.Equal(t, StatusPassed, report.Status)
+}
+
 func baseEvaluation(mode string) Evaluation {
 	return Evaluation{
 		ID: "test_scenario",
@@ -326,6 +341,8 @@ func TestConformanceHelperProcess(t *testing.T) {
 			"controlled prompt",
 			os.Getenv("TERMINAL_TODO_CONFORMANCE_WORKSPACE"),
 		)
+	case "clock":
+		fmt.Println(projectclock.Now().Format(time.RFC3339Nano))
 	case "preflight-fail":
 		fmt.Fprintln(os.Stderr, "host is unavailable")
 		os.Exit(2)

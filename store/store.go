@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/bharat94/terminal-todo/fsutil"
+	"github.com/bharat94/terminal-todo/internal/projectclock"
 
 	"github.com/bharat94/terminal-todo/lock"
 
@@ -167,14 +167,14 @@ func (s *TaskStore) AddTask(title string, depends []string) *Task {
 		Title:   title,
 		Status:  StatusPending,
 		Depends: depends,
-		Created: uint64(time.Now().UnixMilli()),
+		Created: uint64(projectclock.Now().UnixMilli()),
 		Tags:    make([]string, 0),
 		Log:     make([]LogEntry, 0),
 		Extra:   make(map[string]string),
 	}
 	s.Tasks[task.ID] = task
 	s.NextID++
-	s.LastModified = uint64(time.Now().UnixMilli())
+	s.LastModified = uint64(projectclock.Now().UnixMilli())
 	return task
 }
 
@@ -192,7 +192,7 @@ func (s *TaskStore) AddEvent(eventType EventType, taskID uint64, actor string, d
 	}
 	event := &Event{
 		ID:        s.NextEventID,
-		Timestamp: uint64(time.Now().UnixMilli()),
+		Timestamp: uint64(projectclock.Now().UnixMilli()),
 		Type:      eventType,
 		TaskID:    taskID,
 		Actor:     actor,
@@ -200,7 +200,7 @@ func (s *TaskStore) AddEvent(eventType EventType, taskID uint64, actor string, d
 	}
 	s.Events = append(s.Events, *event)
 	s.NextEventID++
-	s.LastModified = uint64(time.Now().UnixMilli())
+	s.LastModified = uint64(projectclock.Now().UnixMilli())
 	return event
 }
 
@@ -226,11 +226,11 @@ func (s *TaskStore) AddLog(id uint64, agent, message string) bool {
 		return false
 	}
 	task.Log = append(task.Log, LogEntry{
-		Timestamp: uint64(time.Now().UnixMilli()),
+		Timestamp: uint64(projectclock.Now().UnixMilli()),
 		Agent:     agent,
 		Message:   message,
 	})
-	s.LastModified = uint64(time.Now().UnixMilli())
+	s.LastModified = uint64(projectclock.Now().UnixMilli())
 	return true
 }
 
@@ -239,7 +239,7 @@ func (s *TaskStore) RemoveTask(id uint64) bool {
 		return false
 	}
 	delete(s.Tasks, id)
-	s.LastModified = uint64(time.Now().UnixMilli())
+	s.LastModified = uint64(projectclock.Now().UnixMilli())
 	return true
 }
 
@@ -254,7 +254,7 @@ func (s *TaskStore) GetAllTasks() []*Task {
 // CleanExpiredLeases scans all tasks and resets any whose lease has expired.
 // Returns the number of leases cleaned. Must be called under a write lock.
 func (s *TaskStore) CleanExpiredLeases() int {
-	now := uint64(time.Now().UnixMilli())
+	now := uint64(projectclock.Now().UnixMilli())
 	cleaned := 0
 	for _, task := range s.Tasks {
 		if task.Status == StatusInProgress && task.LeaseExpires > 0 && task.LeaseExpires < now {
@@ -267,7 +267,7 @@ func (s *TaskStore) CleanExpiredLeases() int {
 		}
 	}
 	if cleaned > 0 {
-		s.LastModified = uint64(time.Now().UnixMilli())
+		s.LastModified = uint64(projectclock.Now().UnixMilli())
 	}
 	return cleaned
 }
@@ -338,7 +338,7 @@ func LoadCurrent(path string) (*TaskStore, error) {
 }
 
 func (s *TaskStore) HasExpiredLeases() bool {
-	now := uint64(time.Now().UnixMilli())
+	now := uint64(projectclock.Now().UnixMilli())
 	for _, task := range s.Tasks {
 		if task.Status == StatusInProgress && task.LeaseExpires > 0 && task.LeaseExpires < now {
 			return true
@@ -415,7 +415,7 @@ func loadUnlocked(path string) (*TaskStore, error) {
 
 func writeStore(path string, s *TaskStore) error {
 	s.SchemaVersion = CurrentSchemaVersion
-	s.LastModified = uint64(time.Now().UnixMilli())
+	s.LastModified = uint64(projectclock.Now().UnixMilli())
 	data, err := msgpack.Marshal(s)
 	if err != nil {
 		return err

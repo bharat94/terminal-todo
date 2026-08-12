@@ -5,7 +5,6 @@ import (
 
 	"github.com/bharat94/terminal-todo/dag"
 	"github.com/bharat94/terminal-todo/store"
-	"time"
 )
 
 func cmdDone(args []string) {
@@ -40,7 +39,7 @@ func cmdDone(args []string) {
 				return fmt.Errorf("task %d is claimed by %s; use --as %s", id, task.Owner, task.Owner)
 			}
 			task.Status = store.StatusCompleted
-			task.Completed = uint64(time.Now().UnixMilli())
+			task.Completed = uint64(projectNow().UnixMilli())
 			task.Owner = ""
 			task.LeaseExpires = 0
 			task.BlockReason = ""

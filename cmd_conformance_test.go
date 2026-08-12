@@ -77,6 +77,7 @@ func TestLifecycleFixtureContainsIsolatedStoreAndHostConfigs(t *testing.T) {
 		files[file.Path] = file
 	}
 	require.Contains(t, files, ".terminal-todo/tasks.bin")
+	require.Contains(t, files, ".terminal-todo/conformance-clock")
 	require.Contains(t, files, conformance.CodexProjectConfigFile)
 	require.Contains(t, files, conformance.ClaudeProjectMCPConfigFile)
 	assert.Contains(t, string(files[conformance.CodexProjectConfigFile].Content), `command = "/opt/terminal todo/bin/todo"`)

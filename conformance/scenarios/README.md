@@ -72,6 +72,11 @@ races are repeatable. Host approval, tool launch, and configuration failures
 are infrastructure failures and should be reported separately from behavioral
 scores.
 
+The runner materializes `.terminal-todo/conformance-clock` and passes its path
+to the host and inherited terminal-todo processes. Persisted timestamps, lease
+expiry, acquisition, and heartbeat decisions use that clock; process timeouts,
+lock deadlines, and allocator wait polling continue to use real monotonic time.
+
 Use a fresh conversation for each actor unless a turn explicitly resumes that
 actor. Do not preload the terminal-todo skill for the discovery scenario; all
 other scenarios may use the project-installed integration exactly as an end

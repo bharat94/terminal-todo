@@ -91,7 +91,7 @@ func cmdDoctor(args []string) {
 	// Lock sidecars are stable synchronization inodes and intentionally persist.
 	fmt.Println()
 	fmt.Println("Lock files (persistent):")
-	now := time.Now()
+	now := projectNow()
 	foundLocks := false
 	for _, entry := range entries {
 		if filepath.Ext(entry.Name()) == ".lock" {
