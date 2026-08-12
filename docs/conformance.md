@@ -94,9 +94,11 @@ or abandoned ownership.
 The current command is a lifecycle smoke evaluation, not a claim that all nine
 catalog fixtures are executable. Reports must identify the scenario they ran.
 The harness now provides a process-wide deterministic fixture clock that can
-advance lease time without sleeping; full-suite certification still requires
-catalog fixture materialization plus the multi-turn and concurrent-host
-drivers.
+advance lease time without sleeping. It also provides ordered multi-turn
+execution: fresh conversations remain isolated by actor, explicit resume
+steps continue only that actor's session, harness transitions run between
+turns, and session identifiers stay out of reports. Full-suite certification
+still requires catalog fixture materialization and the concurrent-host driver.
 
 ## Observed local baseline
 

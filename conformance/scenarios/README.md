@@ -82,6 +82,12 @@ actor. Do not preload the terminal-todo skill for the discovery scenario; all
 other scenarios may use the project-installed integration exactly as an end
 user would.
 
+The ordered sequence runner implements this conversation boundary for Codex
+and Claude Code. It extracts session identifiers transiently from raw host
+events, redacts them from retained captures, and gives the entire scenario one
+timeout and output budget rather than multiplying limits per turn. Concurrent
+turns are a separate driver layered on the same fixture and evidence model.
+
 The first executable runner intentionally starts with a real-host lifecycle
 smoke evaluation. The catalog below is the versioned behavioral contract that
 the runner grows into; a host must not claim full-suite conformance until all

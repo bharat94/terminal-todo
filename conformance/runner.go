@@ -262,6 +262,17 @@ func runCommand(
 	limits Limits,
 	redact redactor,
 ) (ExecutionResult, *InfrastructureFailure) {
+	return runCommandObserved(parent, workspace, spec, limits, redact, nil)
+}
+
+func runCommandObserved(
+	parent context.Context,
+	workspace string,
+	spec Command,
+	limits Limits,
+	redact redactor,
+	observe func(Stream, []byte),
+) (ExecutionResult, *InfrastructureFailure) {
 	ctx, cancel := context.WithTimeout(parent, limits.Timeout)
 	defer cancel()
 
@@ -294,7 +305,7 @@ func runCommand(
 		}
 	}
 
-	collector := newEventCollector(limits.MaxOutputBytes, redact)
+	collector := newEventCollector(limits.MaxOutputBytes, redact, observe)
 	readErrors := make(chan error, 2)
 	go func() { readErrors <- collector.read(stdout, StreamStdout, limits.MaxEventBytes, cancel) }()
 	go func() { readErrors <- collector.read(stderr, StreamStderr, limits.MaxEventBytes, cancel) }()
@@ -382,15 +393,17 @@ type eventCollector struct {
 	stdout     []Event
 	stderr     []Event
 	redact     redactor
+	observe    func(Stream, []byte)
 	limitError error
 }
 
-func newEventCollector(maxBytes int64, redact redactor) *eventCollector {
+func newEventCollector(maxBytes int64, redact redactor, observe func(Stream, []byte)) *eventCollector {
 	return &eventCollector{
 		maxBytes: maxBytes,
 		stdout:   []Event{},
 		stderr:   []Event{},
 		redact:   redact,
+		observe:  observe,
 	}
 }
 
@@ -425,6 +438,9 @@ func (c *eventCollector) add(stream Stream, sequence uint64, line []byte) error 
 			c.limitError = fmt.Errorf("host output exceeded %d bytes", c.maxBytes)
 		}
 		return c.limitError
+	}
+	if c.observe != nil {
+		c.observe(stream, line)
 	}
 	event := c.redact.event(line, stream, sequence)
 	if stream == StreamStdout {

@@ -1,6 +1,7 @@
 package conformance
 
 import (
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -31,6 +32,7 @@ type MachineHostOptions struct {
 	Model              string
 	IntegrationVersion string
 	Prompt             string
+	PersistentSessions bool
 }
 
 // NewCodexHost builds a non-interactive Codex adapter. The project fixture is
@@ -51,7 +53,25 @@ func NewCodexHost(options MachineHostOptions) (Host, error) {
 		Executable: executable,
 		Args:       []string{"login", "status"},
 	}
-	return Host{
+	runArgs := []string{
+		"--ask-for-approval", "never",
+		"exec",
+	}
+	if !options.PersistentSessions {
+		runArgs = append(runArgs, "--ephemeral")
+	}
+	runArgs = append(runArgs,
+		"--json",
+		"--color", "never",
+		"--strict-config",
+		"--sandbox", "workspace-write",
+		"-C", ConformanceWorkspacePlaceholder,
+		"--skip-git-repo-check",
+		"-c", "mcp_servers.terminal-todo.command="+strconv.Quote(mcpExecutable),
+		"-c", "mcp_servers.terminal-todo.args=[\"mcp\",\"--stdio\"]",
+		"-c", "mcp_servers.terminal-todo.required=true",
+	)
+	host := Host{
 		Name:               "codex",
 		Version:            strings.TrimSpace(options.Version),
 		Model:              strings.TrimSpace(options.Model),
@@ -60,22 +80,9 @@ func NewCodexHost(options MachineHostOptions) (Host, error) {
 		Preflight:          &preflight,
 		Run: Command{
 			Executable: executable,
-			Args: []string{
-				"--ask-for-approval", "never",
-				"exec",
-				"--ephemeral",
-				"--json",
-				"--color", "never",
-				"--strict-config",
-				"--sandbox", "workspace-write",
-				"-C", ConformanceWorkspacePlaceholder,
-				"--skip-git-repo-check",
-				"-c", "mcp_servers.terminal-todo.command=" + strconv.Quote(mcpExecutable),
-				"-c", "mcp_servers.terminal-todo.args=[\"mcp\",\"--stdio\"]",
-				"-c", "mcp_servers.terminal-todo.required=true",
-			},
-			Stdin:  ConformancePromptPlaceholder,
-			Prompt: options.Prompt,
+			Args:       runArgs,
+			Stdin:      ConformancePromptPlaceholder,
+			Prompt:     options.Prompt,
 		},
 		FailureRules: []FailureRule{
 			{
@@ -91,7 +98,32 @@ func NewCodexHost(options MachineHostOptions) (Host, error) {
 				Stream: StreamAny, Contains: "approval required",
 			},
 		},
-	}, nil
+	}
+	if options.PersistentSessions {
+		host.ExtractSessionID = codexSessionID
+		host.Resume = func(sessionID, prompt string) (Command, error) {
+			if err := validateSessionID(sessionID); err != nil {
+				return Command{}, err
+			}
+			return Command{
+				Executable: executable,
+				Args: []string{
+					"--ask-for-approval", "never",
+					"exec", "resume",
+					"--json",
+					"--strict-config",
+					"--skip-git-repo-check",
+					"-c", "mcp_servers.terminal-todo.command=" + strconv.Quote(mcpExecutable),
+					"-c", "mcp_servers.terminal-todo.args=[\"mcp\",\"--stdio\"]",
+					"-c", "mcp_servers.terminal-todo.required=true",
+					sessionID, "-",
+				},
+				Stdin:  ConformancePromptPlaceholder,
+				Prompt: prompt,
+			}, nil
+		}
+	}
+	return host, nil
 }
 
 // NewClaudeHost builds a non-interactive Claude Code adapter. It loads only
@@ -108,7 +140,23 @@ func NewClaudeHost(options MachineHostOptions) (Host, error) {
 		Executable: executable,
 		Args:       []string{"auth", "status"},
 	}
-	return Host{
+	runArgs := []string{
+		"-p",
+		"--output-format", "stream-json",
+		"--verbose",
+	}
+	if !options.PersistentSessions {
+		runArgs = append(runArgs, "--no-session-persistence")
+	}
+	runArgs = append(runArgs,
+		"--no-chrome",
+		"--prompt-suggestions", "false",
+		"--permission-mode", "dontAsk",
+		"--allowedTools", "mcp__terminal-todo__*",
+		"--mcp-config", ConformanceWorkspacePlaceholder+"/"+ClaudeProjectMCPConfigFile,
+		"--strict-mcp-config",
+	)
+	host := Host{
 		Name:               "claude",
 		Version:            strings.TrimSpace(options.Version),
 		Model:              strings.TrimSpace(options.Model),
@@ -117,20 +165,9 @@ func NewClaudeHost(options MachineHostOptions) (Host, error) {
 		Preflight:          &preflight,
 		Run: Command{
 			Executable: executable,
-			Args: []string{
-				"-p",
-				"--output-format", "stream-json",
-				"--verbose",
-				"--no-session-persistence",
-				"--no-chrome",
-				"--prompt-suggestions", "false",
-				"--permission-mode", "dontAsk",
-				"--allowedTools", "mcp__terminal-todo__*",
-				"--mcp-config", ConformanceWorkspacePlaceholder + "/" + ClaudeProjectMCPConfigFile,
-				"--strict-mcp-config",
-			},
-			Stdin:  ConformancePromptPlaceholder,
-			Prompt: options.Prompt,
+			Args:       runArgs,
+			Stdin:      ConformancePromptPlaceholder,
+			Prompt:     options.Prompt,
 		},
 		FailureRules: []FailureRule{
 			{
@@ -158,7 +195,67 @@ func NewClaudeHost(options MachineHostOptions) (Host, error) {
 				Stream: StreamAny, Contains: "invalid api key",
 			},
 		},
-	}, nil
+	}
+	if options.PersistentSessions {
+		host.ExtractSessionID = claudeSessionID
+		host.Resume = func(sessionID, prompt string) (Command, error) {
+			if err := validateSessionID(sessionID); err != nil {
+				return Command{}, err
+			}
+			args := append([]string(nil), runArgs...)
+			args = append(args, "--resume", sessionID)
+			return Command{
+				Executable: executable,
+				Args:       args,
+				Stdin:      ConformancePromptPlaceholder,
+				Prompt:     prompt,
+			}, nil
+		}
+	}
+	return host, nil
+}
+
+func validateSessionID(sessionID string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return errors.New("conformance host session ID is required")
+	}
+	if len(sessionID) > 256 {
+		return errors.New("conformance host session ID exceeds 256 bytes")
+	}
+	return nil
+}
+
+func codexSessionID(stream Stream, line []byte) (string, bool) {
+	if stream != StreamStdout {
+		return "", false
+	}
+	var value struct {
+		Type     string `json:"type"`
+		ThreadID string `json:"thread_id"`
+	}
+	if json.Unmarshal(line, &value) != nil || value.Type != "thread.started" || strings.TrimSpace(value.ThreadID) == "" {
+		return "", false
+	}
+	return strings.TrimSpace(value.ThreadID), true
+}
+
+func claudeSessionID(stream Stream, line []byte) (string, bool) {
+	if stream != StreamStdout {
+		return "", false
+	}
+	var value struct {
+		Type      string `json:"type"`
+		Subtype   string `json:"subtype"`
+		SessionID string `json:"session_id"`
+	}
+	if json.Unmarshal(line, &value) != nil || strings.TrimSpace(value.SessionID) == "" {
+		return "", false
+	}
+	if (value.Type == "system" && value.Subtype == "init") || value.Type == "result" {
+		return strings.TrimSpace(value.SessionID), true
+	}
+	return "", false
 }
 
 func validateMachineHostOptions(options MachineHostOptions) error {
