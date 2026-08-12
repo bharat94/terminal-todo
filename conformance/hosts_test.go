@@ -1,6 +1,7 @@
 package conformance
 
 import (
+	"encoding/json"
 	"slices"
 	"testing"
 
@@ -113,6 +114,57 @@ func TestMachineHostConfigPathsRemainInsideFixture(t *testing.T) {
 	assert.Equal(t, ".mcp.json", ClaudeProjectMCPConfigFile)
 	assert.NotContains(t, CodexProjectConfigFile, "..")
 	assert.NotContains(t, ClaudeProjectMCPConfigFile, "..")
+}
+
+func TestPersistentCodexHostBuildsSafeResumeCommand(t *testing.T) {
+	host, err := NewCodexHost(MachineHostOptions{
+		Executable: "/opt/codex", MCPExecutable: "/opt/todo", Prompt: "start", PersistentSessions: true,
+	})
+	require.NoError(t, err)
+	assert.NotContains(t, host.Run.Args, "--ephemeral")
+	require.NotNil(t, host.Resume)
+	require.NotNil(t, host.ExtractSessionID)
+
+	resume, err := host.Resume("thread-123", `continue; $(touch escaped)`)
+	require.NoError(t, err)
+	assert.Equal(t, ConformancePromptPlaceholder, resume.Stdin)
+	assert.Equal(t, `continue; $(touch escaped)`, resume.Prompt)
+	assert.Contains(t, resume.Args, "thread-123")
+	assert.NotContains(t, resume.Args, resume.Prompt)
+	assert.NotContains(t, resume.Args, "--color")
+	assert.Equal(t, "-", resume.Args[len(resume.Args)-1])
+
+	line := json.RawMessage(`{"type":"thread.started","thread_id":"thread-123"}`)
+	sessionID, matched := host.ExtractSessionID(StreamStdout, line)
+	require.True(t, matched)
+	assert.Equal(t, "thread-123", sessionID)
+}
+
+func TestPersistentClaudeHostBuildsSafeResumeCommand(t *testing.T) {
+	host, err := NewClaudeHost(MachineHostOptions{
+		Executable: "/opt/claude", Prompt: "start", PersistentSessions: true,
+	})
+	require.NoError(t, err)
+	assert.NotContains(t, host.Run.Args, "--no-session-persistence")
+	require.NotNil(t, host.Resume)
+	require.NotNil(t, host.ExtractSessionID)
+
+	resume, err := host.Resume("session-123", "continue")
+	require.NoError(t, err)
+	assert.Equal(t, ConformancePromptPlaceholder, resume.Stdin)
+	assert.Equal(t, []string{"--resume", "session-123"}, resume.Args[len(resume.Args)-2:])
+
+	line := json.RawMessage(`{"type":"system","subtype":"init","session_id":"session-123"}`)
+	sessionID, matched := host.ExtractSessionID(StreamStdout, line)
+	require.True(t, matched)
+	assert.Equal(t, "session-123", sessionID)
+}
+
+func TestSessionExtractorsRejectMissingMachineReadableID(t *testing.T) {
+	_, matched := codexSessionID(StreamStdout, []byte(`{"type":"turn.started"}`))
+	assert.False(t, matched)
+	_, matched = claudeSessionID(StreamStdout, []byte(`{"type":"assistant"}`))
+	assert.False(t, matched)
 }
 
 func assertHostFailureRule(t *testing.T, host Host, kind FailureKind, contains string) {

@@ -107,6 +107,7 @@ const (
 	FailureApproval       FailureKind = "approval"
 	FailureOutputLimit    FailureKind = "output_limit"
 	FailureNormalization  FailureKind = "normalization"
+	FailureSession        FailureKind = "session"
 )
 
 // FailureRule lets a host adapter classify vendor-specific auth, approval, or
@@ -126,8 +127,19 @@ type Host struct {
 	IntegrationVersion string
 	Preflight          *Command
 	Run                Command
+	Resume             ResumeCommand
+	ExtractSessionID   SessionIDExtractor
 	FailureRules       []FailureRule
 }
+
+// ResumeCommand constructs a direct argv invocation for a persisted host
+// session. Implementations must not invoke a shell.
+type ResumeCommand func(sessionID, prompt string) (Command, error)
+
+// SessionIDExtractor inspects one raw machine-readable output line. The
+// runner retains a matched identifier only long enough to construct a resume
+// command; raw identifiers never enter report captures or evidence.
+type SessionIDExtractor func(Stream, []byte) (string, bool)
 
 type Limits struct {
 	Timeout        time.Duration
@@ -147,6 +159,41 @@ type Evaluation struct {
 	KeepWorkspace bool
 }
 
+type SequenceAction string
+
+const (
+	SequencePrompt  SequenceAction = "prompt"
+	SequenceResume  SequenceAction = "resume"
+	SequenceHarness SequenceAction = "harness"
+)
+
+// SequenceStep is one ordered host turn or harness-controlled transition.
+// Prompt starts a fresh session for Actor; Resume continues that actor's
+// recorded session. Harness steps never contact a model.
+type SequenceStep struct {
+	ID      string
+	Actor   string
+	Action  SequenceAction
+	Prompt  string
+	Harness func(context.Context, string) error
+}
+
+// SequenceEvaluation executes multiple isolated actor sessions against one
+// disposable project. It intentionally excludes concurrency; concurrent
+// orchestration composes on this ordered foundation separately.
+type SequenceEvaluation struct {
+	ID            string
+	Host          Host
+	Fixture       Fixture
+	Steps         []SequenceStep
+	Limits        Limits
+	Redactions    []string
+	Normalizer    SequenceNormalizer
+	Assertions    []Assertion
+	MinimumScore  float64
+	KeepWorkspace bool
+}
+
 type ProcessResult struct {
 	ExitCode  int  `json:"exit_code"`
 	TimedOut  bool `json:"timed_out"`
@@ -156,6 +203,25 @@ type ProcessResult struct {
 type ExecutionResult struct {
 	Process ProcessResult `json:"process"`
 	Capture Capture       `json:"capture"`
+}
+
+type TurnResult struct {
+	ID        string          `json:"id"`
+	Actor     string          `json:"actor"`
+	Action    SequenceAction  `json:"action"`
+	Execution ExecutionResult `json:"execution"`
+}
+
+// SequenceNormalizer converts actor-attributed turn captures and final
+// fixture state into the stable evidence model.
+type SequenceNormalizer interface {
+	NormalizeSequence(context.Context, string, []TurnResult) (Evidence, error)
+}
+
+type SequenceNormalizerFunc func(context.Context, string, []TurnResult) (Evidence, error)
+
+func (f SequenceNormalizerFunc) NormalizeSequence(ctx context.Context, workspace string, turns []TurnResult) (Evidence, error) {
+	return f(ctx, workspace, turns)
 }
 
 type InfrastructureFailure struct {
@@ -186,6 +252,7 @@ type Report struct {
 	Workspace              string                  `json:"workspace,omitempty"`
 	Preflight              *ExecutionResult        `json:"preflight,omitempty"`
 	Execution              *ExecutionResult        `json:"execution,omitempty"`
+	Turns                  []TurnResult            `json:"turns,omitempty"`
 	Evidence               Evidence                `json:"evidence"`
 	Checks                 []CheckResult           `json:"checks"`
 	Score                  Score                   `json:"score"`
