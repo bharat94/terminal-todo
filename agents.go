@@ -116,7 +116,7 @@ func computeAgentLoad(s *store.TaskStore, agentName string) int {
 }
 
 func nowTimestamp() string {
-	return time.Now().UTC().Format(time.RFC3339Nano)
+	return projectNow().UTC().Format(time.RFC3339Nano)
 }
 
 func touchAgent(agentName string) error {

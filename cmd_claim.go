@@ -67,7 +67,7 @@ func cmdClaim(args []string) {
 		if !dag.DependenciesCompleteWithResolver(task, s.Tasks, resolver) {
 			return fmt.Errorf("task %d has incomplete dependencies", id)
 		}
-		now := uint64(time.Now().UnixMilli())
+		now := uint64(projectNow().UnixMilli())
 		if task.Owner != "" && task.Owner != owner && task.LeaseExpires > now {
 			return fmt.Errorf("task %d already claimed by %s (expires in %s)", id, task.Owner, time.Duration(task.LeaseExpires-now)*time.Millisecond)
 		}

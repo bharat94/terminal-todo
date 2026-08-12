@@ -259,6 +259,7 @@ func lifecycleFixture(todoExecutable string) (conformance.Fixture, error) {
 	}
 	return conformance.Fixture{Files: []conformance.FixtureFile{
 		{Path: ".terminal-todo/tasks.bin", Content: taskBytes, Mode: 0o600},
+		conformance.ClockFixture(time.Now().UTC()),
 		{Path: conformance.CodexProjectConfigFile, Content: []byte(codexConfig), Mode: 0o600},
 		{Path: conformance.ClaudeProjectMCPConfigFile, Content: claudeConfig, Mode: 0o600},
 	}}, nil

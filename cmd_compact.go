@@ -37,10 +37,10 @@ func cmdCompact(args []string) {
 		if err != nil {
 			fail(ErrStoreCorrupted, "loading store: %v", err)
 		}
-		result = compactTaskStore(s, options, false, time.Now())
+		result = compactTaskStore(s, options, false, projectNow())
 	} else {
 		updateStore(func(s *store.TaskStore) error {
-			result = compactTaskStore(s, options, true, time.Now())
+			result = compactTaskStore(s, options, true, projectNow())
 			return nil
 		})
 	}

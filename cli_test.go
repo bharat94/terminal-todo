@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bharat94/terminal-todo/internal/projectclock"
 	"github.com/bharat94/terminal-todo/store"
 
 	"github.com/stretchr/testify/assert"
@@ -39,6 +40,47 @@ func TestCLI_HelpAndVersionWorkOutsideAProject(t *testing.T) {
 		assert.NoError(t, err, "%v: %s", args, string(out))
 		assert.NotContains(t, string(out), "not in a project")
 	}
+}
+
+func TestCLIConformanceClockControlsLeaseLifecycle(t *testing.T) {
+	tmpDir := t.TempDir()
+	todo := buildTodo(t)
+	clockPath := filepath.Join(tmpDir, "conformance-clock")
+	writeClock := func(value string) {
+		t.Helper()
+		assert.NoError(t, os.WriteFile(clockPath, []byte(value+"\n"), 0o600))
+	}
+	run := func(args ...string) []byte {
+		t.Helper()
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		cmd.Env = append(os.Environ(), projectclock.EnvironmentVariable+"="+clockPath)
+		output, err := cmd.CombinedOutput()
+		assert.NoError(t, err, "%v: %s", args, output)
+		return output
+	}
+
+	writeClock("2026-01-01T12:00:00Z")
+	run("init")
+	run("add", "Clock-controlled work")
+	run("claim", "1", "--as", "eval-clock", "--ttl", "2m")
+
+	writeClock("2026-01-01T12:01:30Z")
+	run("heartbeat", "1", "--as", "eval-clock", "--ttl", "2m")
+	active, err := store.Load(filepath.Join(tmpDir, ".terminal-todo", "tasks.bin"))
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(time.Date(2026, 1, 1, 12, 3, 30, 0, time.UTC).UnixMilli()), active.Tasks[1].LeaseExpires)
+	assert.Equal(t, uint64(time.Date(2026, 1, 1, 12, 1, 30, 0, time.UTC).UnixMilli()), active.Events[len(active.Events)-1].Timestamp)
+
+	writeClock("2026-01-01T12:03:31Z")
+	run("status", "--json")
+	recovered, err := store.Load(filepath.Join(tmpDir, ".terminal-todo", "tasks.bin"))
+	assert.NoError(t, err)
+	assert.Equal(t, store.StatusPending, recovered.Tasks[1].Status)
+	assert.Empty(t, recovered.Tasks[1].Owner)
+	assert.Zero(t, recovered.Tasks[1].LeaseExpires)
+	assert.Equal(t, store.EventLeaseExpired, recovered.Events[len(recovered.Events)-1].Type)
+	assert.Equal(t, uint64(time.Date(2026, 1, 1, 12, 3, 31, 0, time.UTC).UnixMilli()), recovered.Events[len(recovered.Events)-1].Timestamp)
 }
 
 func TestCLI_InitDoesNotOverwriteExistingTasks(t *testing.T) {

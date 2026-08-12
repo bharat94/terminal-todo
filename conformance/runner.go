@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bharat94/terminal-todo/internal/projectclock"
 )
 
 const (
@@ -346,6 +348,12 @@ func commandEnvironment(spec Command, workspace string) []string {
 	sort.Strings(keys)
 	for _, key := range keys {
 		environment = append(environment, key+"="+expand(spec.Env[key], workspace, spec.Prompt))
+	}
+	if _, configured := spec.Env[projectclock.EnvironmentVariable]; !configured {
+		clockPath := filepath.Join(workspace, filepath.FromSlash(fixtureClockPath))
+		if _, err := os.Stat(clockPath); err == nil {
+			environment = append(environment, projectclock.EnvironmentVariable+"="+clockPath)
+		}
 	}
 	environment = append(environment, "TERMINAL_TODO_CONFORMANCE_WORKSPACE="+workspace)
 	return environment

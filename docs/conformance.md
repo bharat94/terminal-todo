@@ -92,9 +92,11 @@ race-prone allocation, invalid lease mutation, fabricated work, lost handoff,
 or abandoned ownership.
 
 The current command is a lifecycle smoke evaluation, not a claim that all nine
-catalog fixtures are executable. Reports must identify the scenario they ran;
-full-suite certification comes only after the remaining deterministic clock,
-multi-turn, and concurrent-host drivers are implemented.
+catalog fixtures are executable. Reports must identify the scenario they ran.
+The harness now provides a process-wide deterministic fixture clock that can
+advance lease time without sleeping; full-suite certification still requires
+catalog fixture materialization plus the multi-turn and concurrent-host
+drivers.
 
 ## Observed local baseline
 
