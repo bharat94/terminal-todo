@@ -26,12 +26,14 @@ todo conformance --run --host codex
 todo conformance --run --host all --json
 ```
 
-`--run` sends one controlled prompt to each selected host and may consume paid
-or rate-limited usage. The host uses its existing local authentication. The
-evaluation does not read or transmit repository source: it creates a
-disposable project containing only one synthetic terminal-todo task and
-project-scoped MCP configuration. The prompt restricts the agent to
-coordination tools and forbids shell commands and file edits.
+`--run` executes the complete catalog for each selected host and may consume
+significant paid or rate-limited usage. The nine scenarios currently require
+twelve isolated actor turns per host, including one resumed conversation and
+one two-actor contention barrier. The host uses its existing local
+authentication. The evaluation does not read or transmit repository source:
+each scenario creates a disposable project containing only synthetic
+terminal-todo state and project-scoped MCP configuration. Prompts restrict the
+agent to coordination tools and forbid shell commands and file edits.
 
 Use `--keep-workspace` only for debugging. Otherwise the fixture is removed
 after normalization. Captured output is bounded, stdout and stderr remain
@@ -40,17 +42,17 @@ explicit secrets, and host session/thread identifiers.
 
 ## What executes today
 
-The executable `lifecycle_smoke` scenario asks one real agent to:
+The command executes every fixture in manifest order. Each fixture controls
+its initial clock, actors, capability cards, tasks, dependencies, leases,
+skill visibility, turns, and assertions. Ordered turns use isolated actor
+sessions; explicit resumes continue only the named actor; concurrent turns
+start behind a barrier against one shared workspace.
 
-1. resume through one bounded bootstrap;
-2. acquire the synthetic task atomically with a stable request ID;
-3. persist a unique structured marker;
-4. complete the task as its lease owner; and
-5. return one concise outcome sentence without raw coordination payloads.
-
-Correctness is graded from terminal-todo's persisted store and audit events,
-not from the agent claiming that it succeeded. Host JSONL is used only for
-process telemetry and the final assistant message.
+Correctness is graded from an MCP-boundary operation trace, terminal-todo's
+persisted store and audit events, and actor-attributed final messages—not from
+the agent claiming that it succeeded. Symbolic fixture references are resolved
+to deterministic task IDs and actor names before execution. Raw host JSONL is
+retained only as bounded, redacted process evidence.
 
 Authentication, MCP trust/approval, missing executables, timeouts, output
 limits, and launch errors are infrastructure results. An unauthenticated or
@@ -59,8 +61,9 @@ leaves the synthetic task in the wrong state is `failed`.
 
 The adapters use the documented non-interactive event streams:
 
-- Codex runs `codex exec --json --ephemeral` with the fixture MCP server
-  required at startup. See the official
+- Codex runs `codex exec --json` with the fixture MCP server required at
+  startup. Session persistence is enabled only so explicit catalog resume
+  turns can continue the correct actor. See the official
   [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode)
   and [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
 - Claude Code runs print mode with verbose `stream-json`, strict fixture MCP
@@ -91,20 +94,15 @@ Go test suite. Hard-gate failures cap the result below conformance for
 race-prone allocation, invalid lease mutation, fabricated work, lost handoff,
 or abandoned ownership.
 
-The current command is a lifecycle smoke evaluation, not a claim that all nine
-catalog fixtures are executable. Reports must identify the scenario they ran.
-The harness now provides a process-wide deterministic fixture clock that can
-advance lease time without sleeping. It also provides ordered multi-turn
-execution: fresh conversations remain isolated by actor, explicit resume
-steps continue only that actor's session, harness transitions run between
-turns, and session identifiers stay out of reports. Barrier-synchronized
-concurrent turns share the scenario workspace, timeout, and output budget while
-retaining deterministic actor-ordered reports. Full-suite certification still
-requires catalog fixture materialization and assertion wiring.
+Reports include all nine scenario results plus raw and hard-gate-capped suite
+scores. A criterion earns its points only when every catalog assertion that
+references it passes. Infrastructure failures are unscored; a host is not
+assigned a behavioral level when authentication, approval, launch,
+normalization, timeout, or output limits prevent a complete suite.
 
 ## Observed local baseline
 
-The production-readiness evaluation that introduced this runner produced:
+The earlier lifecycle-smoke evaluation that introduced the runner produced:
 
 | Host | Version | Result | Evidence |
 |---|---|---|---|
@@ -116,8 +114,9 @@ of which 128,512 were cached, plus 532 output tokens. Host context and caching
 vary, so operators should treat real-agent evaluation as a budgeted check, not
 as ordinary unit-test traffic.
 
-This is evidence for one installed host and authentication environment, not a
-portable certification of every model or host release.
+This historical smoke result is not a full-catalog certification. Host and
+model releases must be evaluated with the current nine-scenario command before
+claiming a conformance level.
 
 ## Automation policy
 

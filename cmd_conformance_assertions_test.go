@@ -82,6 +82,14 @@ func TestCatalogHardGateAssertionsRejectUnsafeBehavior(t *testing.T) {
 			},
 		},
 		{
+			scenarioID: "heartbeat", assertion: "renews_before_mutation",
+			mutate: func(evidence *conformance.Evidence) {
+				for index := range evidence.Operations {
+					evidence.Operations[index].Timestamp = time.Date(2026, 1, 1, 12, 0, 30, 0, time.UTC).Format(time.RFC3339Nano)
+				}
+			},
+		},
+		{
 			scenarioID: "no_work", assertion: "no_fabrication",
 			mutate: func(evidence *conformance.Evidence) {
 				evidence.Operations = append(evidence.Operations, conformance.Operation{Actor: "eval-no-work", Operation: "add"})
@@ -168,6 +176,9 @@ func conformingCatalogEvidence(scenarioID string, runtime catalogFixtureRuntime)
 	case "heartbeat":
 		op("eval-heartbeat", "heartbeat", map[string]any{"id": float64(1)}, nil)
 		op("eval-heartbeat", "update", map[string]any{"id": float64(1), "extra": map[string]any{"finding": "progress"}}, nil)
+		for index := range evidence.Operations {
+			evidence.Operations[index].Timestamp = time.Date(2026, 1, 1, 12, 1, 30, 0, time.UTC).Format(time.RFC3339Nano)
+		}
 		task("task:work", "in_progress", "eval-heartbeat", uint64(time.Date(2026, 1, 1, 12, 30, 0, 0, time.UTC).UnixMilli()))
 	case "handoff":
 		op("eval-author", "update", map[string]any{"id": float64(1), "extra": map[string]any{"finding": "retain the last valid checksum"}}, nil)

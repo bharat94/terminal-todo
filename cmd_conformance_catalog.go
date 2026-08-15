@@ -197,7 +197,10 @@ func catalogSequenceSteps(scenario conformance.CatalogScenario, runtime catalogF
 }
 
 func catalogActorPrompt(actor, prompt string) string {
-	return fmt.Sprintf("Use coordination identity %q. %s", actor, prompt)
+	return fmt.Sprintf(
+		"Use coordination identity %q. Use the project coordination integration only; do not run shell commands or edit files. %s",
+		actor, prompt,
+	)
 }
 
 func substituteCatalogSymbols(value string, runtime catalogFixtureRuntime) string {

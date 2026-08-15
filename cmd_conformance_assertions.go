@@ -213,8 +213,18 @@ func evaluateOperationExpectation(expect map[string]any, scenario conformance.Ca
 			}
 		}
 	}
-	if ordered, ok := stringListExpectation(expect, "ordered_operations"); ok && !operationSubsequence(filtered, ordered) {
-		return false, fmt.Sprintf("operations %v were not observed in order", ordered)
+	if ordered, ok := stringListExpectation(expect, "ordered_operations"); ok {
+		indexes, matched := orderedOperationIndexes(filtered, ordered)
+		if !matched {
+			return false, fmt.Sprintf("operations %v were not observed in order", ordered)
+		}
+		if checkpoint, exists := catalogClockCheckpoint(scenario); exists {
+			last := filtered[indexes[len(indexes)-1]]
+			observed, err := time.Parse(time.RFC3339Nano, last.Timestamp)
+			if err != nil || observed.Before(checkpoint) {
+				return false, fmt.Sprintf("operation %q was not observed after the harness clock checkpoint", last.Operation)
+			}
+		}
 	}
 	if expected, ok := stringExpectation(expect, "operation"); ok {
 		matched := false
@@ -472,13 +482,34 @@ func filterOperationsByActor(operations []conformance.Operation, actor string) [
 }
 
 func operationSubsequence(operations []conformance.Operation, expected []string) bool {
+	_, matched := orderedOperationIndexes(operations, expected)
+	return matched
+}
+
+func orderedOperationIndexes(operations []conformance.Operation, expected []string) ([]int, bool) {
+	if len(expected) == 0 {
+		return nil, false
+	}
+	indexes := make([]int, 0, len(expected))
 	index := 0
-	for _, operation := range operations {
+	for operationIndex, operation := range operations {
 		if index < len(expected) && operation.Operation == expected[index] {
+			indexes = append(indexes, operationIndex)
 			index++
 		}
 	}
-	return len(expected) > 0 && index == len(expected)
+	return indexes, index == len(expected)
+}
+
+func catalogClockCheckpoint(scenario conformance.CatalogScenario) (time.Time, bool) {
+	current := scenario.InitialTime
+	for _, turn := range scenario.Turns {
+		if turn.Action == "advance_clock" {
+			current = current.Add(time.Duration(turn.Seconds) * time.Second)
+			return current, true
+		}
+	}
+	return time.Time{}, false
 }
 
 func anyOperationPresent(operations []conformance.Operation, expected []string) bool {

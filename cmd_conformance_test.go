@@ -43,29 +43,56 @@ func TestParseConformanceOptionsRequiresExplicitRun(t *testing.T) {
 	assert.ErrorContains(t, err, "between")
 }
 
-func TestCompactConformanceTranscriptsPreservesCountsAndResults(t *testing.T) {
-	report := conformanceCommandReport{
-		Reports: []conformance.Report{{
-			Preflight: &conformance.ExecutionResult{Capture: conformance.Capture{
-				Stdout:    []conformance.Event{jsonConformanceEvent(`{"ok":true}`)},
-				BytesRead: 11,
-			}},
-			Execution: &conformance.ExecutionResult{Capture: conformance.Capture{
-				Stderr:    []conformance.Event{{Kind: conformance.EventText, Text: "detail"}},
-				BytesRead: 6,
-			}},
-			Evidence: conformance.Evidence{
-				HostEvents: []conformance.Event{jsonConformanceEvent(`{"ok":true}`)},
-			},
-			Checks: []conformance.CheckResult{{ID: "completed", Passed: true}},
-		}},
+func TestApplyConformanceModelCoversFreshAndResumeCommands(t *testing.T) {
+	host := conformance.Host{
+		Name: "codex", Run: conformance.Command{Args: []string{"--ask-for-approval", "never", "exec", "--json", "-"}},
+		Resume: func(_, _ string) (conformance.Command, error) {
+			return conformance.Command{Args: []string{"exec", "resume", "--json", "session", "-"}}, nil
+		},
 	}
+	host = applyConformanceModel(host, "gpt-test")
+	assert.Equal(t, []string{"--ask-for-approval", "never", "exec", "--model", "gpt-test", "--json", "-"}, host.Run.Args)
+	resume, err := host.Resume("session", "continue")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"exec", "resume", "--model", "gpt-test", "--json", "session", "-"}, resume.Args)
+}
+
+func TestRunCatalogEvaluationReportsAllScenariosWhenHostIsUnavailable(t *testing.T) {
+	catalog, err := conformance.LoadCatalog()
+	require.NoError(t, err)
+	report, err := runCatalogEvaluation(context.Background(), "terminal-todo-conformance-host-does-not-exist", conformanceOptions{}, catalog)
+	require.NoError(t, err)
+	assert.False(t, report.Scored)
+	require.Len(t, report.ScenarioResults, 9)
+	for index, scenario := range report.ScenarioResults {
+		assert.Equal(t, catalog.Scenarios[index].ID, scenario.ScenarioID)
+		assert.Equal(t, conformance.StatusSkipped, scenario.Status)
+	}
+}
+
+func TestCompactConformanceTranscriptsPreservesCountsAndResults(t *testing.T) {
+	scenarioReport := conformance.Report{
+		Preflight: &conformance.ExecutionResult{Capture: conformance.Capture{
+			Stdout: []conformance.Event{jsonConformanceEvent(`{"ok":true}`)}, BytesRead: 11,
+		}},
+		Execution: &conformance.ExecutionResult{Capture: conformance.Capture{
+			Stderr: []conformance.Event{{Kind: conformance.EventText, Text: "detail"}}, BytesRead: 6,
+		}},
+		Turns: []conformance.TurnResult{{Execution: conformance.ExecutionResult{Capture: conformance.Capture{
+			Stdout: []conformance.Event{jsonConformanceEvent(`{"turn":true}`)},
+		}}}},
+		Evidence: conformance.Evidence{HostEvents: []conformance.Event{jsonConformanceEvent(`{"ok":true}`)}},
+		Checks:   []conformance.CheckResult{{ID: "completed", Passed: true}},
+	}
+	report := conformanceCommandReport{Results: []conformanceCatalogHostReport{{ScenarioResults: []conformance.Report{scenarioReport}}}}
 	compacted := compactConformanceTranscripts(report)
-	assert.Empty(t, compacted.Reports[0].Preflight.Capture.Stdout)
-	assert.Equal(t, int64(11), compacted.Reports[0].Preflight.Capture.BytesRead)
-	assert.Empty(t, compacted.Reports[0].Execution.Capture.Stderr)
-	assert.Empty(t, compacted.Reports[0].Evidence.HostEvents)
-	assert.Equal(t, "completed", compacted.Reports[0].Checks[0].ID)
+	scenario := compacted.Results[0].ScenarioResults[0]
+	assert.Empty(t, scenario.Preflight.Capture.Stdout)
+	assert.Equal(t, int64(11), scenario.Preflight.Capture.BytesRead)
+	assert.Empty(t, scenario.Execution.Capture.Stderr)
+	assert.Empty(t, scenario.Turns[0].Execution.Capture.Stdout)
+	assert.Empty(t, scenario.Evidence.HostEvents)
+	assert.Equal(t, "completed", scenario.Checks[0].ID)
 	assert.Contains(t, compacted.Notice, "--include-events")
 }
 

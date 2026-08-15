@@ -43,12 +43,28 @@ type conformanceHostProbe struct {
 }
 
 type conformanceCommandReport struct {
-	SchemaVersion string                 `json:"schema_version"`
-	SuiteID       string                 `json:"suite_id"`
-	Mode          string                 `json:"mode"`
-	Notice        string                 `json:"notice"`
-	Probes        []conformanceHostProbe `json:"probes,omitempty"`
-	Reports       []conformance.Report   `json:"reports,omitempty"`
+	SchemaVersion string                         `json:"schema_version"`
+	SuiteID       string                         `json:"suite_id"`
+	Mode          string                         `json:"mode"`
+	Notice        string                         `json:"notice"`
+	Probes        []conformanceHostProbe         `json:"probes,omitempty"`
+	Results       []conformanceCatalogHostReport `json:"host_results,omitempty"`
+}
+
+type conformanceCatalogHostReport struct {
+	Host                   string                              `json:"host"`
+	HostVersion            string                              `json:"host_version,omitempty"`
+	Model                  string                              `json:"model,omitempty"`
+	IntegrationVersion     string                              `json:"integration_version"`
+	Transport              string                              `json:"transport"`
+	ScenarioResults        []conformance.Report                `json:"scenario_results"`
+	Scored                 bool                                `json:"scored"`
+	RawScore               float64                             `json:"raw_score"`
+	CappedScore            float64                             `json:"capped_score"`
+	Level                  string                              `json:"level,omitempty"`
+	Criteria               []conformance.CriterionResult       `json:"criteria"`
+	HardGateFailures       []string                            `json:"hard_gate_failures"`
+	InfrastructureFailures []conformance.InfrastructureFailure `json:"infrastructure_failures"`
 }
 
 func cmdConformance(args []string) {
@@ -120,20 +136,169 @@ func executeConformance(ctx context.Context, options conformanceOptions) (confor
 	}
 
 	report.Mode = "real-agent"
-	report.Notice = "Real-agent mode transmits one controlled lifecycle prompt to each host that passes preflight. Authentication or MCP approval failures stop before the prompt and are reported as infrastructure skips."
-	report.Reports = make([]conformance.Report, 0, len(options.Hosts))
+	catalog, err := conformance.LoadCatalog()
+	if err != nil {
+		return report, true, err
+	}
+	report.Notice = "Real-agent mode executes all nine isolated catalog scenarios for each host that passes preflight. Authentication or MCP approval failures stop that host before behavioral scoring."
+	report.Results = make([]conformanceCatalogHostReport, 0, len(options.Hosts))
 	unsuccessful := false
 	for _, hostName := range options.Hosts {
-		hostReport, err := runLifecycleEvaluation(ctx, hostName, options)
+		hostReport, err := runCatalogEvaluation(ctx, hostName, options, catalog)
 		if err != nil {
 			return report, true, err
 		}
-		report.Reports = append(report.Reports, hostReport)
-		if hostReport.Status == conformance.StatusFailed || hostReport.Status == conformance.StatusError {
+		report.Results = append(report.Results, hostReport)
+		if hostReport.Scored && hostReport.Level != "conformant" {
 			unsuccessful = true
+		}
+		for _, failure := range hostReport.InfrastructureFailures {
+			if failure.Disposition == conformance.DispositionFail {
+				unsuccessful = true
+			}
 		}
 	}
 	return report, unsuccessful, nil
+}
+
+func runCatalogEvaluation(
+	ctx context.Context,
+	hostName string,
+	options conformanceOptions,
+	catalog conformance.Catalog,
+) (conformanceCatalogHostReport, error) {
+	result := conformanceCatalogHostReport{
+		Host: hostName, IntegrationVersion: versionString(), Transport: "mcp",
+		ScenarioResults: []conformance.Report{}, Criteria: []conformance.CriterionResult{},
+		HardGateFailures: []string{}, InfrastructureFailures: []conformance.InfrastructureFailure{},
+	}
+	executable, err := exec.LookPath(hostName)
+	if err != nil {
+		for _, scenario := range catalog.Scenarios {
+			result.ScenarioResults = append(result.ScenarioResults, unavailableScenarioReport(hostName, scenario.ID, "host executable not found"))
+		}
+		result.InfrastructureFailures = append(result.InfrastructureFailures, conformance.InfrastructureFailure{
+			Kind: conformance.FailureStart, Disposition: conformance.DispositionSkip, Phase: "preflight", Detail: "host executable not found",
+		})
+		return result, nil
+	}
+	todoExecutable, err := os.Executable()
+	if err != nil {
+		return result, fmt.Errorf("locate terminal-todo executable: %w", err)
+	}
+	result.HostVersion = probeConformanceHost(ctx, hostName).Version
+	hostOptions := conformance.MachineHostOptions{
+		Executable: executable, MCPExecutable: todoExecutable, Version: result.HostVersion,
+		Model: options.Model, IntegrationVersion: versionString(), Prompt: "Run the selected conformance scenario.",
+		PersistentSessions: true,
+	}
+	var host conformance.Host
+	switch hostName {
+	case "codex":
+		host, err = conformance.NewCodexHost(hostOptions)
+	case "claude":
+		host, err = conformance.NewClaudeHost(hostOptions)
+	default:
+		err = fmt.Errorf("unsupported host %q", hostName)
+	}
+	if err != nil {
+		return result, err
+	}
+	host = applyConformanceModel(host, options.Model)
+	host.Run.Env = cloneStringMap(host.Run.Env)
+	host.Run.Env[conformance.ConformanceTraceEnvironment] = filepath.ToSlash(filepath.Join(conformance.ConformanceWorkspacePlaceholder, conformance.ConformanceTraceFile))
+	result.Model = host.Model
+
+	allChecks := []conformance.CheckResult{}
+	infrastructureBlocked := false
+	for _, scenario := range catalog.Scenarios {
+		if infrastructureBlocked {
+			skipped := unavailableScenarioReport(hostName, scenario.ID, "host preflight did not permit catalog execution")
+			result.ScenarioResults = append(result.ScenarioResults, skipped)
+			continue
+		}
+		runtime, err := materializeCatalogFixture(scenario, todoExecutable)
+		if err != nil {
+			return result, err
+		}
+		steps, err := catalogSequenceSteps(scenario, runtime)
+		if err != nil {
+			return result, err
+		}
+		assertions, err := compileCatalogAssertions(scenario, runtime)
+		if err != nil {
+			return result, err
+		}
+		timeout := time.Duration(scenario.TimeoutSeconds) * time.Second
+		if options.Timeout < timeout {
+			timeout = options.Timeout
+		}
+		evaluation := conformance.SequenceEvaluation{
+			ID: scenario.ID, Host: host, Fixture: runtime.Fixture, Steps: steps,
+			Limits:     conformance.Limits{Timeout: timeout, MaxOutputBytes: 4 * 1024 * 1024, MaxEventBytes: 256 * 1024},
+			Normalizer: catalogNormalizer(hostName, runtime), Assertions: assertions, MinimumScore: 100,
+			KeepWorkspace: options.KeepWorkspace,
+		}
+		scenarioReport, err := (conformance.Runner{}).RunSequence(ctx, evaluation)
+		if err != nil {
+			return result, fmt.Errorf("execute scenario %q for %s: %w", scenario.ID, hostName, err)
+		}
+		result.ScenarioResults = append(result.ScenarioResults, scenarioReport)
+		allChecks = append(allChecks, scenarioReport.Checks...)
+		result.InfrastructureFailures = append(result.InfrastructureFailures, scenarioReport.InfrastructureFailures...)
+		if scenarioReport.Status == conformance.StatusSkipped {
+			infrastructureBlocked = true
+		}
+	}
+	if len(result.InfrastructureFailures) > 0 {
+		return result, nil
+	}
+	score, err := conformance.Grade(catalog.ScoringModel, allChecks)
+	if err != nil {
+		return result, err
+	}
+	result.Scored = true
+	result.RawScore = score.RawScore
+	result.CappedScore = score.CappedScore
+	result.Level = score.Level
+	result.Criteria = score.Criteria
+	result.HardGateFailures = score.HardGateFailures
+	return result, nil
+}
+
+func applyConformanceModel(host conformance.Host, model string) conformance.Host {
+	if strings.TrimSpace(model) == "" {
+		return host
+	}
+	host.Run.Args = insertConformanceModelArgs(host.Name, host.Run.Args, model)
+	if host.Resume != nil {
+		resume := host.Resume
+		host.Resume = func(sessionID, prompt string) (conformance.Command, error) {
+			command, err := resume(sessionID, prompt)
+			if err == nil {
+				command.Args = insertConformanceModelArgs(host.Name, command.Args, model)
+			}
+			return command, err
+		}
+	}
+	return host
+}
+
+func insertConformanceModelArgs(hostName string, arguments []string, model string) []string {
+	if hostName != "codex" {
+		return append(append([]string(nil), arguments...), "--model", model)
+	}
+	insertAt := 0
+	for index, argument := range arguments {
+		if argument == "exec" || argument == "resume" {
+			insertAt = index + 1
+		}
+	}
+	result := make([]string, 0, len(arguments)+2)
+	result = append(result, arguments[:insertAt]...)
+	result = append(result, "--model", model)
+	result = append(result, arguments[insertAt:]...)
+	return result
 }
 
 func probeConformanceHost(ctx context.Context, name string) conformanceHostProbe {
@@ -198,13 +363,7 @@ func runLifecycleEvaluation(
 	if err != nil {
 		return conformance.Report{}, err
 	}
-	if options.Model != "" {
-		if hostName == "codex" {
-			host.Run.Args = append(host.Run.Args, "--model", options.Model)
-		} else {
-			host.Run.Args = append(host.Run.Args, "--model", options.Model)
-		}
-	}
+	host = applyConformanceModel(host, options.Model)
 
 	fixture, err := lifecycleFixture(todoExecutable)
 	if err != nil {
@@ -415,9 +574,13 @@ func randomConformanceToken() (string, error) {
 }
 
 func unavailableHostReport(host, detail string) conformance.Report {
+	return unavailableScenarioReport(host, lifecycleScenarioID, detail)
+}
+
+func unavailableScenarioReport(host, scenarioID, detail string) conformance.Report {
 	return conformance.Report{
 		SchemaVersion: conformance.ReportSchemaVersion,
-		ScenarioID:    lifecycleScenarioID,
+		ScenarioID:    scenarioID,
 		Host:          host,
 		Status:        conformance.StatusSkipped,
 		Evidence:      conformance.EmptyEvidence(conformance.Capture{}),
@@ -442,45 +605,47 @@ func printConformanceReport(report conformanceCommandReport) {
 		}
 		fmt.Printf("  %-8s %s\n", probe.Host, state)
 	}
-	for _, result := range report.Reports {
-		fmt.Printf("  %-8s %-8s", result.Host, result.Status)
-		if result.Score.Scored {
-			fmt.Printf(" %.1f%%", result.Score.Percent)
+	for _, result := range report.Results {
+		state := "unscored"
+		if result.Scored {
+			state = result.Level
 		}
-		fmt.Println()
+		fmt.Printf("  %-8s %-14s %.1f/100\n", result.Host, state, result.CappedScore)
 		for _, failure := range result.InfrastructureFailures {
 			fmt.Printf("           %s: %s\n", failure.Kind, failure.Detail)
 		}
-		for _, check := range result.Checks {
-			state := "pass"
-			if !check.Passed {
-				state = "fail"
-			}
-			fmt.Printf("           %-4s %s", state, check.ID)
-			if check.Detail != "" {
-				fmt.Printf(": %s", check.Detail)
+		for _, scenario := range result.ScenarioResults {
+			fmt.Printf("           %-18s %s", scenario.ScenarioID, scenario.Status)
+			if scenario.Score.Scored {
+				fmt.Printf(" %.1f%%", scenario.Score.Percent)
 			}
 			fmt.Println()
-		}
-		if result.Workspace != "" {
-			fmt.Printf("           workspace: %s\n", result.Workspace)
+			if scenario.Workspace != "" {
+				fmt.Printf("             workspace: %s\n", scenario.Workspace)
+			}
 		}
 	}
 }
 
 func compactConformanceTranscripts(report conformanceCommandReport) conformanceCommandReport {
 	report.Notice += " Raw host events are omitted; pass --include-events with --json to include them."
-	for i := range report.Reports {
-		result := &report.Reports[i]
-		if result.Preflight != nil {
-			result.Preflight.Capture.Stdout = []conformance.Event{}
-			result.Preflight.Capture.Stderr = []conformance.Event{}
+	for hostIndex := range report.Results {
+		for scenarioIndex := range report.Results[hostIndex].ScenarioResults {
+			result := &report.Results[hostIndex].ScenarioResults[scenarioIndex]
+			if result.Preflight != nil {
+				result.Preflight.Capture.Stdout = []conformance.Event{}
+				result.Preflight.Capture.Stderr = []conformance.Event{}
+			}
+			if result.Execution != nil {
+				result.Execution.Capture.Stdout = []conformance.Event{}
+				result.Execution.Capture.Stderr = []conformance.Event{}
+			}
+			for turnIndex := range result.Turns {
+				result.Turns[turnIndex].Execution.Capture.Stdout = []conformance.Event{}
+				result.Turns[turnIndex].Execution.Capture.Stderr = []conformance.Event{}
+			}
+			result.Evidence.HostEvents = []conformance.Event{}
 		}
-		if result.Execution != nil {
-			result.Execution.Capture.Stdout = []conformance.Event{}
-			result.Execution.Capture.Stderr = []conformance.Event{}
-		}
-		result.Evidence.HostEvents = []conformance.Event{}
 	}
 	return report
 }

@@ -208,7 +208,7 @@ Integrations:
   mcp --stdio         Start the Model Context Protocol server
   serve --stdio       Start the native JSON-RPC server
   integrate [target]  Install Codex/Claude project integration (--check, --live)
-  conformance         Probe real-agent hosts; --run performs the opt-in lifecycle evaluation
+  conformance         Probe real-agent hosts; --run performs the opt-in nine-scenario suite
 
 Project:
   config [key=value]  View or set project configuration

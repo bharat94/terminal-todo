@@ -91,10 +91,10 @@ shared output budget, cancel peers after a substantive infrastructure failure,
 and retain results in fixture actor order. The runner replaces `{actor}` in a
 concurrent prompt independently for each fresh session.
 
-The first executable runner intentionally starts with a real-host lifecycle
-smoke evaluation. The catalog below is the versioned behavioral contract that
-the runner grows into; a host must not claim full-suite conformance until all
-nine fixtures are executable and reported.
+The executable runner loads the manifest in order, materializes every fixture
+as an isolated project, records authoritative coordination calls at the MCP
+boundary, normalizes final task and event state, and reports all nine scenario
+results before applying the suite scoring model.
 
 ## Grading
 
