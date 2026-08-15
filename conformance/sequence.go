@@ -36,7 +36,13 @@ func (r Runner) RunSequence(ctx context.Context, evaluation SequenceEvaluation) 
 	redactions := append([]string(nil), evaluation.Redactions...)
 	redactions = append(redactions, workspace)
 	for _, step := range evaluation.Steps {
-		redactions = append(redactions, step.Prompt)
+		if step.Action == SequenceConcurrent {
+			for _, actor := range step.Actors {
+				redactions = append(redactions, concurrentActorPrompt(step.Prompt, actor))
+			}
+		} else {
+			redactions = append(redactions, step.Prompt)
+		}
 	}
 	redact := newRedactor(redactions)
 	if evaluation.Host.Preflight != nil {
@@ -57,6 +63,29 @@ func (r Runner) RunSequence(ctx context.Context, evaluation SequenceEvaluation) 
 					Detail: redact.text(err.Error()),
 				})
 				report.Status = StatusError
+				return report, nil
+			}
+			continue
+		}
+		if step.Action == SequenceConcurrent {
+			remaining := limits.MaxOutputBytes - capturedBytes
+			if remaining <= 0 {
+				report.InfrastructureFailures = append(report.InfrastructureFailures, InfrastructureFailure{
+					Kind: FailureOutputLimit, Disposition: DispositionFail, Phase: "host:" + step.ID,
+					Detail: fmt.Sprintf("scenario output exceeded %d bytes", limits.MaxOutputBytes),
+				})
+				report.Status = StatusError
+				return report, nil
+			}
+			outcomes := runConcurrentStep(sequenceCtx, workspace, evaluation.Host, step, limits, remaining, redact)
+			for _, outcome := range outcomes {
+				report.Turns = append(report.Turns, outcome.turn)
+				capturedBytes += outcome.turn.Execution.Capture.BytesRead
+				if outcome.sessionID != "" {
+					sessions[outcome.turn.Actor] = outcome.sessionID
+				}
+			}
+			if failConcurrentStep(&report, step.ID, outcomes, evaluation.Host.FailureRules) {
 				return report, nil
 			}
 			continue
@@ -179,11 +208,151 @@ func validateSequenceEvaluation(evaluation SequenceEvaluation) error {
 			if step.Harness == nil {
 				return fmt.Errorf("harness step %q requires an action", step.ID)
 			}
+		case SequenceConcurrent:
+			if len(step.Actors) < 2 || strings.TrimSpace(step.Prompt) == "" {
+				return fmt.Errorf("concurrent step %q requires at least two actors and a prompt", step.ID)
+			}
+			actors := make(map[string]struct{}, len(step.Actors))
+			for _, actor := range step.Actors {
+				if strings.TrimSpace(actor) == "" {
+					return fmt.Errorf("concurrent step %q contains an empty actor", step.ID)
+				}
+				if _, duplicate := actors[actor]; duplicate {
+					return fmt.Errorf("concurrent step %q repeats actor %q", step.ID, actor)
+				}
+				actors[actor] = struct{}{}
+				started[actor] = true
+			}
 		default:
 			return fmt.Errorf("sequence step %q has invalid action %q", step.ID, step.Action)
 		}
 	}
 	return nil
+}
+
+type concurrentTurnOutcome struct {
+	turn        TurnResult
+	failure     *InfrastructureFailure
+	sessionID   string
+	substantive bool
+}
+
+const ConformanceActorEnvironment = "TERMINAL_TODO_CONFORMANCE_ACTOR"
+
+func runConcurrentStep(
+	ctx context.Context,
+	workspace string,
+	host Host,
+	step SequenceStep,
+	limits Limits,
+	remainingOutput int64,
+	redact redactor,
+) []concurrentTurnOutcome {
+	groupCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	budget := newOutputBudget(remainingOutput)
+	outcomes := make([]concurrentTurnOutcome, len(step.Actors))
+	results := make(chan struct {
+		index   int
+		outcome concurrentTurnOutcome
+	}, len(step.Actors))
+	start := make(chan struct{})
+	var ready sync.WaitGroup
+	ready.Add(len(step.Actors))
+
+	for index, actor := range step.Actors {
+		go func(index int, actor string) {
+			command := host.Run
+			command.Prompt = concurrentActorPrompt(step.Prompt, actor)
+			command.Env = cloneEnvironment(command.Env)
+			command.Env[ConformanceActorEnvironment] = actor
+
+			var sessionID string
+			var sessionMu sync.Mutex
+			var observe func(Stream, []byte)
+			if host.ExtractSessionID != nil {
+				observe = func(stream Stream, line []byte) {
+					sessionMu.Lock()
+					defer sessionMu.Unlock()
+					if sessionID != "" {
+						return
+					}
+					if extracted, matched := host.ExtractSessionID(stream, line); matched {
+						sessionID = extracted
+					}
+				}
+			}
+
+			ready.Done()
+			<-start
+			execution, failure := runCommandBudgeted(groupCtx, workspace, command, limits, redact, observe, budget)
+			sessionMu.Lock()
+			extractedSessionID := sessionID
+			sessionMu.Unlock()
+			if failure == nil && execution.Process.ExitCode == 0 && host.ExtractSessionID != nil && extractedSessionID == "" {
+				failure = &InfrastructureFailure{Kind: FailureSession, Disposition: DispositionFail, Detail: "host stream did not include a resumable session identifier"}
+			}
+			substantive := concurrentCommandSubstantiveFailure(execution, failure, host.FailureRules)
+			if substantive {
+				cancel()
+			}
+			results <- struct {
+				index   int
+				outcome concurrentTurnOutcome
+			}{index: index, outcome: concurrentTurnOutcome{
+				turn:    TurnResult{ID: step.ID + ":" + actor, Actor: actor, Action: SequenceConcurrent, Execution: execution},
+				failure: failure, sessionID: extractedSessionID, substantive: substantive,
+			}}
+		}(index, actor)
+	}
+	ready.Wait()
+	close(start)
+	for range step.Actors {
+		result := <-results
+		outcomes[result.index] = result.outcome
+	}
+	return outcomes
+}
+
+func concurrentCommandSubstantiveFailure(execution ExecutionResult, failure *InfrastructureFailure, rules []FailureRule) bool {
+	if failure != nil {
+		return failure.Kind != FailureCancelled
+	}
+	if execution.Process.ExitCode != 0 {
+		return true
+	}
+	_, matched := matchFailureRule("host", execution, rules)
+	return matched
+}
+
+func failConcurrentStep(report *Report, stepID string, outcomes []concurrentTurnOutcome, rules []FailureRule) bool {
+	for _, substantiveOnly := range []bool{true, false} {
+		for _, outcome := range outcomes {
+			failed := outcome.failure != nil || outcome.turn.Execution.Process.ExitCode != 0
+			if !failed {
+				_, failed = matchFailureRule("host", outcome.turn.Execution, rules)
+			}
+			if !failed || (substantiveOnly && !outcome.substantive) || (!substantiveOnly && outcome.substantive) {
+				continue
+			}
+			phase := "host:" + stepID + ":" + outcome.turn.Actor
+			failedSequenceCommand(report, phase, outcome.turn.Execution, outcome.failure, rules, false)
+			return true
+		}
+	}
+	return false
+}
+
+func cloneEnvironment(environment map[string]string) map[string]string {
+	clone := make(map[string]string, len(environment)+1)
+	for key, value := range environment {
+		clone[key] = value
+	}
+	return clone
+}
+
+func concurrentActorPrompt(prompt, actor string) string {
+	return strings.ReplaceAll(prompt, ConformanceActorPlaceholder, actor)
 }
 
 func newSequenceReport(evaluation SequenceEvaluation) Report {

@@ -97,8 +97,10 @@ The harness now provides a process-wide deterministic fixture clock that can
 advance lease time without sleeping. It also provides ordered multi-turn
 execution: fresh conversations remain isolated by actor, explicit resume
 steps continue only that actor's session, harness transitions run between
-turns, and session identifiers stay out of reports. Full-suite certification
-still requires catalog fixture materialization and the concurrent-host driver.
+turns, and session identifiers stay out of reports. Barrier-synchronized
+concurrent turns share the scenario workspace, timeout, and output budget while
+retaining deterministic actor-ordered reports. Full-suite certification still
+requires catalog fixture materialization and assertion wiring.
 
 ## Observed local baseline
 

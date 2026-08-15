@@ -273,6 +273,18 @@ func runCommandObserved(
 	redact redactor,
 	observe func(Stream, []byte),
 ) (ExecutionResult, *InfrastructureFailure) {
+	return runCommandBudgeted(parent, workspace, spec, limits, redact, observe, nil)
+}
+
+func runCommandBudgeted(
+	parent context.Context,
+	workspace string,
+	spec Command,
+	limits Limits,
+	redact redactor,
+	observe func(Stream, []byte),
+	sharedBudget *outputBudget,
+) (ExecutionResult, *InfrastructureFailure) {
 	ctx, cancel := context.WithTimeout(parent, limits.Timeout)
 	defer cancel()
 
@@ -300,12 +312,23 @@ func runCommandObserved(
 		}
 	}
 	if err := command.Start(); err != nil {
+		if ctx.Err() != nil {
+			kind := FailureCancelled
+			detail := "host command was cancelled"
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				kind = FailureTimeout
+				detail = "host command timed out"
+			}
+			return ExecutionResult{Process: ProcessResult{
+				ExitCode: -1, TimedOut: kind == FailureTimeout, Cancelled: kind == FailureCancelled,
+			}}, &InfrastructureFailure{Kind: kind, Disposition: DispositionFail, Detail: detail}
+		}
 		return ExecutionResult{}, &InfrastructureFailure{
 			Kind: FailureStart, Disposition: DispositionFail, Detail: redact.text(err.Error()),
 		}
 	}
 
-	collector := newEventCollector(limits.MaxOutputBytes, redact, observe)
+	collector := newEventCollector(limits.MaxOutputBytes, redact, observe, sharedBudget)
 	readErrors := make(chan error, 2)
 	go func() { readErrors <- collector.read(stdout, StreamStdout, limits.MaxEventBytes, cancel) }()
 	go func() { readErrors <- collector.read(stderr, StreamStderr, limits.MaxEventBytes, cancel) }()
@@ -394,16 +417,38 @@ type eventCollector struct {
 	stderr     []Event
 	redact     redactor
 	observe    func(Stream, []byte)
+	budget     *outputBudget
 	limitError error
 }
 
-func newEventCollector(maxBytes int64, redact redactor, observe func(Stream, []byte)) *eventCollector {
+type outputBudget struct {
+	mu    sync.Mutex
+	limit int64
+	used  int64
+}
+
+func newOutputBudget(limit int64) *outputBudget {
+	return &outputBudget{limit: limit}
+}
+
+func (b *outputBudget) reserve(size int64) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.used+size > b.limit {
+		return fmt.Errorf("scenario output exceeded %d bytes", b.limit)
+	}
+	b.used += size
+	return nil
+}
+
+func newEventCollector(maxBytes int64, redact redactor, observe func(Stream, []byte), budget *outputBudget) *eventCollector {
 	return &eventCollector{
 		maxBytes: maxBytes,
 		stdout:   []Event{},
 		stderr:   []Event{},
 		redact:   redact,
 		observe:  observe,
+		budget:   budget,
 	}
 }
 
@@ -433,6 +478,14 @@ func (c *eventCollector) add(stream Stream, sequence uint64, line []byte) error 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.bytesRead += int64(len(line))
+	if c.budget != nil {
+		if err := c.budget.reserve(int64(len(line))); err != nil {
+			if c.limitError == nil {
+				c.limitError = err
+			}
+			return c.limitError
+		}
+	}
 	if c.bytesRead > c.maxBytes {
 		if c.limitError == nil {
 			c.limitError = fmt.Errorf("host output exceeded %d bytes", c.maxBytes)
