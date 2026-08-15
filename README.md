@@ -370,15 +370,15 @@ todo conformance
 todo conformance --run --host codex --json
 ```
 
-The opt-in run creates a disposable synthetic project and grades the persisted
-task state and audit trail after a real Codex or Claude Code turn. It measures
-bounded bootstrap, atomic acquisition, structured handoff data, ownership
-cleanup, and quiet outcome narration. Authentication or MCP approval problems
-are reported separately as infrastructure skips. The controlled prompt may
-consume host usage; repository source is not placed in the fixture.
+The opt-in run executes all nine catalog scenarios in separate disposable
+synthetic projects and grades authoritative MCP traces, persisted task state,
+audit events, and actor-attributed final messages. Authentication or MCP
+approval problems are reported separately as infrastructure skips. The
+controlled turns may consume significant host usage; repository source is not
+placed in any fixture.
 
-See [Real-agent conformance](docs/conformance.md) for the safety model, current
-lifecycle smoke evaluation, and the nine-scenario vendor-neutral contract.
+See [Real-agent conformance](docs/conformance.md) for the safety model and the
+nine-scenario vendor-neutral contract.
 
 ### Reusable agent skill
 

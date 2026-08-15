@@ -182,9 +182,8 @@ type SequenceStep struct {
 	Harness func(context.Context, string) error
 }
 
-// SequenceEvaluation executes multiple isolated actor sessions against one
-// disposable project. It intentionally excludes concurrency; concurrent
-// orchestration composes on this ordered foundation separately.
+// SequenceEvaluation executes multiple isolated actor sessions and harness
+// transitions against one disposable project, including concurrent turns.
 type SequenceEvaluation struct {
 	ID            string
 	Host          Host

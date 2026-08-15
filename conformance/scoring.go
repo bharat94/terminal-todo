@@ -59,6 +59,12 @@ type ScoringModel struct {
 	Criteria      []Criterion `json:"criteria"`
 	HardGates     []HardGate  `json:"hard_gates"`
 	Levels        []Level     `json:"levels"`
+	Reporting     Reporting   `json:"reporting"`
+}
+
+type Reporting struct {
+	Required                       []string `json:"required"`
+	InfrastructureFailuresUnscored bool     `json:"infrastructure_failures_are_unscored"`
 }
 
 type Criterion struct {
