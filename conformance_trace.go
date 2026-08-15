@@ -19,6 +19,7 @@ func recordConformanceToolCall(method string, arguments json.RawMessage, result 
 	record := conformance.TraceRecord{
 		Actor:     strings.TrimSpace(os.Getenv(conformance.ConformanceActorEnvironment)),
 		Operation: strings.TrimPrefix(method, "todo."),
+		Timestamp: projectNow().UTC().Format(time.RFC3339Nano),
 		Arguments: map[string]any{},
 	}
 	_ = json.Unmarshal(arguments, &record.Arguments)

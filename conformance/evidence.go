@@ -5,20 +5,27 @@ import "encoding/json"
 // Evidence is the vendor-neutral record graded by scenario assertions.
 // Host adapters may leave fields empty when the host did not expose them.
 type Evidence struct {
-	Operations        []Operation       `json:"operations"`
-	Tasks             map[string]any    `json:"tasks"`
-	Events            []json.RawMessage `json:"events"`
-	Errors            []DomainError     `json:"errors"`
-	AssistantMessages []string          `json:"assistant_messages"`
-	HostEvents        []Event           `json:"host_events"`
+	Operations        []Operation        `json:"operations"`
+	Tasks             map[string]any     `json:"tasks"`
+	Events            []json.RawMessage  `json:"events"`
+	Errors            []DomainError      `json:"errors"`
+	AssistantMessages []string           `json:"assistant_messages"`
+	AssistantTurns    []AssistantMessage `json:"assistant_turns"`
+	HostEvents        []Event            `json:"host_events"`
 }
 
 type Operation struct {
 	Actor     string         `json:"actor,omitempty"`
 	Operation string         `json:"operation"`
 	Transport string         `json:"transport,omitempty"`
+	Timestamp string         `json:"timestamp,omitempty"`
 	Arguments map[string]any `json:"arguments,omitempty"`
 	Result    map[string]any `json:"result,omitempty"`
+}
+
+type AssistantMessage struct {
+	Actor string `json:"actor,omitempty"`
+	Text  string `json:"text"`
 }
 
 type DomainError struct {
@@ -35,6 +42,7 @@ func EmptyEvidence(capture Capture) Evidence {
 		Events:            []json.RawMessage{},
 		Errors:            []DomainError{},
 		AssistantMessages: []string{},
+		AssistantTurns:    []AssistantMessage{},
 		HostEvents:        capture.Events(StreamAny),
 	}
 }

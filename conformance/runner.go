@@ -570,6 +570,9 @@ func normalizeEvidence(evidence Evidence) Evidence {
 	if evidence.AssistantMessages == nil {
 		evidence.AssistantMessages = []string{}
 	}
+	if evidence.AssistantTurns == nil {
+		evidence.AssistantTurns = []AssistantMessage{}
+	}
 	if evidence.HostEvents == nil {
 		evidence.HostEvents = []Event{}
 	}

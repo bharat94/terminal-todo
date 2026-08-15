@@ -19,6 +19,7 @@ const (
 type TraceRecord struct {
 	Actor     string         `json:"actor,omitempty"`
 	Operation string         `json:"operation"`
+	Timestamp string         `json:"timestamp,omitempty"`
 	Arguments map[string]any `json:"arguments"`
 	Result    map[string]any `json:"result,omitempty"`
 	Error     *DomainError   `json:"error,omitempty"`
@@ -49,7 +50,7 @@ func ReadTrace(workspace string) ([]Operation, []DomainError, error) {
 		}
 		operations = append(operations, Operation{
 			Actor: record.Actor, Operation: record.Operation, Transport: "mcp",
-			Arguments: record.Arguments, Result: record.Result,
+			Timestamp: record.Timestamp, Arguments: record.Arguments, Result: record.Result,
 		})
 		if record.Error != nil {
 			domainError := *record.Error
