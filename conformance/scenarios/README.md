@@ -86,7 +86,10 @@ The ordered sequence runner implements this conversation boundary for Codex
 and Claude Code. It extracts session identifiers transiently from raw host
 events, redacts them from retained captures, and gives the entire scenario one
 timeout and output budget rather than multiplying limits per turn. Concurrent
-turns are a separate driver layered on the same fixture and evidence model.
+turns launch every named actor from one barrier against the same workspace and
+shared output budget, cancel peers after a substantive infrastructure failure,
+and retain results in fixture actor order. The runner replaces `{actor}` in a
+concurrent prompt independently for each fresh session.
 
 The first executable runner intentionally starts with a real-host lifecycle
 smoke evaluation. The catalog below is the versioned behavioral contract that

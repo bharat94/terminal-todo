@@ -162,17 +162,21 @@ type Evaluation struct {
 type SequenceAction string
 
 const (
-	SequencePrompt  SequenceAction = "prompt"
-	SequenceResume  SequenceAction = "resume"
-	SequenceHarness SequenceAction = "harness"
+	ConformanceActorPlaceholder                = "{actor}"
+	SequencePrompt              SequenceAction = "prompt"
+	SequenceResume              SequenceAction = "resume"
+	SequenceHarness             SequenceAction = "harness"
+	SequenceConcurrent          SequenceAction = "concurrent_turns"
 )
 
 // SequenceStep is one ordered host turn or harness-controlled transition.
 // Prompt starts a fresh session for Actor; Resume continues that actor's
-// recorded session. Harness steps never contact a model.
+// recorded session. Concurrent prompts may use {actor}, which is replaced
+// independently for each actor. Harness steps never contact a model.
 type SequenceStep struct {
 	ID      string
 	Actor   string
+	Actors  []string
 	Action  SequenceAction
 	Prompt  string
 	Harness func(context.Context, string) error
