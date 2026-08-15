@@ -102,6 +102,8 @@ func (r Runner) RunSequence(ctx context.Context, evaluation SequenceEvaluation) 
 				return report, fmt.Errorf("build resume command for step %q: %w", step.ID, err)
 			}
 		}
+		command.Env = mergeEnvironment(evaluation.Host.Run.Env, command.Env)
+		command.Env[ConformanceActorEnvironment] = step.Actor
 
 		turnLimits := limits
 		turnLimits.MaxOutputBytes = limits.MaxOutputBytes - capturedBytes
@@ -349,6 +351,14 @@ func cloneEnvironment(environment map[string]string) map[string]string {
 		clone[key] = value
 	}
 	return clone
+}
+
+func mergeEnvironment(base, override map[string]string) map[string]string {
+	merged := cloneEnvironment(base)
+	for key, value := range override {
+		merged[key] = value
+	}
+	return merged
 }
 
 func concurrentActorPrompt(prompt, actor string) string {

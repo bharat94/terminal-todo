@@ -71,6 +71,9 @@ func TestRunSequenceKeepsFreshActorsSeparateAndResumesExplicitActor(t *testing.T
 	require.Len(t, report.Turns, 3)
 	assert.Equal(t, []string{"alpha", "alpha", "beta"}, []string{report.Turns[0].Actor, report.Turns[1].Actor, report.Turns[2].Actor})
 	assert.Equal(t, SequenceResume, report.Turns[1].Action)
+	for _, turn := range report.Turns {
+		assert.Contains(t, Observation{Capture: turn.Execution.Capture}.Transcript(StreamStdout), fmt.Sprintf(`"actor":%q`, turn.Actor))
+	}
 	encoded, err := json.Marshal(report)
 	require.NoError(t, err)
 	assert.NotContains(t, string(encoded), "session-start")
@@ -216,9 +219,9 @@ func TestSequenceHelperProcess(t *testing.T) {
 	state, _ := os.ReadFile(filepath.Join(os.Getenv("TERMINAL_TODO_CONFORMANCE_WORKSPACE"), "state.txt"))
 	switch mode {
 	case "fresh":
-		fmt.Printf("{\"session_id\":%q,\"state\":%q}\n", "session-"+strings.ReplaceAll(string(state), " ", "-"), string(state))
+		fmt.Printf("{\"session_id\":%q,\"state\":%q,\"actor\":%q}\n", "session-"+strings.ReplaceAll(string(state), " ", "-"), string(state), os.Getenv(ConformanceActorEnvironment))
 	case "resume":
-		fmt.Printf("{\"session_id\":%q,\"state\":%q}\n", os.Getenv("FAKE_SESSION_ID"), string(state))
+		fmt.Printf("{\"session_id\":%q,\"state\":%q,\"actor\":%q}\n", os.Getenv("FAKE_SESSION_ID"), string(state), os.Getenv(ConformanceActorEnvironment))
 	case "wait":
 		time.Sleep(time.Second)
 	case "concurrent-barrier":

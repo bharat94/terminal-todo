@@ -197,6 +197,7 @@ func (srv *mcpServer) callTool(params json.RawMessage) (interface{}, *rpcError) 
 	}
 
 	result, callErr := srv.backend.dispatch(method, arguments)
+	recordConformanceToolCall(method, arguments, result, callErr)
 	if callErr != nil {
 		detail := map[string]interface{}{
 			"code":    callErr.Code,
