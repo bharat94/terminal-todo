@@ -7,6 +7,12 @@ coordination noise out of the user conversation.
 
 The real-agent conformance suite measures that final boundary.
 
+For repeated release and longitudinal studies, use the
+[real-agent behavior evaluation plan](real-agent-evaluation-plan.md). It adds
+predeclared configurations, repetitions, reliability statistics, cost and
+privacy controls, artifact handling, and certification language around this
+single-suite contract.
+
 ## Safety model
 
 The default command is a local preflight:

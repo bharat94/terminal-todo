@@ -50,7 +50,10 @@ The current product provides:
   doctor, prune, and compaction;
 - human CLI output, stable CLI JSON, native JSON-RPC, and an MCP server;
 - annotated MCP tools, reusable Codex and Claude integration material,
-  project-scoped installers, and a live MCP integration check; and
+  project-scoped installers, and a live MCP integration check;
+- an opt-in, vendor-neutral nine-scenario real-agent conformance suite with
+  deterministic fixtures, concurrent actor turns, persisted-state evidence,
+  and hard-gate scoring; and
 - cross-platform builds and an auditable release pipeline.
 
 All live participants must operate on the same lock-capable filesystem.
@@ -62,8 +65,10 @@ Near-term work should make the existing control plane easier to operate:
 
 - expose richer health and invariant diagnostics;
 - improve host UI treatment of background heartbeats and coordination calls;
-- validate the first public prerelease and installation paths on real hosts;
-- expand integration and crash-recovery testing; and
+- run and publish budgeted full-catalog certification against supported real
+  agent hosts;
+- validate onboarding and upgrade paths with independent beta users;
+- expand filesystem fault-injection and crash-recovery testing; and
 - document patterns for worktrees and multi-repository workspaces.
 
 ## Later possibilities

@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/bharat94/terminal-todo/security/advisories/new
     about: Report vulnerabilities privately; do not open a public issue.
   - name: Documentation
-    url: https://github.com/bharat94/terminal-todo/tree/master/docs
-    about: Read the protocol, integrations, security, and compatibility guides.
+    url: https://github.com/bharat94/terminal-todo/blob/master/docs/README.md
+    about: Find installation, workflows, integrations, protocols, and operations guides.

@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for reporting a bug. Do not include secrets or a real task store.
-        Report vulnerabilities privately through SECURITY.md.
+        Report vulnerabilities through the [private security-advisory process](https://github.com/bharat94/terminal-todo/security/advisories/new) instead of this form.
   - type: input
     id: version
     attributes:

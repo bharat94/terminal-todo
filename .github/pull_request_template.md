@@ -15,5 +15,6 @@
 <!-- Describe protocol, stored-state, security, concurrency, and rollback impact. -->
 
 - [ ] I updated protocol or compatibility docs if a stable surface changed.
+- [ ] I updated installation, examples, or integration docs if user-visible behavior changed.
 - [ ] I added migration coverage if stored state changed.
 - [ ] I used synthetic data and did not commit `.terminal-todo/` state.

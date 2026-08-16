@@ -18,8 +18,15 @@ pretending the interface can never evolve.
 
 The initial opt-in lifecycle smoke run passed against local Codex 0.144.5.
 Claude Code 2.1.215 was correctly skipped before model invocation because the
-local client was unauthenticated. See [Real-agent conformance](conformance.md)
-for the measured boundary and the remaining full-suite work.
+local client was unauthenticated. Since that run, the conformance harness has
+grown into an executable nine-scenario, twelve-turn catalog with deterministic
+fixtures, multi-turn resume, concurrent contention, authoritative MCP and
+persisted-state evidence, and hard-gate scoring. The catalog is fully covered
+without model calls in normal CI; a current paid full-catalog host run remains
+the next maturity measurement. See [Real-agent conformance](conformance.md)
+for the exact boundary and the
+[real-agent behavior evaluation plan](real-agent-evaluation-plan.md) for the
+release-gate and longitudinal measurement program.
 
 ## Evidence
 
@@ -28,7 +35,7 @@ for the measured boundary and the remaining full-suite work.
 | State integrity | Stable sidecar locks, flushed temporary files, atomic replacement, migrations, bounded persisted input, backups, restore, doctor | Ready |
 | Coordination | DAG validation, atomic acquisition, idempotent receipts, leases, heartbeats, retries, recovery events | Ready |
 | Protocols | Versioned CLI JSON and JSON-RPC, additive compact receipts and event pages, MCP 2025-06-18 lifecycle and tool annotations, strict parameter decoding, stable errors | Ready |
-| Agent integration | Bundled MCP-first skill, bounded session bootstrap, compact routine mutations, allocation diagnostics, idempotent Codex and Claude installers, and an opt-in persisted-state real-agent conformance runner | Codex lifecycle smoke validated; broader host conformance remains beta evidence |
+| Agent integration | Bundled MCP-first skill, bounded session bootstrap, compact routine mutations, allocation diagnostics, idempotent Codex and Claude installers, and an opt-in nine-scenario real-agent conformance runner | Catalog execution is deterministic and CI-tested; Codex lifecycle smoke validated; current full-catalog host certification remains beta evidence |
 | Platforms | Native Linux, macOS, and Windows race/build/vet matrix; six release targets | Ready |
 | Supply chain | Pinned release tools, checksums, per-archive SPDX SBOMs, provenance attestations, reachable-vulnerability scan | Tagged pipeline and downloaded artifacts validated |
 | Operations | Backup, restore, retention, compaction, compatibility, security, and incident guidance | Ready |
