@@ -130,8 +130,14 @@ child process did not inherit the operation-trace or deterministic-clock
 environment. The emitted `10/100` result is invalid and must not be treated as
 a behavioral score. The harness now forwards those variables explicitly to
 Codex and Claude MCP children and classifies persisted mutations without a
-trace as an infrastructure failure. A fresh calibration is still required
-before making a full-catalog conformance claim.
+trace as an infrastructure failure.
+
+The corrected single-run calibration passed seven of nine scenarios, scoring
+`75/100` raw and `49/100` after the `invalid_lease_mutation` and `lost_handoff`
+hard gates. It had no infrastructure failures. This is an `n=1` observation
+against the host's moving default model, not a certification. The
+[sanitized calibration record](evaluations/2026-08-15-codex-default.md)
+contains the scenario evidence, limitations, and follow-up analysis.
 
 ## Automation policy
 
