@@ -56,6 +56,10 @@ improve between releases.
 
 - [Real-agent conformance](conformance.md) documents the opt-in nine-scenario
   suite, evidence model, safety boundary, and current observed baseline.
+- [Real-agent behavior evaluation plan](real-agent-evaluation-plan.md) turns
+  the suite into a repeatable release-gate and longitudinal measurement
+  program with budgets, repetitions, confidence intervals, and evidence
+  controls.
 - [Scenario catalog](../conformance/scenarios/README.md) documents the fixture
   schema, assertions, scoring, and extension workflow.
 

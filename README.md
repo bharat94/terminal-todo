@@ -24,7 +24,8 @@ No account. No daemon. No hosted control plane. One small binary and one
 | Connect Codex or Claude Code | [Agent integrations](docs/integrations.md) |
 | Automate a worker through MCP, JSON, or JSON-RPC | [Agent protocol](docs/agent-protocol.md) |
 | See complete human and multi-agent workflows | [Examples](docs/examples.md) |
-| Evaluate a real agent host | [Real-agent conformance](docs/conformance.md) |
+| Run the built-in real-agent suite | [Real-agent conformance](docs/conformance.md) |
+| Plan repeated agent-behavior studies | [Evaluation plan](docs/real-agent-evaluation-plan.md) |
 | Operate a shared store safely | [Compatibility](docs/compatibility.md) and [security](docs/security-and-data.md) |
 | Understand or contribute to the implementation | [System design](docs/design.md) and [contributing](CONTRIBUTING.md) |
 
@@ -684,7 +685,7 @@ points are:
 - **Get started:** [installation](docs/installation.md), [examples](docs/examples.md), and [agent integrations](docs/integrations.md)
 - **Build integrations:** [agent protocol](docs/agent-protocol.md), [system design](docs/design.md), and [concurrency guarantees](docs/concurrency-and-locking.md)
 - **Operate safely:** [compatibility](docs/compatibility.md), [security and recovery](docs/security-and-data.md), and [production readiness](docs/production-readiness.md)
-- **Evaluate agents:** [real-agent conformance](docs/conformance.md) and [coordination noise budget](docs/coordination-noise.md)
+- **Evaluate agents:** [real-agent conformance](docs/conformance.md), the [evaluation plan](docs/real-agent-evaluation-plan.md), and the [coordination noise budget](docs/coordination-noise.md)
 - **Project direction:** [vision](docs/vision.md), [problem statement](docs/problem_statement.md), and [dogfooding retrospective](docs/dogfooding-retrospective.md)
 
 ## Community

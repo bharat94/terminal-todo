@@ -24,7 +24,9 @@ fixtures, multi-turn resume, concurrent contention, authoritative MCP and
 persisted-state evidence, and hard-gate scoring. The catalog is fully covered
 without model calls in normal CI; a current paid full-catalog host run remains
 the next maturity measurement. See [Real-agent conformance](conformance.md)
-for the exact boundary.
+for the exact boundary and the
+[real-agent behavior evaluation plan](real-agent-evaluation-plan.md) for the
+release-gate and longitudinal measurement program.
 
 ## Evidence
 
