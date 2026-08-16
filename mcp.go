@@ -378,14 +378,14 @@ func terminalTodoMCPTools() []mcpTool {
 		{
 			Name:        "terminal_todo_update",
 			Title:       "Update task",
-			Description: "Update owned task metadata, dependencies, or structured findings. Use extra for durable handoff facts such as tests, commit, files, or decisions.",
+			Description: "Update owned task metadata, dependencies, or structured successor context. Use extra for durable handoffs; prefer canonical keys finding, decision, tests, commit, files, and blocker.",
 			InputSchema: object(map[string]interface{}{
 				"id":           idProp,
 				"title":        boundedStringProp("Replacement task title.", maxTaskTitleBytes),
 				"priority":     map[string]interface{}{"type": "number"},
 				"capabilities": boundedStringList("Replacement required capabilities.", maxTaskCapabilities, maxCapabilityBytes),
 				"actor":        boundedStringProp("Actor making the update; required when another actor owns the task.", maxActorBytes),
-				"extra":        map[string]interface{}{"type": "object", "maxProperties": maxTaskExtraEntries, "additionalProperties": map[string]interface{}{"type": "string", "maxLength": maxMetadataValueBytes}, "description": "Structured durable handoff fields; keys are at most 128 UTF-8 bytes and values at most 16384."},
+				"extra":        map[string]interface{}{"type": "object", "maxProperties": maxTaskExtraEntries, "additionalProperties": map[string]interface{}{"type": "string", "maxLength": maxMetadataValueBytes}, "description": "Structured durable handoff fields. Prefer canonical keys finding, decision, tests, commit, files, and blocker. Keys are at most 128 UTF-8 bytes and values at most 16384."},
 				"addDeps":      boundedStringList("Dependencies to add.", maxTaskDependencies, maxDependencyBytes),
 				"removeDeps":   boundedStringList("Dependencies to remove.", maxTaskDependencies, maxDependencyBytes),
 				"receipt":      receiptProp,
@@ -395,10 +395,10 @@ func terminalTodoMCPTools() []mcpTool {
 		{
 			Name:        "terminal_todo_log",
 			Title:       "Record task note",
-			Description: "Append an immutable human-readable progress note or finding to a task's audit trail.",
+			Description: "Append an immutable chronological audit note. Use terminal_todo_update extra, not a log alone, for context a successor must recover by structured lookup.",
 			InputSchema: object(map[string]interface{}{
 				"id":      idProp,
-				"message": boundedStringProp("Concise progress, decision, risk, or handoff note.", maxLogMessageBytes),
+				"message": boundedStringProp("Concise chronological progress, decision, or risk note; not a substitute for structured handoff fields.", maxLogMessageBytes),
 				"actor":   boundedStringProp("Actor recording the note.", maxActorBytes),
 				"receipt": receiptProp,
 			}, "id", "message"),

@@ -135,8 +135,14 @@ discovers the curated tools. A worker should then:
    need;
 4. call `terminal_todo_acquire` with a unique request ID;
 5. heartbeat before the lease expires;
-6. record findings with `terminal_todo_update` or `terminal_todo_log`;
+6. record successor-required findings with `terminal_todo_update` using
+   canonical structured keys; reserve `terminal_todo_log` for audit notes;
 7. complete, block, decompose, or release the task explicitly.
+
+Canonical handoff keys are `finding`, `decision`, `tests`, `commit`, `files`,
+and `blocker`. An integration may store additional fields, but agents should
+prefer these names when they fit so a successor can recover context without
+guessing a host-specific schema.
 
 The underlying `.terminal-todo/` directory remains user-controlled portable
 state. It can stay local, be backed up, or be shared through storage chosen by
