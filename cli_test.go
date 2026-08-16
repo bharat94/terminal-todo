@@ -530,6 +530,34 @@ func TestCLI_HeartbeatRenewsOnlyTheOwnersActiveLease(t *testing.T) {
 	assert.Contains(t, string(out), `"code": "LEASE_NOT_ACTIVE"`)
 }
 
+func TestCLI_HandoffAtomicallyPersistsContextAndYieldsLease(t *testing.T) {
+	tmpDir := setupTestProject(t)
+	todo := buildTodo(t)
+
+	for _, args := range [][]string{
+		{"add", "Handoff task"},
+		{"claim", "1", "--as", "agent-author", "--ttl", "15m"},
+	} {
+		cmd := exec.Command(todo, args...)
+		cmd.Dir = tmpDir
+		out, err := cmd.CombinedOutput()
+		assert.NoError(t, err, string(out))
+	}
+
+	cmd := exec.Command(todo, "handoff", "1", "--as", "agent-author", "--set", "finding=retain the last valid checksum", "--receipt")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	assert.NoError(t, err, string(out))
+	assert.Contains(t, string(out), `"operation": "handoff"`)
+	assert.Contains(t, string(out), `"status": "pending"`)
+
+	persisted, err := store.LoadCurrent(filepath.Join(tmpDir, ".terminal-todo", "tasks.bin"))
+	assert.NoError(t, err)
+	assert.Equal(t, "retain the last valid checksum", persisted.Tasks[1].Extra["finding"])
+	assert.Empty(t, persisted.Tasks[1].Owner)
+	assert.Zero(t, persisted.Tasks[1].RetryCount)
+}
+
 func TestCLI_CoreMutationsReturnVersionedJSON(t *testing.T) {
 	tmpDir := setupTestProject(t)
 	todo := buildTodo(t)

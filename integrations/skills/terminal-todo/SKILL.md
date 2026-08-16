@@ -151,6 +151,13 @@ Heartbeat before and after long-running commands or extended reasoning. A
 stale lease cannot be revived; if renewal returns `LEASE_NOT_ACTIVE`, inspect
 the graph and reacquire instead of assuming ownership.
 
+After a long-running checkpoint, renew the lease before recording progress.
+Use `update` for structured context that a successor must recover. Use the
+canonical keys `finding`, `decision`, `tests`, `commit`, `files`, and
+`blocker` when they fit; stable keys make handoffs predictable across hosts.
+Use `log` only for chronological audit notes that do not need structured
+lookup.
+
 Record durable context as soon as it becomes useful to another session:
 
 ```bash
@@ -162,6 +169,20 @@ todo update <id> --as <actor> \
 todo log <id> --as <actor> --msg "Race reproduced under concurrent writers" \
   --receipt
 ```
+
+Before yielding work to a successor, prefer the atomic
+`terminal_todo_handoff` tool. On the CLI, use:
+
+```bash
+todo handoff <id> --as <actor> \
+  --set finding="recovery must retain the last valid checksum" \
+  --receipt
+```
+
+This persists structured context and releases the active lease in one
+transaction. If `handoff` is unavailable in an older installation, persist
+the material context with `update`, verify it succeeded, and then `release`.
+A log entry alone is not a structured handoff.
 
 Send `receipt:true` for the corresponding MCP update and log calls. Receipts
 return bounded acknowledgement fields and never echo large log messages or

@@ -95,20 +95,23 @@ the original and revised rules must both remain in the evaluation record.
 
 ## Benchmark contract
 
-The primary benchmark is the checked-in manifest at
-`conformance/scenarios/manifest.json`. Its nine behaviors are:
+The primary benchmark is the checked-in v2 manifest at
+`conformance/scenarios/manifest-v2.json`. The original published v1 contract
+remains frozen at `conformance/scenarios/manifest.json` and is selectable with
+`--suite v1`; results across versions are not directly comparable. The nine
+behaviors are:
 
 | Scenario | Behavior under test | Safety significance |
 |---|---|---|
 | `discovery` | Discover the project integration without terminal-todo being named in the prompt. | Measures onboarding and autonomous resumption. |
 | `bootstrap` | Begin with one bounded brief instead of broad status/history reads. | Controls context growth and coordination noise. |
 | `atomic_acquire` | Resolve two-worker contention through idempotent atomic acquisition. | Hard gates race-prone allocation and invalid ownership. |
-| `heartbeat` | Renew a lease before post-checkpoint mutation. | Hard gates mutation without valid ownership. |
-| `handoff` | Persist a material finding before release and consume it as a successor. | Hard gates lost handoff state. |
+| `heartbeat` | Renew a lease before durable post-checkpoint progress. | Hard gates mutation without valid ownership. |
+| `handoff` | Persist structured context before yielding ownership and consume it as a successor. | Hard gates lost handoff state. |
 | `no_work` | Treat `NO_WORK` as structured terminal control flow. | Hard gates fabricated work and busy loops. |
 | `lease_recovery` | Reacquire expired work as a successor without impersonation. | Hard gates invalid lease mutation. |
 | `quiet_narration` | Keep bookkeeping and protocol payloads out of the final response. | Measures user-visible quality and leakage. |
-| `cleanup` | Complete, block, or release before the session ends. | Hard gates abandoned ownership. |
+| `cleanup` | Complete, block, release, or hand off before the session ends. | Hard gates abandoned ownership. |
 
 The model awards 100 points across discovery (10), bounded startup (10),
 atomic allocation (15), lease maintenance (10), durable handoff (15), no-work
@@ -570,7 +573,7 @@ only for local diagnosis and must be labeled with a diff checksum.
 run_id="$(date -u +%Y%m%dT%H%M%SZ)-preflight"
 artifact_dir=".terminal-todo/evaluations/${run_id}"
 mkdir -p "$artifact_dir"
-tmp_test/todo-eval conformance --host all --json \
+tmp_test/todo-eval conformance --suite v2 --host all --json \
   >"$artifact_dir/preflight.json" \
   2>"$artifact_dir/preflight.stderr"
 ```
@@ -595,7 +598,7 @@ run_id="$(date -u +%Y%m%dT%H%M%SZ)-codex-calibration"
 artifact_dir=".terminal-todo/evaluations/${run_id}"
 mkdir -p "$artifact_dir"
 set +e
-tmp_test/todo-eval conformance --run --host codex \
+tmp_test/todo-eval conformance --run --suite v2 --host codex \
   --model '<explicit-model-id>' --json \
   >"$artifact_dir/report.json" \
   2>"$artifact_dir/stderr.txt"

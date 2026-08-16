@@ -18,7 +18,6 @@ import (
 )
 
 const (
-	conformanceSuiteID   = "terminal-todo-real-agent-v1"
 	lifecycleScenarioID  = "lifecycle_smoke"
 	defaultEvalTimeout   = 10 * time.Minute
 	conformanceActorBase = "eval"
@@ -32,6 +31,7 @@ type conformanceOptions struct {
 	KeepWorkspace bool
 	Timeout       time.Duration
 	Model         string
+	Suite         string
 }
 
 type conformanceHostProbe struct {
@@ -94,6 +94,7 @@ func parseConformanceOptions(args []string) (conformanceOptions, error) {
 	options := conformanceOptions{
 		Hosts:   []string{"codex", "claude"},
 		Timeout: defaultEvalTimeout,
+		Suite:   "v2",
 	}
 	if host := optionValue(args, "--host"); host != "" {
 		switch host {
@@ -117,13 +118,23 @@ func parseConformanceOptions(args []string) (conformanceOptions, error) {
 	options.IncludeEvents = hasFlag(args, "--include-events")
 	options.KeepWorkspace = hasFlag(args, "--keep-workspace")
 	options.Model = strings.TrimSpace(optionValue(args, "--model"))
+	if suite := strings.TrimSpace(optionValue(args, "--suite")); suite != "" {
+		if suite != "v1" && suite != "v2" {
+			return conformanceOptions{}, fmt.Errorf("--suite must be v1 or v2")
+		}
+		options.Suite = suite
+	}
 	return options, nil
 }
 
 func executeConformance(ctx context.Context, options conformanceOptions) (conformanceCommandReport, bool, error) {
+	catalog, err := conformance.LoadCatalogVersion(options.Suite)
+	if err != nil {
+		return conformanceCommandReport{}, true, err
+	}
 	report := conformanceCommandReport{
 		SchemaVersion: conformance.ReportSchemaVersion,
-		SuiteID:       conformanceSuiteID,
+		SuiteID:       catalog.SuiteID,
 		Mode:          "preflight",
 		Notice:        "Preflight is local and does not contact a model. Pass --run to transmit the controlled evaluation prompt and consume host usage.",
 		Probes:        make([]conformanceHostProbe, 0, len(options.Hosts)),
@@ -136,11 +147,7 @@ func executeConformance(ctx context.Context, options conformanceOptions) (confor
 	}
 
 	report.Mode = "real-agent"
-	catalog, err := conformance.LoadCatalog()
-	if err != nil {
-		return report, true, err
-	}
-	report.Notice = "Real-agent mode executes all nine isolated catalog scenarios for each host that passes preflight. Authentication or MCP approval failures stop that host before behavioral scoring."
+	report.Notice = fmt.Sprintf("Real-agent mode executes all %d isolated %s catalog scenarios for each host that passes preflight. Authentication or MCP approval failures stop that host before behavioral scoring.", len(catalog.Scenarios), options.Suite)
 	report.Results = make([]conformanceCatalogHostReport, 0, len(options.Hosts))
 	unsuccessful := false
 	for _, hostName := range options.Hosts {

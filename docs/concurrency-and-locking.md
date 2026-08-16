@@ -50,6 +50,9 @@ If an agent claims a task and then crashes, the task would remain `In-Progress` 
 - **Agent Heartbeats:** Agents executing long-running tasks renew the active
   owned lease with `todo heartbeat <id> --as <owner> --ttl <duration>`.
   Expired leases cannot be revived by a delayed heartbeat.
+- **Atomic Handoffs:** An active owner can persist structured successor context
+  and yield the lease in one transaction with `todo handoff <id> --as <owner>
+  --set finding=<value>`.
 
 ## 4. Cross-Repo Consistency
 

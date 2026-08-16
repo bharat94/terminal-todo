@@ -19,6 +19,7 @@ func TestParseConformanceOptionsRequiresExplicitRun(t *testing.T) {
 	assert.False(t, options.Run)
 	assert.Equal(t, []string{"codex", "claude"}, options.Hosts)
 	assert.Equal(t, defaultEvalTimeout, options.Timeout)
+	assert.Equal(t, "v2", options.Suite)
 
 	options, err = parseConformanceOptions([]string{
 		"--host", "codex",
@@ -28,6 +29,7 @@ func TestParseConformanceOptionsRequiresExplicitRun(t *testing.T) {
 		"--keep-workspace",
 		"--timeout", "90s",
 		"--model", "gpt-test",
+		"--suite", "v1",
 	})
 	require.NoError(t, err)
 	assert.True(t, options.Run)
@@ -36,11 +38,14 @@ func TestParseConformanceOptionsRequiresExplicitRun(t *testing.T) {
 	assert.True(t, options.KeepWorkspace)
 	assert.Equal(t, []string{"codex"}, options.Hosts)
 	assert.Equal(t, "gpt-test", options.Model)
+	assert.Equal(t, "v1", options.Suite)
 
 	_, err = parseConformanceOptions([]string{"--host", "unknown"})
 	assert.ErrorContains(t, err, "codex, claude, or all")
 	_, err = parseConformanceOptions([]string{"--timeout", "31m"})
 	assert.ErrorContains(t, err, "between")
+	_, err = parseConformanceOptions([]string{"--suite", "latest"})
+	assert.ErrorContains(t, err, "v1 or v2")
 }
 
 func TestApplyConformanceModelCoversFreshAndResumeCommands(t *testing.T) {

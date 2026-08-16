@@ -84,6 +84,24 @@ func TestMCPToolsHaveTitlesAndCompleteAnnotations(t *testing.T) {
 	}
 }
 
+func TestMCPToolGuidanceDistinguishesStructuredHandoffsFromAuditLogs(t *testing.T) {
+	tools := make(map[string]mcpTool)
+	for _, tool := range terminalTodoMCPTools() {
+		tools[tool.Name] = tool
+	}
+
+	update := tools["terminal_todo_update"]
+	assert.Contains(t, update.Description, "canonical keys")
+	assert.Contains(t, update.Description, "finding")
+	updateProperties := update.InputSchema["properties"].(map[string]interface{})
+	updateExtra := updateProperties["extra"].(map[string]interface{})
+	assert.Contains(t, updateExtra["description"], "Structured")
+
+	logTool := tools["terminal_todo_log"]
+	assert.Contains(t, logTool.Description, "chronological audit note")
+	assert.Contains(t, logTool.Description, "not a log alone")
+}
+
 func TestMCPToolAnnotationsMatchCoordinationEffects(t *testing.T) {
 	expected := map[string]mcpToolAnnotations{
 		"terminal_todo_ping":      {ReadOnlyHint: true, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false},
@@ -94,6 +112,7 @@ func TestMCPToolAnnotationsMatchCoordinationEffects(t *testing.T) {
 		"terminal_todo_add":       {ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: false, OpenWorldHint: false},
 		"terminal_todo_acquire":   {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: true, OpenWorldHint: false},
 		"terminal_todo_heartbeat": {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
+		"terminal_todo_handoff":   {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
 		"terminal_todo_update":    {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
 		"terminal_todo_log":       {ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: false, OpenWorldHint: false},
 		"terminal_todo_decompose": {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},

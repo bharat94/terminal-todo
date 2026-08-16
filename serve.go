@@ -131,6 +131,13 @@ type releaseParams struct {
 	Receipt bool   `json:"receipt,omitempty"`
 }
 
+type handoffParams struct {
+	ID      uint64            `json:"id"`
+	Actor   string            `json:"actor"`
+	Extra   map[string]string `json:"extra"`
+	Receipt bool              `json:"receipt,omitempty"`
+}
+
 type blockParams struct {
 	ID      uint64 `json:"id"`
 	Reason  string `json:"reason"`
@@ -535,6 +542,8 @@ func (srv *server) dispatch(method string, params json.RawMessage) (interface{},
 		return srv.handleAcquire(params)
 	case "todo.heartbeat":
 		return srv.handleHeartbeat(params)
+	case "todo.handoff":
+		return srv.handleHandoff(params)
 	case "todo.release":
 		return srv.handleRelease(params)
 	case "todo.block":
@@ -606,6 +615,7 @@ func (srv *server) handlePing(params json.RawMessage) (interface{}, *rpcError) {
 			"dag",
 			"leases",
 			"lease_heartbeat",
+			"atomic_handoff",
 			"atomic_acquire",
 			"idempotent_acquire",
 			"session_bootstrap",
@@ -1439,6 +1449,54 @@ func (srv *server) handleRelease(params json.RawMessage) (interface{}, *rpcError
 
 	if p.Receipt {
 		return newTaskMutationReceipt("release", released), nil
+	}
+	return releaseResult{ID: p.ID, Status: "pending"}, nil
+}
+
+func (srv *server) handleHandoff(params json.RawMessage) (interface{}, *rpcError) {
+	var p handoffParams
+	if err := unmarshalParams(params, &p); err != nil {
+		return nil, err
+	}
+	if p.ID == 0 {
+		return nil, rpcErrorf(rpcInvalidParams, "id is required")
+	}
+	if err := validateActor(p.Actor, true); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+	}
+	if len(p.Extra) == 0 {
+		return nil, rpcErrorf(rpcInvalidParams, "extra must contain at least one structured handoff field")
+	}
+	if err := validateExtra(p.Extra); err != nil {
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+	}
+	if err := srv.ensureInitialized(); err != nil {
+		return nil, err
+	}
+
+	var handedOff *store.Task
+	_, err := updateStoreSafe(func(s *store.TaskStore) error {
+		var handoffErr error
+		handedOff, handoffErr = handoffTask(s, p.ID, p.Actor, p.Extra, projectNow())
+		return handoffErr
+	})
+	if err != nil {
+		switch {
+		case isPersistedInputFailure(err):
+			return nil, rpcErrorf(rpcInvalidParams, "%v", err)
+		case errors.Is(err, errLeaseTaskNotFound):
+			return nil, rpcErrorf(rpcTaskNotFound, "%v", err)
+		case errors.Is(err, errLeaseNotOwner):
+			return nil, rpcErrorf(rpcNotOwner, "%v", err)
+		case errors.Is(err, errLeaseNotActive):
+			return nil, rpcErrorf(rpcLeaseNotActive, "%v", err)
+		default:
+			return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
+		}
+	}
+
+	if p.Receipt {
+		return newTaskMutationReceipt("handoff", handedOff), nil
 	}
 	return releaseResult{ID: p.ID, Status: "pending"}, nil
 }

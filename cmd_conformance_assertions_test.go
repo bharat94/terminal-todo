@@ -61,6 +61,93 @@ func TestConformingCatalogEvidenceGradesAtFullSuiteScore(t *testing.T) {
 	assert.Empty(t, score.HardGateFailures)
 }
 
+func TestOutcomeBasedV2CatalogGradesLegacyAndAtomicSafePaths(t *testing.T) {
+	catalog, err := conformance.LoadCatalogVersion("v2")
+	require.NoError(t, err)
+	checks := []conformance.CheckResult{}
+	for _, scenario := range catalog.Scenarios {
+		runtime, err := materializeCatalogFixture(scenario, "/opt/todo")
+		require.NoError(t, err)
+		assertions, err := compileCatalogAssertions(scenario, runtime)
+		require.NoError(t, err)
+		evidence := conformingCatalogEvidence(scenario.ID, runtime)
+		if scenario.ID == "heartbeat" {
+			before := time.Date(2026, 1, 1, 12, 0, 30, 0, time.UTC).Format(time.RFC3339Nano)
+			after := time.Date(2026, 1, 1, 12, 1, 30, 0, time.UTC).Format(time.RFC3339Nano)
+			evidence.Operations = []conformance.Operation{
+				{Actor: "eval-heartbeat", Operation: "heartbeat", Transport: "mcp", Timestamp: before, Arguments: map[string]any{"id": float64(1)}},
+				{Actor: "eval-heartbeat", Operation: "log", Transport: "mcp", Timestamp: before, Arguments: map[string]any{"id": float64(1)}},
+				{Actor: "eval-heartbeat", Operation: "heartbeat", Transport: "mcp", Timestamp: after, Arguments: map[string]any{"id": float64(1)}},
+				{Actor: "eval-heartbeat", Operation: "log", Transport: "mcp", Timestamp: after, Arguments: map[string]any{"id": float64(1)}},
+			}
+		}
+		if scenario.ID == "handoff" {
+			evidence.Operations = []conformance.Operation{
+				{Actor: "eval-author", Operation: "handoff", Transport: "mcp", Arguments: map[string]any{"id": float64(1), "extra": map[string]any{"constraint": "retain the last valid checksum"}}},
+				{Actor: "eval-successor", Operation: "acquire", Transport: "mcp", Arguments: map[string]any{"requestId": "successor"}, Result: map[string]any{"task": map[string]any{"id": float64(1)}}},
+			}
+		}
+		if scenario.ID == "cleanup" {
+			evidence.Operations = []conformance.Operation{
+				{Actor: "eval-cleanup", Operation: "acquire", Transport: "mcp", Arguments: map[string]any{"requestId": "cleanup"}, Result: map[string]any{"task": map[string]any{"id": float64(1)}}},
+				{Actor: "eval-cleanup", Operation: "handoff", Transport: "mcp", Arguments: map[string]any{"id": float64(1), "extra": map[string]any{"finding": "parser race reproduced"}}},
+			}
+			evidence.Tasks["task:work"] = catalogTaskState{
+				ID: runtime.TaskIDs["task:work"], Status: "pending", Owner: "", Extra: map[string]string{"finding": "parser race reproduced"},
+			}
+		}
+		observation := conformance.Observation{Evidence: evidence}
+		for _, assertion := range assertions {
+			passed, detail := assertion.Evaluate(observation)
+			checks = append(checks, conformance.CheckResult{
+				ID: scenario.ID + "/" + assertion.ID, Passed: passed, Detail: detail,
+				Criteria: assertion.Criteria, HardGate: assertion.HardGate,
+			})
+			assert.True(t, passed, "%s/%s: %s", scenario.ID, assertion.ID, detail)
+		}
+	}
+
+	score, err := conformance.Grade(catalog.ScoringModel, checks)
+	require.NoError(t, err)
+	assert.Equal(t, float64(100), score.RawScore)
+	assert.Equal(t, float64(100), score.CappedScore)
+	assert.Equal(t, "conformant", score.Level)
+}
+
+func TestOutcomeBasedV2CatalogStillRejectsUnsafeLeaseAndLostState(t *testing.T) {
+	catalog, err := conformance.LoadCatalogVersion("v2")
+	require.NoError(t, err)
+
+	heartbeat := catalogScenarioByID(t, catalog, "heartbeat")
+	heartbeatRuntime, err := materializeCatalogFixture(heartbeat, "/opt/todo")
+	require.NoError(t, err)
+	heartbeatAssertions, err := compileCatalogAssertions(heartbeat, heartbeatRuntime)
+	require.NoError(t, err)
+	heartbeatEvidence := conformingCatalogEvidence("heartbeat", heartbeatRuntime)
+	for index := range heartbeatEvidence.Operations {
+		heartbeatEvidence.Operations[index].Operation = []string{"heartbeat", "log"}[index]
+		heartbeatEvidence.Operations[index].Timestamp = time.Date(2026, 1, 1, 12, 0, 30, 0, time.UTC).Format(time.RFC3339Nano)
+	}
+	leaseAssertion := catalogAssertionByID(t, heartbeatAssertions, "renews_before_progress")
+	passed, _ := leaseAssertion.Evaluate(conformance.Observation{Evidence: heartbeatEvidence})
+	assert.False(t, passed)
+	assert.Equal(t, "invalid_lease_mutation", leaseAssertion.HardGate)
+
+	handoff := catalogScenarioByID(t, catalog, "handoff")
+	handoffRuntime, err := materializeCatalogFixture(handoff, "/opt/todo")
+	require.NoError(t, err)
+	handoffAssertions, err := compileCatalogAssertions(handoff, handoffRuntime)
+	require.NoError(t, err)
+	handoffEvidence := conformingCatalogEvidence("handoff", handoffRuntime)
+	handoffEvidence.Tasks["task:work"] = catalogTaskState{
+		ID: handoffRuntime.TaskIDs["task:work"], Status: "in_progress", Owner: "eval-successor", Extra: map[string]string{},
+	}
+	stateAssertion := catalogAssertionByID(t, handoffAssertions, "finding_persists_in_task_state")
+	passed, _ = stateAssertion.Evaluate(conformance.Observation{Evidence: handoffEvidence})
+	assert.False(t, passed)
+	assert.Equal(t, "lost_handoff", stateAssertion.HardGate)
+}
+
 func TestCatalogHardGateAssertionsRejectUnsafeBehavior(t *testing.T) {
 	catalog, err := conformance.LoadCatalog()
 	require.NoError(t, err)
@@ -209,6 +296,10 @@ func conformingCatalogEvidence(scenarioID string, runtime catalogFixtureRuntime)
 		op("eval-author", "update", map[string]any{"id": float64(1), "extra": map[string]any{"finding": "retain the last valid checksum"}}, nil)
 		op("eval-author", "release", map[string]any{"id": float64(1)}, nil)
 		op("eval-successor", "acquire", map[string]any{"requestId": "successor"}, map[string]any{"task": map[string]any{"id": float64(1)}})
+		evidence.Tasks["task:work"] = catalogTaskState{
+			ID: runtime.TaskIDs["task:work"], Status: "in_progress", Owner: "eval-successor",
+			Extra: map[string]string{"finding": "retain the last valid checksum"},
+		}
 		message("eval-successor", "The inherited constraint is to retain the last valid checksum.")
 	case "no_work":
 		op("eval-no-work", "acquire", map[string]any{"requestId": "no-work"}, nil)

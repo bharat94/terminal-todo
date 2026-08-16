@@ -6,7 +6,9 @@ or which host produced the turn.
 
 ## Contract
 
-`manifest.json` is the ordered scenario catalog. Each referenced fixture:
+`manifest-v2.json` is the current ordered scenario catalog. `manifest.json`
+and its v1 scoring model remain frozen for published-result reproduction.
+Each referenced fixture:
 
 - starts from a clean, deterministic project state;
 - uses symbolic task and actor references rather than generated IDs;
@@ -14,7 +16,7 @@ or which host produced the turn.
 - declares the prompts and harness-controlled clock or peer actions;
 - describes observable assertions over normalized operations, task state,
   events, errors, and assistant output; and
-- assigns criterion IDs from `scoring-model.json`.
+- assigns criterion IDs from its versioned scoring model.
 
 `scenario.schema.json` is the machine-readable fixture schema. It intentionally
 does not prescribe a runner implementation. A runner may drive an MCP host,
@@ -45,7 +47,7 @@ record:
 ```
 
 Operations use terminal-todo's canonical method suffixes (`ping`, `bootstrap`,
-`acquire`, `heartbeat`, `update`, `log`, `release`, `block`, `complete`,
+`acquire`, `heartbeat`, `handoff`, `update`, `log`, `release`, `block`, `complete`,
 `events`, and so on), independent of transport. Runners must preserve call
 order. They may remove nondeterministic timestamps, process IDs, host event
 IDs, and lease tokens, but must not remove actor identity, request IDs,
@@ -106,8 +108,8 @@ dangerous lifecycle sequence.
 Hard-gate failures cap the overall score at 49 even if the raw score is higher.
 The gates cover race-prone allocation, acting without a valid lease, inventing
 work after `NO_WORK`, losing handoff state, and ending a session with abandoned
-ownership. See `scoring-model.json` for points, gates, and certification
-levels.
+ownership. See `scoring-model-v2.json` for current points, gates, and
+certification levels.
 
 Assistant-output assertions are semantic. Pattern lists identify obvious
 leaks, while a reviewer or deterministic classifier decides whether a sentence
