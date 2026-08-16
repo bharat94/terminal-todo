@@ -103,12 +103,13 @@ func validateCatalogExpectation(assertion conformance.CatalogAssertion) error {
 			"contains_operation": true, "first_operation": true, "operation_count": true,
 			"before": true, "after": true, "excludes_operations": true, "excludes_sequences": true,
 			"per_actor_operation": true, "unique_argument": true, "ordered_operations": true,
-			"actor": true, "task": true, "operation": true, "result_task": true,
+			"ordered_operation_alternatives": true,
+			"actor":                          true, "task": true, "operation": true, "result_task": true,
 			"update_extra_contains": true, "one_of_operations": true,
 		},
 		"task_state": {
 			"task": true, "owner_count": true, "status": true, "owner": true,
-			"lease_after": true, "owned_task_count": true,
+			"lease_after": true, "owned_task_count": true, "extra_value_contains": true,
 		},
 		"domain_error": {"code": true, "terminal": true},
 		"assistant_output": {
@@ -229,6 +230,24 @@ func evaluateOperationExpectation(expect map[string]any, scenario conformance.Ca
 			}
 		}
 	}
+	if alternatives, ok := stringListsExpectation(expect, "ordered_operation_alternatives"); ok {
+		matched := false
+		for _, alternative := range alternatives {
+			_, ordered := orderedAlternativeIndexes(filtered, alternative, scenario)
+			if !ordered {
+				continue
+			}
+			matched = true
+			break
+		}
+		if !matched {
+			detail := "in order"
+			if _, exists := catalogClockCheckpoint(scenario); exists {
+				detail += " after the checkpoint"
+			}
+			return false, fmt.Sprintf("none of the operation alternatives %v were observed %s", alternatives, detail)
+		}
+	}
 	if expected, ok := stringExpectation(expect, "operation"); ok {
 		matched := false
 		for _, operation := range filtered {
@@ -336,6 +355,18 @@ func evaluateTaskExpectation(expect map[string]any, runtime catalogFixtureRuntim
 		after, err := time.Parse(time.RFC3339, rawAfter)
 		if err != nil || task.LeaseExpires <= uint64(after.UnixMilli()) {
 			return false, fmt.Sprintf("task %q lease did not extend beyond %s", reference, rawAfter)
+		}
+	}
+	if expected, ok := stringExpectation(expect, "extra_value_contains"); ok {
+		matched := false
+		for _, value := range task.Extra {
+			if strings.Contains(strings.ToLower(value), strings.ToLower(expected)) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false, fmt.Sprintf("task %q structured context did not contain %q", reference, expected)
 		}
 	}
 	return true, ""
@@ -504,6 +535,29 @@ func orderedOperationIndexes(operations []conformance.Operation, expected []stri
 	return indexes, index == len(expected)
 }
 
+func orderedAlternativeIndexes(operations []conformance.Operation, expected []string, scenario conformance.CatalogScenario) ([]int, bool) {
+	if len(expected) == 0 {
+		return nil, false
+	}
+	checkpoint, hasCheckpoint := catalogClockCheckpoint(scenario)
+	indexes := make([]int, 0, len(expected))
+	next := 0
+	for index, operation := range operations {
+		if next >= len(expected) || operation.Operation != expected[next] {
+			continue
+		}
+		if hasCheckpoint && next == len(expected)-1 {
+			observed, err := time.Parse(time.RFC3339Nano, operation.Timestamp)
+			if err != nil || observed.Before(checkpoint) {
+				continue
+			}
+		}
+		indexes = append(indexes, index)
+		next++
+	}
+	return indexes, next == len(expected)
+}
+
 func catalogClockCheckpoint(scenario conformance.CatalogScenario) (time.Time, bool) {
 	current := scenario.InitialTime
 	for _, turn := range scenario.Turns {
@@ -571,6 +625,24 @@ func stringListExpectation(expect map[string]any, key string) ([]string, bool) {
 		return nil, false
 	}
 	return anyStringList(raw), true
+}
+
+func stringListsExpectation(expect map[string]any, key string) ([][]string, bool) {
+	raw, ok := expect[key]
+	if !ok {
+		return nil, false
+	}
+	values, ok := raw.([]any)
+	if !ok {
+		return nil, true
+	}
+	result := make([][]string, 0, len(values))
+	for _, value := range values {
+		if sequence := anyStringList(value); len(sequence) > 0 {
+			result = append(result, sequence)
+		}
+	}
+	return result, true
 }
 
 func anyStringList(raw any) []string {

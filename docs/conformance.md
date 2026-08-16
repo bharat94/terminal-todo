@@ -29,7 +29,7 @@ Real execution is deliberately opt-in:
 
 ```bash
 todo conformance --run --host codex
-todo conformance --run --host all --json
+todo conformance --run --suite v2 --host all --json
 ```
 
 `--run` executes the complete catalog for each selected host and may consume
@@ -80,25 +80,36 @@ The adapters use the documented non-interactive event streams:
 
 ## Full behavioral contract
 
-[`conformance/scenarios/manifest.json`](../conformance/scenarios/manifest.json)
-is the versioned vendor-neutral catalog. It defines nine scenarios:
+[`conformance/scenarios/manifest-v2.json`](../conformance/scenarios/manifest-v2.json)
+is the default versioned vendor-neutral catalog. It defines nine scenarios:
 
 | Scenario | Behavior |
 |---|---|
 | `discovery` | Find the project integration without the prompt naming terminal-todo |
 | `bootstrap` | Start with one bounded session brief |
 | `atomic_acquire` | Resolve concurrent contention without `next` plus `claim` races |
-| `heartbeat` | Renew ownership before a long-running lease checkpoint |
-| `handoff` | Persist a material finding before release and consume it as a successor |
+| `heartbeat` | Renew ownership before durable progress after a long-running lease checkpoint |
+| `handoff` | Persist structured context before yielding ownership and consume it as a successor |
 | `no_work` | Treat `NO_WORK` as structured control flow |
 | `lease_recovery` | Reacquire expired work without impersonating the stale owner |
 | `quiet_narration` | Keep routine coordination out of user-facing narration |
-| `cleanup` | End every session with complete, block, or release |
+| `cleanup` | End every session with complete, block, release, or structured handoff |
 
 The accompanying schema and 100-point scoring model are checked in the normal
 Go test suite. Hard-gate failures cap the result below conformance for
 race-prone allocation, invalid lease mutation, fabricated work, lost handoff,
 or abandoned ownership.
+
+Suite v2 grades durable outcomes while preserving the safety gates. It accepts
+`heartbeat` followed by either a structured update or audit log when the final
+lease is valid. It accepts the atomic `handoff` operation or the legacy
+update-then-release sequence only when the material finding remains in final
+structured task state and the successor consumes it.
+
+The published v1 fixtures and scoring model remain unchanged and executable
+with `--suite v1`. v1 and v2 scores must not be presented as directly
+comparable because the assertion contract changed; every report names its
+suite and scoring-model IDs.
 
 Reports include all nine scenario results plus raw and hard-gate-capped suite
 scores. A criterion earns its points only when every catalog assertion that
@@ -132,7 +143,7 @@ a behavioral score. The harness now forwards those variables explicitly to
 Codex and Claude MCP children and classifies persisted mutations without a
 trace as an infrastructure failure.
 
-The corrected single-run calibration passed seven of nine scenarios, scoring
+The corrected v1 single-run calibration passed seven of nine scenarios, scoring
 `75/100` raw and `49/100` after the `invalid_lease_mutation` and `lost_handoff`
 hard gates. It had no infrastructure failures. This is an `n=1` observation
 against the host's moving default model, not a certification. The
@@ -159,6 +170,7 @@ Useful options:
 
 ```text
 --host codex|claude|all
+--suite v1|v2
 --run
 --json
 --include-events

@@ -30,6 +30,37 @@ func TestLoadCatalogReturnsAllExecutableScenarioDataInManifestOrder(t *testing.T
 	}
 }
 
+func TestLoadCatalogVersionKeepsV1StableAndLoadsOutcomeBasedV2(t *testing.T) {
+	v1, err := LoadCatalogVersion("v1")
+	require.NoError(t, err)
+	v2, err := LoadCatalogVersion("v2")
+	require.NoError(t, err)
+
+	assert.Equal(t, "terminal-todo-real-agent-v1", v1.SuiteID)
+	assert.Equal(t, "terminal-todo-agent-conformance-v1", v1.ScoringModel.ModelID)
+	assert.Equal(t, "terminal-todo-real-agent-v2", v2.SuiteID)
+	assert.Equal(t, "terminal-todo-agent-conformance-v2", v2.ScoringModel.ModelID)
+	assert.Equal(t, catalogScenarioIDs(v1.Scenarios), catalogScenarioIDs(v2.Scenarios))
+	assert.Contains(t, scenarioByID(t, v1, "heartbeat").Assertions[0].Expect, "ordered_operations")
+	assert.Contains(t, scenarioByID(t, v1, "handoff").Assertions[0].Expect, "update_extra_contains")
+	assert.Contains(t, scenarioByID(t, v2, "heartbeat").Assertions[0].Expect, "ordered_operation_alternatives")
+	assert.Contains(t, scenarioByID(t, v2, "handoff").Assertions[1].Expect, "extra_value_contains")
+
+	_, err = LoadCatalogVersion("latest")
+	assert.ErrorContains(t, err, "unsupported conformance suite")
+}
+
+func scenarioByID(t *testing.T, catalog Catalog, id string) CatalogScenario {
+	t.Helper()
+	for _, scenario := range catalog.Scenarios {
+		if scenario.ID == id {
+			return scenario
+		}
+	}
+	t.Fatalf("missing scenario %q", id)
+	return CatalogScenario{}
+}
+
 func TestCatalogResolvesEverySymbolicTurnAndProjectReference(t *testing.T) {
 	catalog, err := LoadCatalog()
 	require.NoError(t, err)

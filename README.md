@@ -403,7 +403,7 @@ without contacting a model. Real execution requires an explicit flag:
 
 ```bash
 todo conformance
-todo conformance --run --host codex --json
+todo conformance --run --suite v2 --host codex --json
 ```
 
 The opt-in run executes all nine catalog scenarios in separate disposable

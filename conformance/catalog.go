@@ -91,10 +91,29 @@ type CatalogAssertion struct {
 }
 
 // LoadCatalog parses and validates the embedded manifest, scoring model, and
-// every scenario in manifest order.
+// every v1 scenario in manifest order. It remains pinned to v1 so existing
+// callers and published result reproduction do not silently change meaning.
 func LoadCatalog() (Catalog, error) {
+	return LoadCatalogVersion("v1")
+}
+
+// LoadCatalogVersion loads an explicitly versioned real-agent contract.
+func LoadCatalogVersion(version string) (Catalog, error) {
+	manifestName := ""
+	switch version {
+	case "v1":
+		manifestName = "manifest.json"
+	case "v2":
+		manifestName = "manifest-v2.json"
+	default:
+		return Catalog{}, fmt.Errorf("unsupported conformance suite %q", version)
+	}
+	return loadCatalogManifest(manifestName)
+}
+
+func loadCatalogManifest(manifestName string) (Catalog, error) {
 	var manifest catalogManifest
-	if err := readCatalogAsset("manifest.json", &manifest); err != nil {
+	if err := readCatalogAsset(manifestName, &manifest); err != nil {
 		return Catalog{}, err
 	}
 	var model ScoringModel

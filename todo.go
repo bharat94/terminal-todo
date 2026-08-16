@@ -315,7 +315,7 @@ func validateCommandArgs(command string, args []string) error {
 		"agent-card":  {"--as": true, "--caps": true, "--desc": true, "--max-load": true},
 		"caps":        {"--as": true},
 		"integrate":   {"--command": true},
-		"conformance": {"--host": true, "--timeout": true, "--model": true},
+		"conformance": {"--host": true, "--timeout": true, "--model": true, "--suite": true},
 		"compact":     {"--keep-events": true, "--receipts-before": true},
 		"events":      {"--limit": true},
 	}
