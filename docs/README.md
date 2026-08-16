@@ -62,6 +62,8 @@ improve between releases.
   controls.
 - [Scenario catalog](../conformance/scenarios/README.md) documents the fixture
   schema, assertions, scoring, and extension workflow.
+- [Codex default-model calibration, 2026-08-15](evaluations/2026-08-15-codex-default.md)
+  records the first valid full-catalog observation and its limitations.
 
 The default `todo conformance` command performs only local host discovery.
 Model execution requires the explicit `--run` flag and may consume paid or
