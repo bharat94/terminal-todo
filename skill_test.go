@@ -26,6 +26,8 @@ func TestBundledTerminalTodoSkillPreservesCoordinationInvariants(t *testing.T) {
 		"todo acquire",
 		"--request-id <unique-request-id>",
 		"todo heartbeat",
+		"terminal_todo_handoff",
+		"todo handoff",
 		"todo update",
 		"canonical keys `finding`, `decision`, `tests`, `commit`, `files`, and",
 		"A log entry alone is not a",

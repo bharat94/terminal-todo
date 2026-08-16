@@ -123,6 +123,40 @@ func TestServerHeartbeatRenewsOnlyTheOwnersActiveLease(t *testing.T) {
 	assert.Equal(t, rpcLeaseNotActive, rpcErr.Code)
 }
 
+func TestServerHandoffAtomicallyPersistsContextAndYieldsLease(t *testing.T) {
+	oldRoot := projectRoot
+	projectRoot = t.TempDir()
+	defer func() { projectRoot = oldRoot }()
+	path := filepath.Join(projectRoot, ".terminal-todo", "tasks.bin")
+	s := store.NewTaskStore()
+	task := s.AddTask("RPC handoff work", nil)
+	task.Status = store.StatusInProgress
+	task.Owner = "rpc-author"
+	task.LeaseExpires = uint64(time.Now().Add(15 * time.Minute).UnixMilli())
+	assert.NoError(t, s.Save(path))
+
+	srv := &server{initialized: true}
+	result, rpcErr := srv.dispatch("todo.handoff", json.RawMessage(`{"id":1,"actor":"rpc-author","extra":{"finding":"retain the last valid checksum"}}`))
+	assert.Nil(t, rpcErr)
+	assert.Equal(t, releaseResult{ID: 1, Status: "pending"}, result)
+
+	persisted, err := store.LoadCurrent(path)
+	assert.NoError(t, err)
+	handedOff := persisted.Tasks[1]
+	assert.Equal(t, store.StatusPending, handedOff.Status)
+	assert.Empty(t, handedOff.Owner)
+	assert.Zero(t, handedOff.LeaseExpires)
+	assert.Zero(t, handedOff.RetryCount)
+	assert.Equal(t, "retain the last valid checksum", handedOff.Extra["finding"])
+	assert.Equal(t, store.EventTaskUpdated, persisted.Events[len(persisted.Events)-2].Type)
+	assert.Equal(t, store.EventTaskReleased, persisted.Events[len(persisted.Events)-1].Type)
+	assert.Equal(t, "true", persisted.Events[len(persisted.Events)-1].Data["handoff"])
+
+	_, rpcErr = srv.dispatch("todo.handoff", json.RawMessage(`{"id":1,"actor":"rpc-author","extra":{"finding":"duplicate"}}`))
+	assert.NotNil(t, rpcErr)
+	assert.Equal(t, rpcLeaseNotActive, rpcErr.Code)
+}
+
 func TestServerBlockReleasesLeaseAndUnblockRepairsLegacyOwnership(t *testing.T) {
 	oldRoot := projectRoot
 	projectRoot = t.TempDir()
@@ -215,6 +249,7 @@ func TestServerPingAdvertisesProtocolAndCapabilities(t *testing.T) {
 	assert.Equal(t, projectRoot, ping.Project)
 	assert.True(t, ping.Initialized)
 	assert.Contains(t, ping.Capabilities, "lease_heartbeat")
+	assert.Contains(t, ping.Capabilities, "atomic_handoff")
 	assert.Contains(t, ping.Capabilities, "atomic_acquire")
 	assert.Contains(t, ping.Capabilities, "idempotent_acquire")
 	assert.Contains(t, ping.Capabilities, "compact_receipts")

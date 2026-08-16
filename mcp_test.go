@@ -112,6 +112,7 @@ func TestMCPToolAnnotationsMatchCoordinationEffects(t *testing.T) {
 		"terminal_todo_add":       {ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: false, OpenWorldHint: false},
 		"terminal_todo_acquire":   {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: true, OpenWorldHint: false},
 		"terminal_todo_heartbeat": {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
+		"terminal_todo_handoff":   {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
 		"terminal_todo_update":    {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
 		"terminal_todo_log":       {ReadOnlyHint: false, DestructiveHint: false, IdempotentHint: false, OpenWorldHint: false},
 		"terminal_todo_decompose": {ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},

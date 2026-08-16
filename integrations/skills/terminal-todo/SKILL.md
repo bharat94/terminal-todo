@@ -170,10 +170,19 @@ todo log <id> --as <actor> --msg "Race reproduced under concurrent writers" \
   --receipt
 ```
 
-Before releasing work to a successor, persist the material handoff with
-`update` even if the same information also appears in a log message. Verify
-the update succeeded, then release ownership. A log entry alone is not a
-structured handoff.
+Before yielding work to a successor, prefer the atomic
+`terminal_todo_handoff` tool. On the CLI, use:
+
+```bash
+todo handoff <id> --as <actor> \
+  --set finding="recovery must retain the last valid checksum" \
+  --receipt
+```
+
+This persists structured context and releases the active lease in one
+transaction. If `handoff` is unavailable in an older installation, persist
+the material context with `update`, verify it succeeded, and then `release`.
+A log entry alone is not a structured handoff.
 
 Send `receipt:true` for the corresponding MCP update and log calls. Receipts
 return bounded acknowledgement fields and never echo large log messages or

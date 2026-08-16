@@ -66,6 +66,7 @@ func TestServerRejectsOversizedPersistedInputBeforeWriting(t *testing.T) {
 		{"todo.add", addParams{Title: strings.Repeat("x", maxTaskTitleBytes+1)}},
 		{"todo.add", addParams{Title: "work", Capabilities: numberedValues("cap", maxTaskCapabilities+1)}},
 		{"todo.update", updateParams{ID: 1, Extra: map[string]string{"finding": strings.Repeat("x", maxMetadataValueBytes+1)}}},
+		{"todo.handoff", handoffParams{ID: 1, Actor: "worker", Extra: map[string]string{"finding": strings.Repeat("x", maxMetadataValueBytes+1)}}},
 		{"todo.block", blockParams{ID: 1, Reason: strings.Repeat("x", maxReasonBytes+1)}},
 		{"todo.log", logParams{ID: 1, Message: strings.Repeat("x", maxLogMessageBytes+1)}},
 		{"todo.done", doneParams{IDs: []uint64{1}, Actor: strings.Repeat("x", maxActorBytes+1)}},

@@ -92,6 +92,8 @@ func main() {
 		cmdAcquire(args)
 	case "heartbeat":
 		cmdHeartbeat(args)
+	case "handoff":
+		cmdHandoff(args)
 	case "release":
 		cmdRelease(args)
 	case "decompose":
@@ -184,6 +186,7 @@ Agent Operations:
                        Atomically select and claim ready work (--wait)
   heartbeat <id> --as <n>
                        Renew an active owned lease (--ttl)
+  handoff <id> --as <n> Persist structured context and yield atomically (--set)
   release <id> --as <n> Yield an owned lease back to the pool (--error)
   my --as <owner>      Show tasks claimed by you
   bootstrap --as <n>   Get a bounded worker session brief (--json, --objective)
@@ -297,6 +300,7 @@ func validateCommandArgs(command string, args []string) error {
 		"claim":       {"--as": true, "--ttl": true},
 		"acquire":     {"--as": true, "--request-id": true, "--ttl": true, "--capabilities": true, "--wait": true},
 		"heartbeat":   {"--as": true, "--ttl": true},
+		"handoff":     {"--as": true, "--set": true},
 		"decompose":   {"--into": true, "--as": true},
 		"done":        {"--as": true},
 		"log":         {"--msg": true, "--as": true},
@@ -320,6 +324,7 @@ func validateCommandArgs(command string, args []string) error {
 		"claim":       {"--json": true, "--receipt": true},
 		"acquire":     {"--json": true, "--receipt": true},
 		"heartbeat":   {"--json": true, "--receipt": true},
+		"handoff":     {"--json": true, "--receipt": true},
 		"done":        {"--json": true, "--receipt": true},
 		"release":     {"--json": true, "--receipt": true},
 		"block":       {"--json": true, "--receipt": true},
@@ -356,8 +361,8 @@ func validateCommandArgs(command string, args []string) error {
 		"init": true, "add": true, "done": true, "status": true,
 		"cat": true, "rm": true, "depends": true, "dependents": true,
 		"next": true, "export": true, "prune": true, "claim": true, "acquire": true,
-		"heartbeat": true,
-		"release":   true, "decompose": true, "lineage": true, "update": true,
+		"heartbeat": true, "handoff": true,
+		"release": true, "decompose": true, "lineage": true, "update": true,
 		"config": true, "link": true, "unlink": true, "block": true, "unblock": true,
 		"log": true, "search": true, "doctor": true, "backup": true,
 		"restore": true, "what-if": true, "whatif": true, "events": true,

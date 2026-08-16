@@ -663,6 +663,7 @@ full result.
 | `claim <id> --as <owner> [--ttl <duration>]` | Acquire a lease | `taskEnvelope` |
 | `acquire --as <owner> --request-id <id> [--capabilities a,b] [--ttl <duration>] [--wait <duration>]` | Atomically select and lease compatible work | `acquireEnvelope` |
 | `heartbeat <id> --as <owner> [--ttl <duration>]` | Renew an active owned lease | `taskEnvelope` |
+| `handoff <id> --as <owner> --set <key=value>` | Atomically persist structured context and yield an active lease | `taskEnvelope` |
 | `release <id> --as <owner> [--error <msg>]` | Yield lease and optionally record a failed attempt | `taskEnvelope` |
 | `block <id> --reason <text> [--as <owner>]` | Preserve a blocker and release any active lease | `taskEnvelope` |
 | `unblock <id> [--as <owner>]` | Return manually blocked work to pending | `taskEnvelope` |
@@ -774,6 +775,7 @@ advertises a stable, deterministic tool list:
 | `terminal_todo_add` | `todo.add` | Add durable DAG work |
 | `terminal_todo_acquire` | `todo.acquire` | Atomically allocate ready work |
 | `terminal_todo_heartbeat` | `todo.heartbeat` | Renew an active owned lease |
+| `terminal_todo_handoff` | `todo.handoff` | Atomically persist structured context and yield ownership |
 | `terminal_todo_update` | `todo.update` | Update metadata, dependencies, and structured findings |
 | `terminal_todo_log` | `todo.log` | Append an audit-trail note |
 | `terminal_todo_decompose` | `todo.decompose` | Split broad work into dependent children |
@@ -837,6 +839,7 @@ processed but no response is written. Stdio requests may be up to 4 MiB.
 | `todo.claim` | `{id, actor, ttl?, receipt?}` | `{id, owner, expires, retryCount, lastError}` or compact receipt |
 | `todo.acquire` | `{actor, requestId, ttl?, capabilities?, receipt?}` | Versioned task envelope or compact receipt for the atomically selected task; repeated request IDs return the original result |
 | `todo.heartbeat` | `{id, actor, ttl?, receipt?}` | Versioned task envelope or compact receipt with the renewed lease |
+| `todo.handoff` | `{id, actor, extra, receipt?}` | `{id, status}` or compact receipt |
 | `todo.release` | `{id, actor, error?, receipt?}` | `{id, status}` or compact receipt |
 | `todo.block` | `{id, reason, actor?, receipt?}` | `{id, status}` or compact receipt |
 | `todo.unblock` | `{id, actor?, receipt?}` | `{id, status}` or compact receipt |

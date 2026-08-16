@@ -309,6 +309,7 @@ func TestMutationMCPToolsAdvertiseReceiptOptIn(t *testing.T) {
 		"terminal_todo_add":       true,
 		"terminal_todo_acquire":   true,
 		"terminal_todo_heartbeat": true,
+		"terminal_todo_handoff":   true,
 		"terminal_todo_update":    true,
 		"terminal_todo_log":       true,
 		"terminal_todo_decompose": true,

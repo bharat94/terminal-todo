@@ -233,6 +233,15 @@ For work that runs longer than its lease, renew ownership before expiry:
 todo heartbeat 7 --as go-worker-1 --ttl 30m --receipt
 ```
 
+When another worker should continue, persist the structured context and yield
+ownership atomically:
+
+```bash
+todo handoff 7 --as go-worker-1 \
+  --set finding="Recovery must retain the last valid checksum" \
+  --set files=store/recovery.go --receipt
+```
+
 When work should return to the queue:
 
 ```bash
@@ -445,7 +454,8 @@ todo mcp --stdio
 The server implements the MCP `2025-06-18` stdio lifecycle and exposes a
 curated coordination surface: discovery, initialization, bounded worker
 bootstrap, status, task detail, creation, atomic acquisition, heartbeats,
-updates, logs, decomposition, blocking, release, completion, and events. Every
+structured handoff, updates, logs, decomposition, blocking, release,
+completion, and events. Every
 tool advertises an MCP title and explicit read-only, destructive, idempotent,
 and open-world hints. Tool calls return both text and structured JSON: the
 text is a compact human trace, while `structuredContent` contains the
@@ -600,7 +610,7 @@ Run `todo help` for the concise built-in reference.
 | Area | Commands |
 |---|---|
 | Tasks | `add`, `status`, `cat`, `update`, `done`, `rm`, `prune`, `search` |
-| Scheduling | `next`, `claim`, `acquire`, `heartbeat`, `release`, `my` |
+| Scheduling | `next`, `claim`, `acquire`, `heartbeat`, `handoff`, `release`, `my` |
 | Dependencies | `depends`, `dependents`, `decompose`, `lineage`, `graph`, `what-if` |
 | Coordination | `block`, `unblock`, `log`, `events`, `watch` |
 | Agents | `bootstrap`, `agent-card`, `caps` |

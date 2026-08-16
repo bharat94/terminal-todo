@@ -245,6 +245,7 @@ func mcpToolMethods() map[string]string {
 		"terminal_todo_add":       "todo.add",
 		"terminal_todo_acquire":   "todo.acquire",
 		"terminal_todo_heartbeat": "todo.heartbeat",
+		"terminal_todo_handoff":   "todo.handoff",
 		"terminal_todo_update":    "todo.update",
 		"terminal_todo_log":       "todo.log",
 		"terminal_todo_decompose": "todo.decompose",
@@ -390,6 +391,18 @@ func terminalTodoMCPTools() []mcpTool {
 				"removeDeps":   boundedStringList("Dependencies to remove.", maxTaskDependencies, maxDependencyBytes),
 				"receipt":      receiptProp,
 			}, "id"),
+			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
+		},
+		{
+			Name:        "terminal_todo_handoff",
+			Title:       "Hand off task",
+			Description: "Atomically persist structured successor context and yield a valid owned lease. Prefer this over separate update and release calls when another worker will continue the task.",
+			InputSchema: object(map[string]interface{}{
+				"id":      idProp,
+				"actor":   boundedStringProp("Current active lease owner.", maxActorBytes),
+				"extra":   map[string]interface{}{"type": "object", "minProperties": 1, "maxProperties": maxTaskExtraEntries, "additionalProperties": map[string]interface{}{"type": "string", "maxLength": maxMetadataValueBytes}, "description": "Structured durable handoff fields. Prefer canonical keys finding, decision, tests, commit, files, and blocker."},
+				"receipt": receiptProp,
+			}, "id", "actor", "extra"),
 			Annotations: mcpToolAnnotations{ReadOnlyHint: false, DestructiveHint: true, IdempotentHint: false, OpenWorldHint: false},
 		},
 		{

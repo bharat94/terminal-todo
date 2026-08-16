@@ -65,6 +65,18 @@ todo acquire --as perf-agent --capabilities performance \
 Selection and lease creation happen in one transaction, so concurrent workers
 cannot both acquire the same task.
 
+When a specialist has useful context but another worker should continue, it
+can store the handoff and yield ownership atomically:
+
+```bash
+todo handoff 8 --as security-agent \
+  --set finding="Input normalization must happen before policy evaluation" \
+  --set files=internal/policy.go --receipt
+```
+
+The successor receives the pending task through `acquire` and reads the
+structured fields from the acquired task or `cat` result.
+
 ## Block, hand off, and recover
 
 A worker that needs an external decision can block its task and leave context:

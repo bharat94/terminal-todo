@@ -79,6 +79,10 @@ func mcpResultSummary(toolName string, value interface{}, isError bool) string {
 		if task, ok := value.(protocolTask); ok {
 			summary = fmt.Sprintf("Updated task %d.", task.ID)
 		}
+	case "terminal_todo_handoff":
+		if result, ok := value.(releaseResult); ok {
+			summary = fmt.Sprintf("Handed off task %d with structured context.", result.ID)
+		}
 	case "terminal_todo_log":
 		if result, ok := value.(logResult); ok {
 			summary = fmt.Sprintf("Recorded a note on task %d.", result.ID)

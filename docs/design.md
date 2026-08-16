@@ -116,6 +116,8 @@ state reads, it may persist recovery of an expired lease.
 - `claim` leases a specific ready task.
 - `acquire` selects and leases the next compatible ready task atomically.
 - `heartbeat` renews an active lease owned by the caller.
+- `handoff` atomically persists structured successor context and yields an
+  active owned lease without counting the transition as a failed retry.
 - `release` yields work, optionally recording an error and incrementing the
   attempt count. Callers that need backoff wait before acquiring again.
 - `block` records a blocker and releases ownership so recovery is not tied to
