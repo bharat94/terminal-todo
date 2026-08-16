@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bharat94/terminal-todo/conformance"
+	"github.com/bharat94/terminal-todo/internal/projectclock"
 	"github.com/bharat94/terminal-todo/store"
 )
 
@@ -66,7 +67,7 @@ func catalogIntegrationFiles(todoExecutable string, includeSkills bool) ([]confo
 			}
 			files = append(files, conformance.FixtureFile{Path: filepath.ToSlash(relative), Content: file.content, Mode: 0o600})
 		}
-		return files, nil
+		return addClaudeConformanceEnvironment(files)
 	}
 
 	codexConfig, err := mergeCodexMCPConfig(nil, todoExecutable, true)
@@ -77,10 +78,53 @@ func catalogIntegrationFiles(todoExecutable string, includeSkills bool) ([]confo
 	if err != nil {
 		return nil, err
 	}
-	return []conformance.FixtureFile{
+	return addClaudeConformanceEnvironment([]conformance.FixtureFile{
 		{Path: conformance.CodexProjectConfigFile, Content: codexConfig, Mode: 0o600},
 		{Path: conformance.ClaudeProjectMCPConfigFile, Content: claudeConfig, Mode: 0o600},
-	}, nil
+	})
+}
+
+func addClaudeConformanceEnvironment(files []conformance.FixtureFile) ([]conformance.FixtureFile, error) {
+	for index := range files {
+		if files[index].Path != conformance.ClaudeProjectMCPConfigFile {
+			continue
+		}
+		var config map[string]any
+		if err := json.Unmarshal(files[index].Content, &config); err != nil {
+			return nil, fmt.Errorf("parse Claude conformance MCP config: %w", err)
+		}
+		servers, ok := config["mcpServers"].(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("Claude conformance MCP config has no mcpServers object")
+		}
+		server, ok := servers["terminal-todo"].(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("Claude conformance MCP config has no terminal-todo server")
+		}
+		environment := map[string]any{}
+		if existing := server["env"]; existing != nil {
+			var valid bool
+			environment, valid = existing.(map[string]any)
+			if !valid {
+				return nil, fmt.Errorf("Claude conformance MCP environment is not an object")
+			}
+		}
+		for _, variable := range []string{
+			conformance.ConformanceTraceEnvironment,
+			conformance.ConformanceActorEnvironment,
+			projectclock.EnvironmentVariable,
+		} {
+			environment[variable] = "${" + variable + "}"
+		}
+		server["env"] = environment
+		encoded, err := json.MarshalIndent(config, "", "  ")
+		if err != nil {
+			return nil, fmt.Errorf("encode Claude conformance MCP config: %w", err)
+		}
+		files[index].Content = append(encoded, '\n')
+		return files, nil
+	}
+	return nil, fmt.Errorf("Claude conformance MCP config is missing")
 }
 
 func catalogProjectFiles(

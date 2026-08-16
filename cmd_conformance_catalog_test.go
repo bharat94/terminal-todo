@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bharat94/terminal-todo/conformance"
+	"github.com/bharat94/terminal-todo/internal/projectclock"
 	"github.com/bharat94/terminal-todo/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -45,6 +46,7 @@ func TestMaterializeCatalogFixtureBuildsDeterministicProjectAndIntegrationPolicy
 	var registry AgentRegistry
 	require.NoError(t, json.Unmarshal(files[".terminal-todo/agents.json"].Content, &registry))
 	assert.Equal(t, []string{"go"}, registry.Agents["eval-heartbeat"].Capabilities)
+	assertClaudeConformanceEnvironment(t, files[conformance.ClaudeProjectMCPConfigFile])
 
 	discovery := catalogScenarioByID(t, catalog, "discovery")
 	discoveryRuntime, err := materializeCatalogFixture(discovery, "/opt/todo")
@@ -52,6 +54,22 @@ func TestMaterializeCatalogFixtureBuildsDeterministicProjectAndIntegrationPolicy
 	discoveryFiles := catalogFixtureFiles(discoveryRuntime.Fixture)
 	assert.NotContains(t, discoveryFiles, ".agents/skills/terminal-todo/SKILL.md")
 	assert.NotContains(t, discoveryFiles, ".claude/skills/terminal-todo/SKILL.md")
+	assertClaudeConformanceEnvironment(t, discoveryFiles[conformance.ClaudeProjectMCPConfigFile])
+}
+
+func assertClaudeConformanceEnvironment(t *testing.T, file conformance.FixtureFile) {
+	t.Helper()
+	var config map[string]any
+	require.NoError(t, json.Unmarshal(file.Content, &config))
+	servers, ok := config["mcpServers"].(map[string]any)
+	require.True(t, ok)
+	server, ok := servers["terminal-todo"].(map[string]any)
+	require.True(t, ok)
+	environment, ok := server["env"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "${"+conformance.ConformanceTraceEnvironment+"}", environment[conformance.ConformanceTraceEnvironment])
+	assert.Equal(t, "${"+conformance.ConformanceActorEnvironment+"}", environment[conformance.ConformanceActorEnvironment])
+	assert.Equal(t, "${"+projectclock.EnvironmentVariable+"}", environment[projectclock.EnvironmentVariable])
 }
 
 func TestCatalogSequenceStepsCompileAllHarnessAndActorActions(t *testing.T) {

@@ -47,6 +47,7 @@ func TestNewCodexHostUsesFixedArgvAndPromptStdin(t *testing.T) {
 		"-c", `mcp_servers.terminal-todo.command="/opt/terminal todo/bin/todo"`,
 		"-c", `mcp_servers.terminal-todo.args=["mcp","--stdio"]`,
 		"-c", "mcp_servers.terminal-todo.required=true",
+		"-c", `mcp_servers.terminal-todo.env_vars=["TERMINAL_TODO_CONFORMANCE_TRACE","TERMINAL_TODO_CONFORMANCE_ACTOR","TERMINAL_TODO_CLOCK_FILE"]`,
 	}, host.Run.Args)
 	assert.Less(t, slices.Index(host.Run.Args, "--ask-for-approval"), slices.Index(host.Run.Args, "exec"))
 	assertHostFailureRule(t, host, FailureAuthentication, "not logged in")
@@ -132,6 +133,7 @@ func TestPersistentCodexHostBuildsSafeResumeCommand(t *testing.T) {
 	assert.Contains(t, resume.Args, "thread-123")
 	assert.NotContains(t, resume.Args, resume.Prompt)
 	assert.NotContains(t, resume.Args, "--color")
+	assert.Contains(t, resume.Args, `mcp_servers.terminal-todo.env_vars=["TERMINAL_TODO_CONFORMANCE_TRACE","TERMINAL_TODO_CONFORMANCE_ACTOR","TERMINAL_TODO_CLOCK_FILE"]`)
 	assert.Equal(t, "-", resume.Args[len(resume.Args)-1])
 
 	line := json.RawMessage(`{"type":"thread.started","thread_id":"thread-123"}`)

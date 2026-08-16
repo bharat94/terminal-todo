@@ -124,6 +124,15 @@ This historical smoke result is not a full-catalog certification. Host and
 model releases must be evaluated with the current nine-scenario command before
 claiming a conformance level.
 
+An initial full-catalog Codex calibration on 2026-08-15 exposed an evaluator
+instrumentation defect: the host completed MCP-backed mutations, but its MCP
+child process did not inherit the operation-trace or deterministic-clock
+environment. The emitted `10/100` result is invalid and must not be treated as
+a behavioral score. The harness now forwards those variables explicitly to
+Codex and Claude MCP children and classifies persisted mutations without a
+trace as an infrastructure failure. A fresh calibration is still required
+before making a full-catalog conformance claim.
+
 ## Automation policy
 
 Normal CI validates:

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bharat94/terminal-todo/conformance"
+	"github.com/bharat94/terminal-todo/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -147,6 +148,30 @@ func TestCatalogNormalizerJoinsTraceStoreAndActorAttributedMessages(t *testing.T
 	assert.Contains(t, evidence.Tasks, "task:work")
 	assert.Equal(t, []string{"Alpha acquired the work."}, evidence.AssistantMessages)
 	assert.Equal(t, []conformance.AssistantMessage{{Actor: "eval-alpha", Text: "Alpha acquired the work."}}, evidence.AssistantTurns)
+}
+
+func TestCatalogNormalizerRejectsMissingTraceAfterPersistedMutation(t *testing.T) {
+	catalog, err := conformance.LoadCatalog()
+	require.NoError(t, err)
+	scenario := catalogScenarioByID(t, catalog, "atomic_acquire")
+	runtime, err := materializeCatalogFixture(scenario, "/opt/todo")
+	require.NoError(t, err)
+	workspace := t.TempDir()
+	for _, file := range runtime.Fixture.Files {
+		path := filepath.Join(workspace, filepath.FromSlash(file.Path))
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+		require.NoError(t, os.WriteFile(path, file.Content, file.Mode))
+	}
+	storePath := filepath.Join(workspace, ".terminal-todo", "tasks.bin")
+	taskStore, err := store.Load(storePath)
+	require.NoError(t, err)
+	taskStore.Tasks[1].Status = store.StatusInProgress
+	taskStore.Tasks[1].Owner = "eval-alpha"
+	taskStore.AddEvent(store.EventTaskClaimed, 1, "eval-alpha", nil)
+	require.NoError(t, taskStore.Save(storePath))
+
+	_, err = catalogNormalizer("codex", runtime).NormalizeSequence(context.Background(), workspace, nil)
+	require.ErrorContains(t, err, "operation trace is missing after persisted task mutations")
 }
 
 func conformingCatalogEvidence(scenarioID string, runtime catalogFixtureRuntime) conformance.Evidence {
