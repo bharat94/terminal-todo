@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Search the documentation and existing issues first. Do not include secrets or real `.terminal-todo/` state.
+        Search the [documentation](https://github.com/bharat94/terminal-todo/blob/master/docs/README.md) and existing issues first. Do not include secrets or real `.terminal-todo/` state.
   - type: input
     id: version
     attributes:

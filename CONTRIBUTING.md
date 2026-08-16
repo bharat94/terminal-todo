@@ -53,6 +53,13 @@ goreleaser release --snapshot --clean
 5. For skill changes, keep `integrations/skills/terminal-todo/SKILL.md`
    concise and run the skill and integration tests.
 
+Documentation is part of the user-facing contract. When a command, flag,
+protocol field, supported platform, integration workflow, or operating
+boundary changes, update the relevant page in the
+[documentation index](docs/README.md) in the same pull request. Prefer tested
+examples that readers can copy from a fresh project, and use relative links
+for files inside this repository.
+
 ## Compatibility-sensitive changes
 
 The JSON, JSON-RPC, MCP, stored-state, error-code, and event surfaces are

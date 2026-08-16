@@ -15,6 +15,23 @@ complete native JSON-RPC API over stdio.
 No account. No daemon. No hosted control plane. One small binary and one
 `.terminal-todo/` directory.
 
+## Start here
+
+| I want to… | Start with |
+|---|---|
+| Try terminal-todo in an existing repository | [Quick start](#quick-start) |
+| Install a release on Linux, macOS, or Windows | [Installation guide](docs/installation.md) |
+| Connect Codex or Claude Code | [Agent integrations](docs/integrations.md) |
+| Automate a worker through MCP, JSON, or JSON-RPC | [Agent protocol](docs/agent-protocol.md) |
+| See complete human and multi-agent workflows | [Examples](docs/examples.md) |
+| Evaluate a real agent host | [Real-agent conformance](docs/conformance.md) |
+| Operate a shared store safely | [Compatibility](docs/compatibility.md) and [security](docs/security-and-data.md) |
+| Understand or contribute to the implementation | [System design](docs/design.md) and [contributing](CONTRIBUTING.md) |
+
+The [documentation index](docs/README.md) groups every guide by audience and
+task. Run `todo help` for the command reference built into the installed
+version.
+
 ```text
                   ┌──────────────────────────┐
  human / agent ──▶│ CLI · JSON · MCP · RPC  │
@@ -76,6 +93,8 @@ boundary:
 Download the `v0.1.0-beta.1` archive for your platform from
 [GitHub Releases](https://github.com/bharat94/terminal-todo/releases/tag/v0.1.0-beta.1),
 verify it against `checksums.txt`, and place `todo` on your `PATH`.
+The [installation guide](docs/installation.md) has platform-specific archive,
+checksum, extraction, upgrade, and uninstall instructions.
 
 To build from source, install Go 1.26.1 or newer:
 
@@ -102,6 +121,13 @@ and maintainer procedures.
 Release archives are the canonical binary distribution for the beta. The Go
 module has a public import path, but a supported `go install .../cmd/todo`
 layout is future work.
+
+Confirm the binary you will use:
+
+```bash
+todo --version
+todo help
+```
 
 ### 2. Initialize a project
 
@@ -652,20 +678,14 @@ the [Agent Protocol](docs/agent-protocol.md).
 
 ## Documentation
 
-- [Vision](docs/vision.md) — the distributed multi-agent orchestration goal
-- [Problem statement](docs/problem_statement.md) — why persistent shared state matters
-- [System design](docs/design.md) — storage, allocation, and orchestration model
-- [Agent protocol](docs/agent-protocol.md) — stable JSON and JSON-RPC contract
-- [Concurrency and locking](docs/concurrency-and-locking.md) — safety invariants
-- [Compatibility contract](docs/compatibility.md) — supported platforms, filesystems, schemas, and CI evidence
-- [Security and data lifecycle](docs/security-and-data.md) — trust boundary, permissions, retention, and recovery
-- [Agent integrations](docs/integrations.md) — Codex, Claude Code, skills, and MCP
-- [Real-agent conformance](docs/conformance.md) — opt-in host evaluation and behavioral contract
-- [Releasing](docs/releasing.md) — verified artifacts and maintainer workflow
-- [Production readiness](docs/production-readiness.md) — evidence, release gate, and known boundaries
-- [Dogfooding retrospective](docs/dogfooding-retrospective.md) — observed UX friction and improvement plan
-- [Coordination noise budget](docs/coordination-noise.md) — measurable MCP output contract and host boundary
-- [Examples](docs/examples.md) — human and multi-agent workflows
+The [documentation index](docs/README.md) is the complete map. Common entry
+points are:
+
+- **Get started:** [installation](docs/installation.md), [examples](docs/examples.md), and [agent integrations](docs/integrations.md)
+- **Build integrations:** [agent protocol](docs/agent-protocol.md), [system design](docs/design.md), and [concurrency guarantees](docs/concurrency-and-locking.md)
+- **Operate safely:** [compatibility](docs/compatibility.md), [security and recovery](docs/security-and-data.md), and [production readiness](docs/production-readiness.md)
+- **Evaluate agents:** [real-agent conformance](docs/conformance.md) and [coordination noise budget](docs/coordination-noise.md)
+- **Project direction:** [vision](docs/vision.md), [problem statement](docs/problem_statement.md), and [dogfooding retrospective](docs/dogfooding-retrospective.md)
 
 ## Community
 

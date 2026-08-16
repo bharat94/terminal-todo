@@ -7,9 +7,11 @@ cross-worker isolation are especially welcome.
 
 ## Supported versions
 
-Before the first tagged release, security fixes land on `master`. After
-releases begin, the latest release line and `master` receive fixes. Older
-versions may be asked to upgrade when a safe backport is not practical.
+Security fixes land on `master` and, when a release is affected, in a new
+release on the [latest published line](https://github.com/bharat94/terminal-todo/releases).
+Pre-1.0 builds do not have a guaranteed backport window, so users of an older
+build may be asked to upgrade. A report against `master` should identify the
+affected commit when possible.
 
 ## Report a vulnerability
 

@@ -2,7 +2,7 @@
 
 ## Questions and usage help
 
-Search the [documentation](docs/) and existing
+Search the [documentation](docs/README.md) and existing
 [issues](https://github.com/bharat94/terminal-todo/issues) first. If the answer
 is not there, use the question issue form with:
 
