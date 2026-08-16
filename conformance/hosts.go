@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+
+	"github.com/bharat94/terminal-todo/internal/projectclock"
 )
 
 const (
@@ -70,6 +72,7 @@ func NewCodexHost(options MachineHostOptions) (Host, error) {
 		"-c", "mcp_servers.terminal-todo.command="+strconv.Quote(mcpExecutable),
 		"-c", "mcp_servers.terminal-todo.args=[\"mcp\",\"--stdio\"]",
 		"-c", "mcp_servers.terminal-todo.required=true",
+		"-c", codexMCPEnvironmentOverride(),
 	)
 	host := Host{
 		Name:               "codex",
@@ -116,6 +119,7 @@ func NewCodexHost(options MachineHostOptions) (Host, error) {
 					"-c", "mcp_servers.terminal-todo.command=" + strconv.Quote(mcpExecutable),
 					"-c", "mcp_servers.terminal-todo.args=[\"mcp\",\"--stdio\"]",
 					"-c", "mcp_servers.terminal-todo.required=true",
+					"-c", codexMCPEnvironmentOverride(),
 					sessionID, "-",
 				},
 				Stdin:  ConformancePromptPlaceholder,
@@ -124,6 +128,19 @@ func NewCodexHost(options MachineHostOptions) (Host, error) {
 		}
 	}
 	return host, nil
+}
+
+func codexMCPEnvironmentOverride() string {
+	variables := []string{
+		ConformanceTraceEnvironment,
+		ConformanceActorEnvironment,
+		projectclock.EnvironmentVariable,
+	}
+	quoted := make([]string, len(variables))
+	for index, variable := range variables {
+		quoted[index] = strconv.Quote(variable)
+	}
+	return "mcp_servers.terminal-todo.env_vars=[" + strings.Join(quoted, ",") + "]"
 }
 
 // NewClaudeHost builds a non-interactive Claude Code adapter. It loads only

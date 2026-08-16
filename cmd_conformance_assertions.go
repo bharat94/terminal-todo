@@ -41,6 +41,9 @@ func catalogNormalizer(hostName string, runtime catalogFixtureRuntime) conforman
 		if err != nil {
 			return evidence, fmt.Errorf("load catalog task store: %w", err)
 		}
+		if len(operations) == 0 && len(domainErrors) == 0 && len(taskStore.Events) > len(runtime.TaskIDs) {
+			return evidence, fmt.Errorf("conformance operation trace is missing after persisted task mutations")
+		}
 		refsByID := make(map[string]string, len(runtime.TaskIDs))
 		for ref, id := range runtime.TaskIDs {
 			refsByID[id] = ref
