@@ -23,15 +23,15 @@ func cmdRelease(args []string) {
 	released := make([]*store.Task, 0, len(ids))
 	updateStore(func(s *store.TaskStore) error {
 		for _, id := range ids {
-			task, ok := s.GetTask(id)
-			if !ok {
-				return fmt.Errorf("task %d not found", id)
+			task, err := requireTask(s, id)
+			if err != nil {
+				return err
 			}
-			if task.Status != store.StatusInProgress {
-				return fmt.Errorf("task %d is not in progress", id)
+			if err := requireInProgress(task); err != nil {
+				return err
 			}
-			if task.Owner != "" && task.Owner != owner {
-				return fmt.Errorf("task %d is claimed by %s; use --as %s", id, task.Owner, task.Owner)
+			if err := requireOwner(task, owner); err != nil {
+				return err
 			}
 			task.Status = store.StatusPending
 			task.RetryCount++

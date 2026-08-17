@@ -58,7 +58,61 @@ const (
 	rpcAgentCapacity       = -32011
 	rpcIdempotencyConflict = -32012
 	rpcLeaseNotActive      = -32013
+	rpcInvalidTransition   = -32014
 )
+
+// rpcCodeForErrorCode is the only place that maps a protocol error identifier
+// to its JSON-RPC numeric code. Both values are append-only protocol surface,
+// so they are defined together rather than rediscovered at each call site.
+func rpcCodeForErrorCode(code ErrorCode) int {
+	switch code {
+	case ErrTaskNotFound:
+		return rpcTaskNotFound
+	case ErrNotInitialized:
+		return rpcNotInitialized
+	case ErrCycleDetected:
+		return rpcCycleDetected
+	case ErrAlreadyClaimed:
+		return rpcAlreadyClaimed
+	case ErrNotOwner:
+		return rpcNotOwner
+	case ErrDependency:
+		return rpcDependency
+	case ErrStoreCorrupted:
+		return rpcStoreCorrupted
+	case ErrLockContention:
+		return rpcLockContention
+	case ErrSchemaVersion:
+		return rpcSchemaVersion
+	case ErrNoWork:
+		return rpcNoWork
+	case ErrAgentAtCapacity:
+		return rpcAgentCapacity
+	case ErrIdempotencyConflict:
+		return rpcIdempotencyConflict
+	case ErrLeaseNotActive:
+		return rpcLeaseNotActive
+	case ErrInvalidTransition:
+		return rpcInvalidTransition
+	case ErrInvalidArgs:
+		return rpcInvalidParams
+	default:
+		return rpcStoreCorrupted
+	}
+}
+
+// rpcErrorFromDomain classifies a transaction failure. A recognized domain
+// error becomes its documented code; anything else is a real storage or
+// internal failure and keeps STORE_CORRUPTED.
+func rpcErrorFromDomain(err error) *rpcError {
+	if isPersistedInputFailure(err) {
+		return rpcErrorf(rpcInvalidParams, "%v", err)
+	}
+	if code, ok := classifyCoordinationError(err); ok {
+		return rpcErrorf(rpcCodeForErrorCode(code), "%v", err)
+	}
+	return rpcErrorf(rpcStoreCorrupted, "%v", err)
+}
 
 type server struct {
 	initialized bool
@@ -709,7 +763,7 @@ func (srv *server) handleAdd(params json.RawMessage) (interface{}, *rpcError) {
 			depID, local := dag.ParseLocalID(dep)
 			if local {
 				if _, ok := s.Tasks[depID]; !ok {
-					return fmt.Errorf("dependency task %d not found", depID)
+					return fmt.Errorf("dependency task %d not found: %w", depID, errTaskNotFound)
 				}
 				finalDeps = append(finalDeps, fmt.Sprintf("todo://local/%d", depID))
 			} else {
@@ -735,10 +789,7 @@ func (srv *server) handleAdd(params json.RawMessage) (interface{}, *rpcError) {
 		return nil
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "cycle") {
-			return nil, rpcErrorf(rpcCycleDetected, "%v", err)
-		}
-		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
+		return nil, rpcErrorFromDomain(err)
 	}
 
 	if p.Receipt {
@@ -784,13 +835,13 @@ func (srv *server) handleDone(params json.RawMessage) (interface{}, *rpcError) {
 		for _, id := range p.IDs {
 			task, ok := s.GetTask(id)
 			if !ok {
-				return fmt.Errorf("task %d not found", id)
+				return fmt.Errorf("task %d not found: %w", id, errTaskNotFound)
 			}
 			if !dag.DependenciesCompleteWithResolver(task, s.Tasks, resolver) {
-				return fmt.Errorf("task %d has incomplete dependencies", id)
+				return fmt.Errorf("task %d has incomplete dependencies: %w", id, errDependency)
 			}
 			if task.Owner != "" && task.Owner != p.Actor {
-				return fmt.Errorf("task %d is claimed by %s", id, task.Owner)
+				return fmt.Errorf("task %d is claimed by %s: %w", id, task.Owner, errNotOwner)
 			}
 			task.Status = store.StatusCompleted
 			task.Completed = uint64(projectNow().UnixMilli())
@@ -803,16 +854,7 @@ func (srv *server) handleDone(params json.RawMessage) (interface{}, *rpcError) {
 		return nil
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, rpcErrorf(rpcTaskNotFound, "%v", err)
-		}
-		if strings.Contains(err.Error(), "claimed by") {
-			return nil, rpcErrorf(rpcNotOwner, "%v", err)
-		}
-		if strings.Contains(err.Error(), "incomplete dependencies") {
-			return nil, rpcErrorf(rpcDependency, "%v", err)
-		}
-		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
+		return nil, rpcErrorFromDomain(err)
 	}
 
 	if p.Receipt {
@@ -899,8 +941,8 @@ func (srv *server) handleBootstrap(params json.RawMessage) (interface{}, *rpcErr
 		snapshotDependencyResolver(s.GetAllTasks()),
 	)
 	if buildErr != nil {
-		if strings.Contains(buildErr.Error(), "not found") {
-			return nil, rpcErrorf(rpcTaskNotFound, "%v", buildErr)
+		if code, ok := classifyCoordinationError(buildErr); ok {
+			return nil, rpcErrorf(rpcCodeForErrorCode(code), "%v", buildErr)
 		}
 		return nil, rpcErrorf(rpcInvalidParams, "%v", buildErr)
 	}
@@ -1011,10 +1053,10 @@ func (srv *server) handleUpdate(params json.RawMessage) (interface{}, *rpcError)
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
 		task, ok := s.GetTask(p.ID)
 		if !ok {
-			return fmt.Errorf("task %d not found", p.ID)
+			return fmt.Errorf("task %d not found: %w", p.ID, errTaskNotFound)
 		}
 		if task.Owner != "" && task.Owner != p.Actor {
-			return fmt.Errorf("task %d is claimed by %s", task.ID, task.Owner)
+			return fmt.Errorf("task %d is claimed by %s: %w", task.ID, task.Owner, errNotOwner)
 		}
 
 		if len(p.AddDeps) > 0 || len(p.RemoveDeps) > 0 {
@@ -1024,7 +1066,7 @@ func (srv *server) handleUpdate(params json.RawMessage) (interface{}, *rpcError)
 			}
 			for _, dep := range p.RemoveDeps {
 				if !depSet[dep] {
-					return fmt.Errorf("dependency %q not found on task %d", dep, task.ID)
+					return fmt.Errorf("dependency %q not found on task %d: %w", dep, task.ID, errTaskNotFound)
 				}
 				delete(depSet, dep)
 			}
@@ -1035,7 +1077,7 @@ func (srv *server) handleUpdate(params json.RawMessage) (interface{}, *rpcError)
 				depID, local := dag.ParseLocalID(dep)
 				if local {
 					if _, ok := s.Tasks[depID]; !ok {
-						return fmt.Errorf("dependency task %d not found", depID)
+						return fmt.Errorf("dependency task %d not found: %w", depID, errTaskNotFound)
 					}
 				} else {
 					if _, _, err := dag.ParseTaskURI(dep); err != nil {
@@ -1060,7 +1102,7 @@ func (srv *server) handleUpdate(params json.RawMessage) (interface{}, *rpcError)
 			task.Depends = oldDeps
 
 			if err := d.DetectCycle(nil, task.ID); err != nil {
-				return fmt.Errorf("cannot update dependencies: %w", err)
+				return fmt.Errorf("cannot update dependencies: %v: %w", err, errCycleDetected)
 			}
 
 			oldSet := make(map[string]bool)
@@ -1084,13 +1126,13 @@ func (srv *server) handleUpdate(params json.RawMessage) (interface{}, *rpcError)
 		if p.Title != nil {
 			title := strings.TrimSpace(*p.Title)
 			if title == "" {
-				return fmt.Errorf("title cannot be empty")
+				return lifecycleError(ErrInvalidArgs, "title cannot be empty")
 			}
 			task.Title = title
 		}
 		if p.Priority != nil {
 			if !validPriority32(*p.Priority) {
-				return fmt.Errorf("priority must be between 0 and 1")
+				return lifecycleError(ErrInvalidArgs, "priority must be between 0 and 1")
 			}
 			task.Priority = *p.Priority
 		}
@@ -1114,19 +1156,7 @@ func (srv *server) handleUpdate(params json.RawMessage) (interface{}, *rpcError)
 		return nil
 	})
 	if err != nil {
-		if isPersistedInputFailure(err) {
-			return nil, rpcErrorf(rpcInvalidParams, "%v", err)
-		}
-		if strings.Contains(err.Error(), "not found") {
-			return nil, rpcErrorf(rpcTaskNotFound, "%v", err)
-		}
-		if strings.Contains(err.Error(), "claimed by") {
-			return nil, rpcErrorf(rpcNotOwner, "%v", err)
-		}
-		if strings.Contains(err.Error(), "cycle") {
-			return nil, rpcErrorf(rpcCycleDetected, "%v", err)
-		}
-		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
+		return nil, rpcErrorFromDomain(err)
 	}
 
 	if p.Receipt {
@@ -1182,20 +1212,20 @@ func (srv *server) handleClaim(params json.RawMessage) (interface{}, *rpcError) 
 	_, err = updateStoreSafe(func(s *store.TaskStore) error {
 		task, ok := s.GetTask(p.ID)
 		if !ok {
-			return fmt.Errorf("task %d not found", p.ID)
+			return fmt.Errorf("task %d not found: %w", p.ID, errTaskNotFound)
 		}
 		if task.Status == store.StatusCompleted {
-			return fmt.Errorf("task %d is already completed", p.ID)
+			return fmt.Errorf("task %d is already completed: %w", p.ID, errInvalidTransition)
 		}
 		if task.Status == store.StatusBlocked {
-			return fmt.Errorf("task %d is blocked", p.ID)
+			return fmt.Errorf("task %d is blocked: %w", p.ID, errDependency)
 		}
 		if !dag.DependenciesCompleteWithResolver(task, s.Tasks, resolver) {
-			return fmt.Errorf("task %d has incomplete dependencies", p.ID)
+			return fmt.Errorf("task %d has incomplete dependencies: %w", p.ID, errDependency)
 		}
 		now := uint64(projectNow().UnixMilli())
 		if task.Owner != "" && task.Owner != p.Actor && task.LeaseExpires > now {
-			return fmt.Errorf("task %d already claimed by %s", p.ID, task.Owner)
+			return fmt.Errorf("task %d already claimed by %s: %w", p.ID, task.Owner, errAlreadyClaimed)
 		}
 
 		task.Owner = p.Actor
@@ -1214,19 +1244,7 @@ func (srv *server) handleClaim(params json.RawMessage) (interface{}, *rpcError) 
 		return nil
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, rpcErrorf(rpcTaskNotFound, "%v", err)
-		}
-		if strings.Contains(err.Error(), "already claimed") {
-			return nil, rpcErrorf(rpcAlreadyClaimed, "%v", err)
-		}
-		if strings.Contains(err.Error(), "incomplete dependencies") {
-			return nil, rpcErrorf(rpcDependency, "%v", err)
-		}
-		if strings.Contains(err.Error(), "blocked") && !strings.Contains(err.Error(), "unblock") {
-			return nil, rpcErrorf(rpcDependency, "%v", err)
-		}
-		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
+		return nil, rpcErrorFromDomain(err)
 	}
 
 	if p.Receipt {
@@ -1412,13 +1430,13 @@ func (srv *server) handleRelease(params json.RawMessage) (interface{}, *rpcError
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
 		task, ok := s.GetTask(p.ID)
 		if !ok {
-			return fmt.Errorf("task %d not found", p.ID)
+			return fmt.Errorf("task %d not found: %w", p.ID, errTaskNotFound)
 		}
 		if task.Status != store.StatusInProgress {
-			return fmt.Errorf("task %d is not in progress", p.ID)
+			return fmt.Errorf("task %d is not in progress: %w", p.ID, errLeaseNotActive)
 		}
 		if task.Owner != "" && task.Owner != p.Actor {
-			return fmt.Errorf("task %d is claimed by %s", p.ID, task.Owner)
+			return fmt.Errorf("task %d is claimed by %s: %w", p.ID, task.Owner, errNotOwner)
 		}
 
 		task.RetryCount++
@@ -1438,13 +1456,7 @@ func (srv *server) handleRelease(params json.RawMessage) (interface{}, *rpcError
 		return nil
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, rpcErrorf(rpcTaskNotFound, "%v", err)
-		}
-		if strings.Contains(err.Error(), "claimed by") {
-			return nil, rpcErrorf(rpcNotOwner, "%v", err)
-		}
-		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
+		return nil, rpcErrorFromDomain(err)
 	}
 
 	if p.Receipt {
@@ -1524,13 +1536,13 @@ func (srv *server) handleBlock(params json.RawMessage) (interface{}, *rpcError) 
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
 		task, ok := s.GetTask(p.ID)
 		if !ok {
-			return fmt.Errorf("task %d not found", p.ID)
+			return fmt.Errorf("task %d not found: %w", p.ID, errTaskNotFound)
 		}
 		if task.Status == store.StatusCompleted {
-			return fmt.Errorf("task %d is already completed", p.ID)
+			return fmt.Errorf("task %d is already completed: %w", p.ID, errInvalidTransition)
 		}
 		if task.Owner != "" && task.Owner != p.Actor {
-			return fmt.Errorf("task %d is claimed by %s", p.ID, task.Owner)
+			return fmt.Errorf("task %d is claimed by %s: %w", p.ID, task.Owner, errNotOwner)
 		}
 
 		task.Status = store.StatusBlocked
@@ -1543,13 +1555,7 @@ func (srv *server) handleBlock(params json.RawMessage) (interface{}, *rpcError) 
 		return nil
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, rpcErrorf(rpcTaskNotFound, "%v", err)
-		}
-		if strings.Contains(err.Error(), "claimed by") {
-			return nil, rpcErrorf(rpcNotOwner, "%v", err)
-		}
-		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
+		return nil, rpcErrorFromDomain(err)
 	}
 
 	if p.Receipt {
@@ -1578,10 +1584,10 @@ func (srv *server) handleUnblock(params json.RawMessage) (interface{}, *rpcError
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
 		task, ok := s.GetTask(p.ID)
 		if !ok {
-			return fmt.Errorf("task %d not found", p.ID)
+			return fmt.Errorf("task %d not found: %w", p.ID, errTaskNotFound)
 		}
 		if task.Status != store.StatusBlocked {
-			return fmt.Errorf("task %d is not blocked", p.ID)
+			return fmt.Errorf("task %d is not blocked: %w", p.ID, errInvalidTransition)
 		}
 		task.Status = store.StatusPending
 		task.BlockReason = ""
@@ -1595,13 +1601,7 @@ func (srv *server) handleUnblock(params json.RawMessage) (interface{}, *rpcError
 		return nil
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, rpcErrorf(rpcTaskNotFound, "%v", err)
-		}
-		if strings.Contains(err.Error(), "claimed by") {
-			return nil, rpcErrorf(rpcNotOwner, "%v", err)
-		}
-		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
+		return nil, rpcErrorFromDomain(err)
 	}
 
 	if p.Receipt {
@@ -1674,23 +1674,17 @@ func (srv *server) handleLog(params json.RawMessage) (interface{}, *rpcError) {
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
 		task, ok := s.GetTask(p.ID)
 		if !ok {
-			return fmt.Errorf("task %d not found", p.ID)
+			return fmt.Errorf("task %d not found: %w", p.ID, errTaskNotFound)
 		}
 		if task.Owner != "" && task.Owner != p.Actor {
-			return fmt.Errorf("task %d is claimed by %s", p.ID, task.Owner)
+			return fmt.Errorf("task %d is claimed by %s: %w", p.ID, task.Owner, errNotOwner)
 		}
 		s.AddLog(p.ID, p.Actor, p.Message)
 		logged = task
 		return nil
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, rpcErrorf(rpcTaskNotFound, "%v", err)
-		}
-		if strings.Contains(err.Error(), "claimed by") {
-			return nil, rpcErrorf(rpcNotOwner, "%v", err)
-		}
-		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
+		return nil, rpcErrorFromDomain(err)
 	}
 
 	if p.Receipt {
@@ -1903,13 +1897,13 @@ func (srv *server) handleDecompose(params json.RawMessage) (interface{}, *rpcErr
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
 		parentTask, ok := s.GetTask(p.ID)
 		if !ok {
-			return fmt.Errorf("parent task %d not found", p.ID)
+			return fmt.Errorf("parent task %d not found: %w", p.ID, errTaskNotFound)
 		}
 		if parentTask.Status == store.StatusCompleted {
-			return fmt.Errorf("parent task %d is already completed", p.ID)
+			return fmt.Errorf("parent task %d is already completed: %w", p.ID, errInvalidTransition)
 		}
 		if parentTask.Owner != "" && parentTask.Owner != p.Actor {
-			return fmt.Errorf("task %d is claimed by %s", p.ID, parentTask.Owner)
+			return fmt.Errorf("task %d is claimed by %s: %w", p.ID, parentTask.Owner, errNotOwner)
 		}
 		if err := validateProjectedCardinality("dependencies", len(parentTask.Depends), len(parentTask.Depends)+len(p.Subtasks), maxTaskDependencies); err != nil {
 			return persistedInputFailure(err)
@@ -1927,7 +1921,7 @@ func (srv *server) handleDecompose(params json.RawMessage) (interface{}, *rpcErr
 		d := dag.NewDAG()
 		d.BuildFromTasks(s.Tasks)
 		if err := d.DetectCycle(parentTask.Depends, parentTask.ID); err != nil {
-			return fmt.Errorf("decompose would create a cycle: %w", err)
+			return fmt.Errorf("decompose would create a cycle: %v: %w", err, errCycleDetected)
 		}
 
 		parentTask.Status = store.StatusPending
@@ -1944,19 +1938,7 @@ func (srv *server) handleDecompose(params json.RawMessage) (interface{}, *rpcErr
 		return nil
 	})
 	if err != nil {
-		if isPersistedInputFailure(err) {
-			return nil, rpcErrorf(rpcInvalidParams, "%v", err)
-		}
-		if strings.Contains(err.Error(), "not found") {
-			return nil, rpcErrorf(rpcTaskNotFound, "%v", err)
-		}
-		if strings.Contains(err.Error(), "claimed by") {
-			return nil, rpcErrorf(rpcNotOwner, "%v", err)
-		}
-		if strings.Contains(err.Error(), "cycle") {
-			return nil, rpcErrorf(rpcCycleDetected, "%v", err)
-		}
-		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
+		return nil, rpcErrorFromDomain(err)
 	}
 
 	if p.Receipt {

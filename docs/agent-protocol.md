@@ -614,7 +614,8 @@ they have structured context to report.
 | `NO_WORK` | No compatible ready task is currently available | 6 |
 | `AGENT_AT_CAPACITY` | Agent has reached its registered `max_load` | 7 |
 | `IDEMPOTENCY_CONFLICT` | Request ID was already used with different acquire parameters | 8 |
-| `LEASE_NOT_ACTIVE` | Task has no active lease to renew | 9 |
+| `LEASE_NOT_ACTIVE` | Task has no active lease to renew, yield, or hand off | 9 |
+| `INVALID_TRANSITION` | Task's current status does not permit the requested lifecycle change | 1 |
 
 ---
 
@@ -889,6 +890,7 @@ processed but no response is written. Stdio requests may be up to 4 MiB.
 | `AGENT_AT_CAPACITY` | -32011 |
 | `IDEMPOTENCY_CONFLICT` | -32012 |
 | `LEASE_NOT_ACTIVE` | -32013 |
+| `INVALID_TRANSITION` | -32014 |
 
 Error identifiers and numeric codes are append-only protocol values. `NO_WORK`
 is a normal, retryable scheduler outcome. Its structured allocation diagnostic

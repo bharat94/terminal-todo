@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 
-	"github.com/bharat94/terminal-todo/dag"
 	"github.com/bharat94/terminal-todo/store"
 )
 
@@ -28,15 +27,15 @@ func cmdDone(args []string) {
 	completed := make([]*store.Task, 0, len(ids))
 	updateStore(func(s *store.TaskStore) error {
 		for _, id := range ids {
-			task, ok := s.GetTask(id)
-			if !ok {
-				return fmt.Errorf("task %d not found", id)
+			task, err := requireTask(s, id)
+			if err != nil {
+				return err
 			}
-			if !dag.DependenciesCompleteWithResolver(task, s.Tasks, resolver) {
-				return fmt.Errorf("task %d has incomplete dependencies", id)
+			if err := requireDependenciesComplete(task, s.Tasks, resolver); err != nil {
+				return err
 			}
-			if task.Owner != "" && task.Owner != owner {
-				return fmt.Errorf("task %d is claimed by %s; use --as %s", id, task.Owner, task.Owner)
+			if err := requireOwner(task, owner); err != nil {
+				return err
 			}
 			task.Status = store.StatusCompleted
 			task.Completed = uint64(projectNow().UnixMilli())

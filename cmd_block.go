@@ -29,7 +29,7 @@ func cmdBlock(args []string) {
 			return lifecycleError(ErrTaskNotFound, "task %d not found", ids[0])
 		}
 		if task.Status == store.StatusCompleted {
-			return lifecycleError(ErrInvalidArgs, "task %d is already completed", ids[0])
+			return lifecycleError(ErrInvalidTransition, "task %d is already completed", ids[0])
 		}
 		if task.Owner != "" && task.Owner != owner {
 			return lifecycleError(ErrNotOwner, "task %d is claimed by %s; use --as %s", ids[0], task.Owner, task.Owner)

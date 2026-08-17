@@ -75,7 +75,7 @@ func cmdAdd(args []string) {
 			depID, local := dag.ParseLocalID(dep)
 			if local {
 				if _, ok := s.Tasks[depID]; !ok {
-					return fmt.Errorf("dependency task %d not found", depID)
+					return fmt.Errorf("dependency task %d not found: %w", depID, errTaskNotFound)
 				}
 				finalDeps = append(finalDeps, fmt.Sprintf("todo://local/%d", depID))
 			} else {
@@ -86,7 +86,7 @@ func cmdAdd(args []string) {
 			}
 		}
 		if err := d.DetectCycle(finalDeps, s.NextID); err != nil {
-			return err
+			return fmt.Errorf("%v: %w", err, errCycleDetected)
 		}
 		task := s.AddTask(title, finalDeps)
 		task.Priority = float32(priority)

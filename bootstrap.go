@@ -236,7 +236,7 @@ func selectBootstrapObjective(s *store.TaskStore, explicitID uint64) (*store.Tas
 	if explicitID > 0 {
 		task, ok := s.GetTask(explicitID)
 		if !ok {
-			return nil, "", fmt.Errorf("objective task %d not found", explicitID)
+			return nil, "", fmt.Errorf("objective task %d not found: %w", explicitID, errTaskNotFound)
 		}
 		return task, "explicit", nil
 	}
