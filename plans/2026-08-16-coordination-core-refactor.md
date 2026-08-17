@@ -1,6 +1,6 @@
 # Coordination core refactor
 
-- Status: in progress — Phases 0 and 1 complete
+- Status: in progress — Phases 0-3 and 5 complete; Phase 4 partially complete
 - Opened: 2026-08-16
 - Last updated: 2026-08-16
 - Baseline commit: `bd88b9f`
@@ -253,6 +253,8 @@ pending tasks whose prerequisites the completion released.
 
 ### Phase 2 — Declarative CLI surface
 
+**Status: complete.** Landed in `bd90934` and `66750ba`.
+
 Replace the five parallel flag tables, the 130-line dispatch switch, and the
 200-line hand-maintained usage string with one command registry: name, aliases,
 positional arity, flag specs with arity and type, handler, and help text.
@@ -269,7 +271,23 @@ Exit criteria: adding a flag requires editing exactly one place; `todo help` is
 generated; root package coverage above 70%; root package test wall time under
 20s.
 
+Outcome: the registry is the only flag table, `todo help` is generated, and
+`todo help <command>` is new. `todo.go` fell from 448 to 209 lines.
+
+Two exit criteria were missed and the reason matters. `fail` was made to exit
+through a replaceable hook rather than rewriting forty handlers to return
+errors; that made commands runnable in process, which is what coverage needed,
+without a diff nobody could review. Coverage reached 63.0%, not 70%, because
+the conformance command and several read paths are still only exercised
+end to end. Wall time did not fall either: the new in-process suite runs in
+about a second, but the existing subprocess tests were left in place rather
+than deleted wholesale, since they are the only thing covering real process
+exit codes and cross-process locking. Converting them selectively is worth
+doing and is not worth risking here.
+
 ### Phase 3 — Package layout and distribution
+
+**Status: complete.** Landed in `00210d8`, `7b50922`, and `1b6f31e`.
 
 Move to a conventional layout: `cmd/todo/main.go` plus internal packages
 (`coord`, `cli`, `protocol`, `mcp`, `rpc`). Keep `store`, `dag`, `lock`,
@@ -289,7 +307,48 @@ Exit criteria: `go install …/cmd/todo@latest` works from a clean module cache;
 goreleaser produces byte-identical target sets; installation docs cover
 `go install`, script, Homebrew, and manual archive.
 
+Outcome: the plan's premise was wrong and checking it first was worth the
+five minutes. `go install github.com/bharat94/terminal-todo@v0.1.0-beta.1`
+already worked against the published tag. The real defects were narrower:
+the binary installed as `terminal-todo` rather than `todo`, because Go names
+it after the last element of the import path, and `--version` reported `dev`
+because `go install` cannot pass linker flags. `cmd/todo` fixes the name, the
+module root keeps a binary so nobody already installing that path is broken,
+and version resolution falls back to the module version recorded in the
+binary.
+
+The move exposed a packaging bug that had nothing to do with Go: `.gitignore`
+listed the built binary as a bare `todo`, which also matched the new
+`cmd/todo` directory, so the entry point was never committed. It built
+locally and failed on a clean checkout — the worst shape this class of bug
+takes. CI caught it on Windows. Patterns are now anchored and a test rejects
+an unanchored pattern that would swallow a source directory.
+
+The install script is verified end to end against the published release. Its
+first draft guessed the archive naming wrong. The Homebrew cask is generated
+but not uploaded, so a tap that does not exist yet cannot fail a release.
+
 ### Phase 4 — Close the open conformance thread
+
+**Status: partially complete.** The evidence gap is closed; the paid
+calibration remains a budget decision for the maintainer.
+
+Much of the contract reconciliation turned out to be already done. The v2
+catalog, added in `bd88b9f` before this plan opened, accepts `heartbeat` then
+either `update` or `log`, and asserts that the handoff finding survives in any
+structured field rather than under one prescribed key. The CLI already
+defaults to v2. Re-deriving that before changing anything avoided rewriting a
+contract that had already been fixed.
+
+What remained was the evidence gap, and that is now closed: a failing
+assertion reports what it observed, not only what it wanted. A failing
+operation-trace assertion quotes the observed call sequence, and a failing
+structured-context assertion names the metadata keys the host actually chose.
+Both are bounded, because reports are retained and compared.
+
+Task 37 stays blocked, correctly. It asks for approval to spend up to $5 on
+one twelve-turn Codex suite. That is the maintainer's call, and it is now
+worth making: the contract is reconciled and a failure would be diagnosable.
 
 The project's own graph carries two unfinished items, both stalled on a
 decision rather than on code:
@@ -329,6 +388,28 @@ assertion reports the observed argument shape; task 32 completes and task 37
 carries an explicit approve-or-decline decision.
 
 ### Phase 5 — Coverage and hardening
+
+**Status: complete.** Landed in `a3e7e5c` and the commit before it.
+
+Fuzzing paid for itself immediately. `ParseTaskURI` accepts `todo://local/01`
+as task 1, but dependencies are compared as strings, so `1`,
+`todo://local/1`, and `todo://local/01` were three edges pointing at one task.
+They inflated the count against the dependency limit, and removing one left
+the others — a task stayed blocked by an alias of the edge the user believed
+they had deleted. References are now canonicalized before they are stored or
+compared.
+
+Clearing the first lint run found four dead functions from the superseded
+lifecycle-smoke path, three unused helpers, and response writes on both
+servers that discarded their encode errors, so a half-delivered frame to a
+broken pipe was invisible.
+
+Eight fault-injection tests cover the durability claims that matter to a
+fleet: an interrupted write leaves the committed store intact, a truncated or
+corrupted store is never read as an empty graph, a missing or stale lock
+sidecar neither loses state nor wedges writers, a failed mutation commits
+nothing, and a committed write leaves no temporary files behind. That is the
+filesystem fault evidence `docs/production-readiness.md` lists as a 1.0 gate.
 
 - Coverage reporting in CI with a floor that ratchets, starting at the level
   Phase 2 achieves.
