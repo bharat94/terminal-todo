@@ -38,15 +38,45 @@ func tasksBinPath() string {
 	return filepath.Join(projectRoot, ".terminal-todo", "tasks.bin")
 }
 
+// activeCommand is the command resolved for this invocation. Argument scanning
+// consults it to tell a flag's value apart from a positional argument, which is
+// what lets those helpers stay correct without a second copy of the flag table.
+var activeCommand *command
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
 	}
 
+	name := os.Args[1]
+	args := os.Args[2:]
+
+	switch name {
+	case "--version", "-v":
+		fmt.Printf("todo v%s\n", version)
+		return
+	case "help", "--help", "-h":
+		if len(args) > 0 {
+			if cmd, ok := lookupCommand(args[0]); ok {
+				fmt.Print(renderCommandHelp(cmd))
+				return
+			}
+			fail(ErrInvalidArgs, "unknown command: %s", args[0])
+		}
+		printUsage()
+		return
+	}
+
+	cmd, known := lookupCommand(name)
+	if !known {
+		fail(ErrInvalidArgs, "unknown command: %s", name)
+	}
+	activeCommand = cmd
+
 	root, err := findProjectRoot()
 	if err != nil {
-		if commandAllowsUninitializedProject(os.Args[1]) {
+		if cmd.AllowsUninitializedProject {
 			projectRoot, _ = os.Getwd()
 		} else {
 			fail(ErrNotInitialized, "%s", err)
@@ -55,184 +85,14 @@ func main() {
 		projectRoot = root
 	}
 
-	command := os.Args[1]
-	args := os.Args[2:]
-	if err := validateCommandArgs(command, args); err != nil {
+	if err := cmd.validateArgs(args); err != nil {
 		fail(ErrInvalidArgs, "%v", err)
 	}
-
-	switch command {
-	case "init":
-		cmdInit(args)
-	case "add":
-		cmdAdd(args)
-	case "done":
-		cmdDone(args)
-	case "status":
-		cmdStatus(args)
-	case "cat":
-		cmdCat(args)
-	case "rm":
-		cmdRm(args)
-	case "depends":
-		cmdDepends(args)
-	case "dependents":
-		cmdDependents(args)
-	case "next":
-		cmdNext(args)
-	case "export":
-		cmdExport(args)
-	case "prune":
-		cmdPrune(args)
-	case "compact":
-		cmdCompact(args)
-	case "claim":
-		cmdClaim(args)
-	case "acquire":
-		cmdAcquire(args)
-	case "heartbeat":
-		cmdHeartbeat(args)
-	case "handoff":
-		cmdHandoff(args)
-	case "release":
-		cmdRelease(args)
-	case "decompose":
-		cmdDecompose(args)
-	case "lineage":
-		cmdLineage(args)
-	case "update":
-		cmdUpdate(args)
-	case "block":
-		cmdBlock(args)
-	case "unblock":
-		cmdUnblock(args)
-	case "log":
-		cmdLog(args)
-	case "what-if", "whatif":
-		cmdWhatIf(args)
-	case "events":
-		cmdEvents(args)
-	case "watch":
-		cmdWatch(args)
-	case "my":
-		cmdMy(args)
-	case "bootstrap":
-		cmdBootstrap(args)
-	case "agent-card":
-		cmdAgentCard(args)
-	case "caps":
-		cmdCaps(args)
-	case "graph":
-		cmdGraph(args)
-	case "search":
-		cmdSearch(args)
-	case "serve":
-		cmdServe(args)
-	case "mcp":
-		cmdMCP(args)
-	case "integrate":
-		cmdIntegrate(args)
-	case "backup":
-		cmdBackup(args)
-	case "restore":
-		cmdRestore(args)
-	case "doctor":
-		cmdDoctor(args)
-	case "conformance":
-		cmdConformance(args)
-	case "config":
-		cmdConfig(args)
-	case "link":
-		cmdLink(args)
-	case "unlink":
-		cmdUnlink(args)
-	case "--version", "-v":
-		fmt.Printf("todo v%s\n", version)
-	case "help", "--help", "-h":
-		printUsage()
-	default:
-		fail(ErrInvalidArgs, "unknown command: %s", command)
-	}
-}
-
-func commandAllowsUninitializedProject(command string) bool {
-	switch command {
-	case "init", "serve", "mcp", "integrate", "conformance", "--version", "-v", "help", "--help", "-h":
-		return true
-	default:
-		return false
-	}
+	cmd.Run(args)
 }
 
 func printUsage() {
-	fmt.Printf("todo v%s - Distributed Multi-Agent Task Orchestration\n\n", version)
-	fmt.Print(`Usage: todo <command> [options]
-
-Task Management:
-  init                Initialize .terminal-todo/ in current directory
-  add "<title>"       Add a new task (--priority, --caps, --tag, --after)
-  done <id>           Mark complete (--as owner for claimed tasks)
-  status              Show all tasks (--json, --all, --as, --tag)
-  cat <id>            Show task details
-  rm <id>             Remove a task (--json, --receipt)
-  update <id>         Update metadata (--set, --title, --priority, --caps)
-  log <id>            Append to task audit trail (--msg, --as, --json, --receipt)
-  next                Show tasks ready to work (--json, --capabilities)
-  search <query>      Search tasks by title or tag
-
-Agent Operations:
-  claim <id> --as <n>  Secure an exclusive execution lease (--ttl)
-  acquire --as <n> --request-id <id>
-                       Atomically select and claim ready work (--wait)
-  heartbeat <id> --as <n>
-                       Renew an active owned lease (--ttl)
-  handoff <id> --as <n> Persist structured context and yield atomically (--set)
-  release <id> --as <n> Yield an owned lease back to the pool (--error)
-  my --as <owner>      Show tasks claimed by you
-  bootstrap --as <n>   Get a bounded worker session brief (--json, --objective)
-  agent-card [--as <n>] Register or query agent identity (--caps, --desc, --max-load)
-  caps [--all]          Show capability demand across all tasks
-  block <id>           Mark a task as blocked (--reason, --as, --json, --receipt)
-  unblock <id>         Unblock a task (--as, --json, --receipt)
-
-DAG & Dependency:
-  depends <id>        Show what this task depends on
-  dependents <id>     Show tasks that depend on this
-  decompose <id>      Split a task into sub-tasks (--into, --as, --json, --receipt)
-  lineage <id>        Show recursive decomposition tree (--json)
-  what-if <id>        Simulate completing/blocking a task
-  graph [--dot]       Visualize the DAG topology (DOT/JSON/text)
-
-Reactivity:
-  watch [<id>]        Live-refresh task dashboard (--poll)
-  events [<since>]    Show the event log (bounded with --limit, --json)
-
-Integrations:
-  mcp --stdio         Start the Model Context Protocol server
-  serve --stdio       Start the native JSON-RPC server
-  integrate [target]  Install Codex/Claude project integration (--check, --live)
-  conformance         Probe real-agent hosts; --run performs the opt-in nine-scenario suite
-
-Project:
-  config [key=value]  View or set project configuration
-  export              Export tasks (--markdown)
-  prune               Remove all completed tasks (--json, --receipt)
-  backup [--output]   Snapshot the task store
-  restore <path>      Restore tasks from a backup
-  compact             Apply explicit audit/receipt retention policy (--json)
-  doctor [--fix]      Diagnose project health and repair issues
-  link <alias> <path> Register a linked repository
-  unlink <alias>      Remove a linked repository alias
-  help                Show this help
-
-Examples:
-  todo add "Implement auth"
-  todo add "Fix bug" --after 1
-  todo claim 1 --as agent-alpha
-  todo decompose 1 --into '{"subtasks":[{"title":"Sub1"}]}'
-  todo done 1
-  todo status --json
-`)
+	fmt.Print(renderUsage())
 }
 
 func loadStore() *store.TaskStore {
@@ -263,21 +123,26 @@ func updateStore(mutate func(*store.TaskStore) error) *store.TaskStore {
 	return s
 }
 
+// parseIDs extracts positional task IDs, skipping the values that belong to
+// flags. The skip set comes from the running command's own declaration, so a
+// newly added value flag cannot be mistaken for a task ID.
 func parseIDs(args []string) []uint64 {
+	return parseIDsWithValueFlags(args, activeCommandValueFlags())
+}
+
+func activeCommandValueFlags() map[string]bool {
+	if activeCommand == nil {
+		return map[string]bool{}
+	}
+	return activeCommand.valueFlags()
+}
+
+func parseIDsWithValueFlags(args []string, valueFlags map[string]bool) []uint64 {
 	var ids []uint64
 	seen := make(map[uint64]struct{})
-	valueOptions := map[string]bool{
-		"--after": true, "--as": true, "--ttl": true,
-		"--capabilities": true, "--caps": true, "--priority": true,
-		"--into": true, "--title": true, "--set": true,
-		"--reason": true, "--msg": true, "--tag": true,
-		"--add-dep": true, "--remove-dep": true,
-		"--error": true, "--poll": true, "--output": true,
-		"--wait": true,
-	}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if valueOptions[arg] {
+		if valueFlags[arg] {
 			i++
 			continue
 		}
@@ -293,110 +158,6 @@ func parseIDs(args []string) []uint64 {
 		}
 	}
 	return ids
-}
-
-func validateCommandArgs(command string, args []string) error {
-	valueFlags := map[string]map[string]bool{
-		"add":         {"--after": true, "--priority": true, "--caps": true, "--tag": true},
-		"backup":      {"--output": true},
-		"block":       {"--reason": true, "--as": true},
-		"claim":       {"--as": true, "--ttl": true},
-		"acquire":     {"--as": true, "--request-id": true, "--ttl": true, "--capabilities": true, "--wait": true},
-		"heartbeat":   {"--as": true, "--ttl": true},
-		"handoff":     {"--as": true, "--set": true},
-		"decompose":   {"--into": true, "--as": true},
-		"done":        {"--as": true},
-		"log":         {"--msg": true, "--as": true},
-		"next":        {"--capabilities": true},
-		"release":     {"--as": true, "--error": true},
-		"unblock":     {"--as": true},
-		"update":      {"--title": true, "--priority": true, "--caps": true, "--set": true, "--as": true, "--add-dep": true, "--remove-dep": true},
-		"status":      {"--tag": true, "--as": true},
-		"watch":       {"--poll": true},
-		"my":          {"--as": true},
-		"bootstrap":   {"--as": true, "--capabilities": true, "--objective": true, "--limit": true, "--events": true},
-		"agent-card":  {"--as": true, "--caps": true, "--desc": true, "--max-load": true},
-		"caps":        {"--as": true},
-		"integrate":   {"--command": true},
-		"conformance": {"--host": true, "--timeout": true, "--model": true, "--suite": true},
-		"compact":     {"--keep-events": true, "--receipts-before": true},
-		"events":      {"--limit": true},
-	}
-	booleanFlags := map[string]map[string]bool{
-		"add":         {"--json": true, "--receipt": true},
-		"claim":       {"--json": true, "--receipt": true},
-		"acquire":     {"--json": true, "--receipt": true},
-		"heartbeat":   {"--json": true, "--receipt": true},
-		"handoff":     {"--json": true, "--receipt": true},
-		"done":        {"--json": true, "--receipt": true},
-		"release":     {"--json": true, "--receipt": true},
-		"block":       {"--json": true, "--receipt": true},
-		"unblock":     {"--json": true, "--receipt": true},
-		"log":         {"--json": true, "--receipt": true},
-		"decompose":   {"--json": true, "--receipt": true},
-		"rm":          {"--json": true, "--receipt": true},
-		"prune":       {"--json": true, "--receipt": true},
-		"cat":         {"--json": true},
-		"status":      {"--json": true, "--all": true},
-		"next":        {"--json": true, "--ready": true},
-		"lineage":     {"--json": true},
-		"update":      {"--json": true, "--receipt": true},
-		"export":      {"--markdown": true},
-		"graph":       {"--dot": true, "--json": true},
-		"events":      {"--json": true},
-		"doctor":      {"--fix": true},
-		"what-if":     {"--done": true, "--claim": true, "--block": true, "--json": true},
-		"whatif":      {"--done": true, "--claim": true, "--block": true, "--json": true},
-		"depends":     {"--json": true},
-		"dependents":  {"--json": true},
-		"search":      {"--json": true},
-		"my":          {"--json": true},
-		"bootstrap":   {"--json": true},
-		"agent-card":  {"--json": true},
-		"caps":        {"--json": true, "--all": true},
-		"serve":       {"--stdio": true},
-		"mcp":         {"--stdio": true},
-		"integrate":   {"--force": true, "--check": true, "--live": true},
-		"conformance": {"--run": true, "--json": true, "--include-events": true, "--keep-workspace": true},
-		"compact":     {"--dry-run": true, "--json": true},
-	}
-	knownCommands := map[string]bool{
-		"init": true, "add": true, "done": true, "status": true,
-		"cat": true, "rm": true, "depends": true, "dependents": true,
-		"next": true, "export": true, "prune": true, "claim": true, "acquire": true,
-		"heartbeat": true, "handoff": true,
-		"release": true, "decompose": true, "lineage": true, "update": true,
-		"config": true, "link": true, "unlink": true, "block": true, "unblock": true,
-		"log": true, "search": true, "doctor": true, "backup": true,
-		"restore": true, "what-if": true, "whatif": true, "events": true,
-		"watch": true, "my": true, "graph": true, "serve": true, "mcp": true,
-		"bootstrap":   true,
-		"integrate":   true,
-		"conformance": true,
-		"compact":     true,
-	}
-	if !knownCommands[command] {
-		return nil
-	}
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if !strings.HasPrefix(arg, "-") {
-			continue
-		}
-		if valueFlags[command][arg] {
-			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
-				return fmt.Errorf("%s requires a value", arg)
-			}
-			i++
-			continue
-		}
-		if booleanFlags[command][arg] {
-			continue
-		}
-		return fmt.Errorf("unknown option %s for %s", arg, command)
-	}
-	return nil
 }
 
 func extractAfterIDs(args []string) []string {
@@ -427,16 +188,16 @@ func optionValue(args []string, option string) string {
 	return ""
 }
 
+// extractTitle joins the positional words of a command into one title,
+// skipping flags and the values that belong to them. Like parseIDs, the skip
+// set comes from the running command's declaration.
 func extractTitle(args []string) string {
+	valueFlags := activeCommandValueFlags()
 	var titleParts []string
-	skipNext := false
-	for _, arg := range args {
-		if skipNext {
-			skipNext = false
-			continue
-		}
-		if arg == "--after" || arg == "--as" || arg == "--ttl" || arg == "--capabilities" || arg == "--caps" || arg == "--priority" || arg == "--into" || arg == "--reason" || arg == "--msg" || arg == "--tag" || arg == "--add-dep" || arg == "--remove-dep" || arg == "--set" || arg == "--output" || arg == "--error" || arg == "--poll" || arg == "--wait" {
-			skipNext = true
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if valueFlags[arg] {
+			i++
 			continue
 		}
 		if strings.HasPrefix(arg, "--") {
