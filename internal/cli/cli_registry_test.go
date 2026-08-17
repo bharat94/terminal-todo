@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -172,5 +174,41 @@ func TestJSONEmittingCommandsAppearInTheProtocolReference(t *testing.T) {
 		}
 		assert.Contains(t, documented, "`"+cmd.Name,
 			"%s emits --json but is absent from docs/agent-protocol.md", cmd.Name)
+	}
+}
+
+// The CLI entry points must exist and must be committable.
+//
+// A bare `todo` pattern in .gitignore matches the cmd/todo package directory
+// as well as the built binary, which silently kept the entry point out of
+// every commit. It built locally and failed on a clean checkout, which is the
+// worst shape a packaging bug can take.
+func TestEntryPointsExistAndAreNotIgnored(t *testing.T) {
+	root := repoRoot(t)
+
+	for _, entry := range []string{
+		filepath.Join("main.go"),
+		filepath.Join("cmd", "todo", "main.go"),
+	} {
+		_, err := os.Stat(filepath.Join(root, entry))
+		assert.NoError(t, err, "%s is missing", entry)
+	}
+
+	ignore, err := os.ReadFile(filepath.Join(root, ".gitignore"))
+	require.NoError(t, err)
+
+	for _, line := range strings.Split(string(ignore), "\n") {
+		pattern := strings.TrimSpace(line)
+		if pattern == "" || strings.HasPrefix(pattern, "#") {
+			continue
+		}
+		// An unanchored pattern matches at every depth, so a binary name that
+		// is also a directory name silently swallows source.
+		if strings.Contains(strings.TrimSuffix(pattern, "/"), "/") {
+			continue
+		}
+		assert.False(t,
+			pattern == "todo" || pattern == "cmd" || pattern == "internal",
+			"%q is unanchored and would ignore a source directory; anchor it as /%s", pattern, pattern)
 	}
 }
