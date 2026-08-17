@@ -109,6 +109,11 @@ func rpcErrorFromDomain(err error) *rpcError {
 		return rpcErrorf(rpcInvalidParams, "%v", err)
 	}
 	if code, ok := classifyCoordinationError(err); ok {
+		// Allocation refusals carry the diagnostic that explains which
+		// condition blocked the worker, so it travels with the error.
+		if diagnostics, hasDiagnostics := allocationDiagnosticsFromError(err); hasDiagnostics {
+			return rpcErrorWithData(rpcCodeForErrorCode(code), err.Error(), diagnostics)
+		}
 		return rpcErrorf(rpcCodeForErrorCode(code), "%v", err)
 	}
 	return rpcErrorf(rpcStoreCorrupted, "%v", err)
@@ -831,7 +836,9 @@ func (srv *server) handleDone(params json.RawMessage) (interface{}, *rpcError) {
 	resolver := snapshotDependencyResolver(remoteTasks)
 
 	var completed []uint64
-	_, err = updateStoreSafe(func(s *store.TaskStore) error {
+	var unblocked []uint64
+	committed, err := updateStoreSafe(func(s *store.TaskStore) error {
+		completed = nil
 		for _, id := range p.IDs {
 			if _, completeErr := completeTask(s, id, p.Actor, resolver, projectNow()); completeErr != nil {
 				return completeErr
@@ -853,9 +860,18 @@ func (srv *server) handleDone(params json.RawMessage) (interface{}, *rpcError) {
 		}
 		return receipt, nil
 	}
+	// Report what the completion actually released. This field shipped
+	// hardcoded to an empty list, which made it a field that lied: its name
+	// promised downstream work and it never named any.
+	for _, task := range newlyReadyAfter(committed, completed, resolver) {
+		unblocked = append(unblocked, task.ID)
+	}
+	if unblocked == nil {
+		unblocked = []uint64{}
+	}
 	return map[string]interface{}{
 		"completed": completed,
-		"unblocked": []uint64{},
+		"unblocked": unblocked,
 	}, nil
 }
 
@@ -1038,109 +1054,17 @@ func (srv *server) handleUpdate(params json.RawMessage) (interface{}, *rpcError)
 
 	var updated *store.Task
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
-		task, ok := s.GetTask(p.ID)
-		if !ok {
-			return fmt.Errorf("task %d not found: %w", p.ID, errTaskNotFound)
-		}
-		if task.Owner != "" && task.Owner != p.Actor {
-			return fmt.Errorf("task %d is claimed by %s: %w", task.ID, task.Owner, errNotOwner)
-		}
-
-		if len(p.AddDeps) > 0 || len(p.RemoveDeps) > 0 {
-			depSet := make(map[string]bool)
-			for _, dep := range task.Depends {
-				depSet[dep] = true
-			}
-			for _, dep := range p.RemoveDeps {
-				if !depSet[dep] {
-					return fmt.Errorf("dependency %q not found on task %d: %w", dep, task.ID, errTaskNotFound)
-				}
-				delete(depSet, dep)
-			}
-			for _, dep := range p.AddDeps {
-				if depSet[dep] {
-					continue
-				}
-				depID, local := dag.ParseLocalID(dep)
-				if local {
-					if _, ok := s.Tasks[depID]; !ok {
-						return fmt.Errorf("dependency task %d not found: %w", depID, errTaskNotFound)
-					}
-				} else {
-					if _, _, err := dag.ParseTaskURI(dep); err != nil {
-						return err
-					}
-				}
-				depSet[dep] = true
-			}
-			if err := validateProjectedCardinality("dependencies", len(task.Depends), len(depSet), maxTaskDependencies); err != nil {
-				return persistedInputFailure(err)
-			}
-
-			newDeps := make([]string, 0, len(depSet))
-			for dep := range depSet {
-				newDeps = append(newDeps, dep)
-			}
-
-			d := dag.NewDAG()
-			oldDeps := task.Depends
-			task.Depends = newDeps
-			d.BuildFromTasks(s.Tasks)
-			task.Depends = oldDeps
-
-			if err := d.DetectCycle(nil, task.ID); err != nil {
-				return fmt.Errorf("cannot update dependencies: %v: %w", err, errCycleDetected)
-			}
-
-			oldSet := make(map[string]bool)
-			for _, dep := range task.Depends {
-				oldSet[dep] = true
-			}
-			for _, dep := range newDeps {
-				if !oldSet[dep] {
-					s.AddEvent(store.EventDependencyAdded, task.ID, p.Actor, map[string]string{"dep": dep})
-				}
-			}
-			for _, dep := range task.Depends {
-				if !depSet[dep] {
-					s.AddEvent(store.EventDependencyRemoved, task.ID, p.Actor, map[string]string{"dep": dep})
-				}
-			}
-
-			task.Depends = newDeps
-		}
-
-		if p.Title != nil {
-			title := strings.TrimSpace(*p.Title)
-			if title == "" {
-				return lifecycleError(ErrInvalidArgs, "title cannot be empty")
-			}
-			task.Title = title
-		}
-		if p.Priority != nil {
-			if !validPriority32(*p.Priority) {
-				return lifecycleError(ErrInvalidArgs, "priority must be between 0 and 1")
-			}
-			task.Priority = *p.Priority
-		}
-		if p.Capabilities != nil {
-			task.Capabilities = p.Capabilities
-		}
-		if task.Extra == nil {
-			task.Extra = make(map[string]string)
-		}
-		if err := validateProjectedCardinality("extra", len(task.Extra), projectedExtraCount(task.Extra, p.Extra), maxTaskExtraEntries); err != nil {
-			return persistedInputFailure(err)
-		}
-		for key, value := range p.Extra {
-			task.Extra[key] = value
-		}
-		if p.Title != nil || p.Priority != nil || p.Capabilities != nil || len(p.Extra) > 0 {
-			s.AddEvent(store.EventTaskUpdated, task.ID, p.Actor, nil)
-		}
-
-		updated = task
-		return nil
+		var updateErr error
+		updated, updateErr = updateTask(s, p.ID, p.Actor, taskUpdate{
+			Title:           p.Title,
+			Priority:        p.Priority,
+			SetCapabilities: p.Capabilities != nil,
+			Capabilities:    p.Capabilities,
+			Extra:           p.Extra,
+			AddDeps:         p.AddDeps,
+			RemoveDeps:      p.RemoveDeps,
+		})
+		return updateErr
 	})
 	if err != nil {
 		return nil, rpcErrorFromDomain(err)
@@ -1170,17 +1094,12 @@ func (srv *server) handleClaim(params json.RawMessage) (interface{}, *rpcError) 
 		return nil, err
 	}
 
-	cfg, cfgErr := loadConfig()
-	if cfgErr != nil {
-		return nil, rpcErrorf(rpcStoreCorrupted, "loading config: %v", cfgErr)
-	}
-	ttl := parseDefaultTTL(cfg)
-	if p.TTL != "" {
-		t, err := time.ParseDuration(p.TTL)
-		if err != nil || t <= 0 {
-			return nil, rpcErrorf(rpcInvalidParams, "ttl must be a positive duration")
+	ttl, ttlErr := parseLeaseTTL(p.TTL)
+	if ttlErr != nil {
+		if errors.Is(ttlErr, errInvalidTTL) {
+			return nil, rpcErrorf(rpcInvalidParams, "ttl %v", ttlErr)
 		}
-		ttl = t
+		return nil, rpcErrorf(rpcStoreCorrupted, "%v", ttlErr)
 	}
 	if err := touchAgent(p.Actor); err != nil {
 		return nil, rpcErrorf(rpcStoreCorrupted, "registering agent %s: %v", p.Actor, err)
@@ -1245,65 +1164,38 @@ func (srv *server) handleAcquire(params json.RawMessage) (interface{}, *rpcError
 	if err := srv.ensureInitialized(); err != nil {
 		return nil, err
 	}
-	cfg, err := loadConfig()
-	if err != nil {
-		return nil, rpcErrorf(rpcStoreCorrupted, "loading config: %v", err)
-	}
-	ttl := parseDefaultTTL(cfg)
-	ttlMode := "default"
-	if p.TTL != "" {
-		ttl, err = time.ParseDuration(p.TTL)
-		if err != nil || ttl <= 0 {
-			return nil, rpcErrorf(rpcInvalidParams, "ttl must be a positive duration")
-		}
-		ttlMode = "explicit:" + ttl.String()
-	}
 	if err := touchAgent(p.Actor); err != nil {
 		return nil, rpcErrorf(rpcStoreCorrupted, "registering agent %s: %v", p.Actor, err)
 	}
 	var explicitCapabilities []string
-	capabilitiesMode := "registered"
 	if p.Capabilities != nil {
 		explicitCapabilities = normalizePersistedValues(p.Capabilities)
 		if explicitCapabilities == nil {
 			explicitCapabilities = []string{}
 		}
-		capabilitiesMode = "explicit"
 	}
-	if err := validateCapabilities(explicitCapabilities); err != nil {
-		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
-	}
-	capabilities, maxLoad, err := agentAllocationProfile(p.Actor, explicitCapabilities)
+	plan, err := newAcquirePlan(p.Actor, p.TTL, explicitCapabilities)
 	if err != nil {
-		return nil, rpcErrorf(rpcStoreCorrupted, "loading agent profile: %v", err)
+		if errors.Is(err, errInvalidTTL) {
+			return nil, rpcErrorf(rpcInvalidParams, "ttl %v", err)
+		}
+		return nil, rpcErrorf(rpcInvalidParams, "%v", err)
 	}
 	preflight, err := loadStoreSafe()
 	if err != nil {
 		return nil, rpcErrorf(rpcStoreCorrupted, "loading store: %v", err)
 	}
 	resolver := snapshotDependencyResolver(preflight.GetAllTasks())
-	fingerprint := acquireFingerprint(p.Actor, ttlMode, capabilitiesMode, explicitCapabilities)
 
 	var acquired *store.Task
 	var replayed bool
 	_, err = updateStoreSafe(func(s *store.TaskStore) error {
 		var acquireErr error
-		acquired, replayed, acquireErr = acquireFromStore(s, p.Actor, p.RequestID, fingerprint, ttl, capabilities, maxLoad, resolver)
+		acquired, replayed, acquireErr = acquireFromStore(s, plan.Actor, p.RequestID, plan.Fingerprint, plan.TTL, plan.Capabilities, plan.MaxLoad, resolver)
 		return acquireErr
 	})
 	if err != nil {
-		switch {
-		case errors.Is(err, errNoReadyTasks):
-			diagnostics, _ := allocationDiagnosticsFromError(err)
-			return nil, rpcErrorWithData(rpcNoWork, err.Error(), diagnostics)
-		case errors.Is(err, errAgentAtCapacity):
-			diagnostics, _ := allocationDiagnosticsFromError(err)
-			return nil, rpcErrorWithData(rpcAgentCapacity, err.Error(), diagnostics)
-		case errors.Is(err, errAcquireRequestConflict):
-			return nil, rpcErrorf(rpcIdempotencyConflict, "%v", err)
-		default:
-			return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
-		}
+		return nil, rpcErrorFromDomain(err)
 	}
 	envelope := acquireEnvelope{SchemaVersion: protocolVersion, RequestID: p.RequestID, Replayed: replayed, Task: newProtocolTask(acquired)}
 	if p.Receipt {
@@ -1332,16 +1224,12 @@ func (srv *server) handleHeartbeat(params json.RawMessage) (interface{}, *rpcErr
 		return nil, err
 	}
 
-	cfg, err := loadConfig()
+	ttl, err := parseLeaseTTL(p.TTL)
 	if err != nil {
-		return nil, rpcErrorf(rpcStoreCorrupted, "loading config: %v", err)
-	}
-	ttl := parseDefaultTTL(cfg)
-	if p.TTL != "" {
-		ttl, err = time.ParseDuration(p.TTL)
-		if err != nil || ttl <= 0 {
-			return nil, rpcErrorf(rpcInvalidParams, "ttl must be a positive duration")
+		if errors.Is(err, errInvalidTTL) {
+			return nil, rpcErrorf(rpcInvalidParams, "ttl %v", err)
 		}
+		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 	}
 	if err := touchAgent(p.Actor); err != nil {
 		return nil, rpcErrorf(rpcStoreCorrupted, "registering agent %s: %v", p.Actor, err)
@@ -2125,37 +2013,14 @@ func (srv *server) handlePrune(params json.RawMessage) (interface{}, *rpcError) 
 
 	var removedIDs []uint64
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
-		completed := make(map[uint64]struct{})
-		for _, t := range s.GetAllTasks() {
-			if t.Status == store.StatusCompleted {
-				completed[t.ID] = struct{}{}
-			}
-		}
-		for _, task := range s.Tasks {
-			if _, willRemove := completed[task.ID]; willRemove {
-				continue
-			}
-			kept := task.Depends[:0]
-			for _, dependency := range task.Depends {
-				dependencyID, local := dag.ParseLocalID(dependency)
-				if _, pruned := completed[dependencyID]; local && pruned {
-					continue
-				}
-				kept = append(kept, dependency)
-			}
-			task.Depends = kept
-		}
-		for id := range completed {
-			s.RemoveTask(id)
-			removedIDs = append(removedIDs, id)
+		for _, task := range pruneCompletedTasks(s) {
+			removedIDs = append(removedIDs, task.ID)
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
+		return nil, rpcErrorFromDomain(err)
 	}
-
-	sort.Slice(removedIDs, func(i, j int) bool { return removedIDs[i] < removedIDs[j] })
 	if p.Receipt {
 		return newMutationReceipt("prune", removedIDs), nil
 	}

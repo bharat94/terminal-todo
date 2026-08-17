@@ -868,6 +868,12 @@ processed but no response is written. Stdio requests may be up to 4 MiB.
 | `todo.agentCard` | `{actor, caps?, desc?, maxLoad?}` | Persist or query an agent card and return its computed current load |
 | `todo.caps` | `{actor?, all?}` | `capsEnvelope` |
 
+`todo.done` returns `completed`, the task IDs it closed, and `unblocked`, the
+pending task IDs whose prerequisites the completion released. `unblocked` lists
+only work the completion actually freed; a task that was already ready is not
+reported. Releases before this correction always returned an empty
+`unblocked` list regardless of the graph.
+
 ### JSON-RPC Error Codes
 
 | Todo Error | JSON-RPC Code |

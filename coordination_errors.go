@@ -60,6 +60,14 @@ func classifyCoordinationError(err error) (ErrorCode, bool) {
 		return ErrLeaseNotActive, true
 	case errors.Is(err, errInvalidTransition):
 		return ErrInvalidTransition, true
+	// Allocation outcomes are ordinary scheduler control flow, not failures.
+	// NO_WORK in particular is the answer a polling worker expects.
+	case errors.Is(err, errNoReadyTasks):
+		return ErrNoWork, true
+	case errors.Is(err, errAgentAtCapacity):
+		return ErrAgentAtCapacity, true
+	case errors.Is(err, errAcquireRequestConflict):
+		return ErrIdempotencyConflict, true
 	default:
 		return "", false
 	}
@@ -134,4 +142,19 @@ func requireLeaseAvailable(task *store.Task, actor string, now time.Time) error 
 		)
 	}
 	return nil
+}
+
+// failCoordination terminates the CLI with the documented code for err. It is
+// the CLI mirror of rpcErrorFromDomain: one classifier, two renderings.
+func failCoordination(err error, fallback ErrorCode) {
+	if isPersistedInputFailure(err) {
+		fail(ErrInvalidArgs, "%v", err)
+	}
+	if code, ok := classifyCoordinationError(err); ok {
+		if diagnostics, hasDiagnostics := allocationDiagnosticsFromError(err); hasDiagnostics {
+			failData(code, err.Error(), diagnostics)
+		}
+		fail(code, "%v", err)
+	}
+	fail(fallback, "%v", err)
 }
