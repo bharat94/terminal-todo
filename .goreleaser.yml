@@ -7,7 +7,7 @@ before:
 
 builds:
   - id: todo
-    main: .
+    main: ./cmd/todo
     binary: todo
     flags:
       - -trimpath
@@ -15,7 +15,7 @@ builds:
       - -s
       - -w
       - -buildid=
-      - -X main.version={{.Version}}
+      - -X github.com/bharat94/terminal-todo/internal/cli.Version={{.Version}}
     env:
       - CGO_ENABLED=0
     goos:

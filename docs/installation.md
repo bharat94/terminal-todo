@@ -98,9 +98,26 @@ Install to `/usr/local/bin` with `sudo make install`, or choose another prefix:
 make install PREFIX="$HOME/.local"
 ```
 
-The module layout does not currently expose a supported
-`go install .../cmd/todo` entry point. Use a release archive or build the
-repository root.
+## Install with the Go toolchain
+
+```bash
+go install github.com/bharat94/terminal-todo/cmd/todo@latest
+```
+
+The binary lands in `$(go env GOPATH)/bin`, which must be on your `PATH`.
+Replace `@latest` with a tag such as `@v0.1.0-beta.1` to pin a release.
+
+Install `./cmd/todo`, not the module root. Go names an installed binary after
+the last element of its import path, so installing the module root produces a
+binary called `terminal-todo`. That path still works, and is kept working, for
+anyone already using it.
+
+`go install` cannot pass linker flags, so the version is recovered from the
+module version the toolchain records in the binary. A tagged install reports
+that tag; an install from an untagged commit reports a pseudo-version.
+
+This route does not produce the checksums, SBOMs, or provenance attestations
+that release archives carry. Prefer an archive when those matter.
 
 ## First project
 
