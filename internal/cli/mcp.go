@@ -223,16 +223,22 @@ func newMCPCallResult(toolName string, value interface{}, isError bool) mcpCallR
 	}
 }
 
+// writeResult emits one MCP response frame. See serve.go's writeResult for
+// why a write failure is reported on stderr rather than returned.
 func (srv *mcpServer) writeResult(id json.RawMessage, result interface{}) {
-	_ = srv.encoder.Encode(rpcResponse{JSONRPC: "2.0", ID: id, Result: result})
+	if err := srv.encoder.Encode(rpcResponse{JSONRPC: "2.0", ID: id, Result: result}); err != nil {
+		fmt.Fprintf(os.Stderr, "terminal-todo: writing MCP response: %v\n", err)
+	}
 }
 
 func (srv *mcpServer) writeError(id json.RawMessage, code int, message string, data interface{}) {
-	_ = srv.encoder.Encode(rpcResponse{
+	if err := srv.encoder.Encode(rpcResponse{
 		JSONRPC: "2.0",
 		ID:      id,
 		Error:   &rpcError{Code: code, Message: message, Data: data},
-	})
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "terminal-todo: writing MCP error response: %v\n", err)
+	}
 }
 
 func mcpToolMethods() map[string]string {

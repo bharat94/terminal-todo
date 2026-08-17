@@ -95,18 +95,18 @@ func addClaudeConformanceEnvironment(files []conformance.FixtureFile) ([]conform
 		}
 		servers, ok := config["mcpServers"].(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("Claude conformance MCP config has no mcpServers object")
+			return nil, fmt.Errorf("conformance MCP config for Claude has no mcpServers object")
 		}
 		server, ok := servers["terminal-todo"].(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("Claude conformance MCP config has no terminal-todo server")
+			return nil, fmt.Errorf("conformance MCP config for Claude has no terminal-todo server")
 		}
 		environment := map[string]any{}
 		if existing := server["env"]; existing != nil {
 			var valid bool
 			environment, valid = existing.(map[string]any)
 			if !valid {
-				return nil, fmt.Errorf("Claude conformance MCP environment is not an object")
+				return nil, fmt.Errorf("conformance MCP environment for Claude is not an object")
 			}
 		}
 		for _, variable := range []string{
@@ -124,7 +124,7 @@ func addClaudeConformanceEnvironment(files []conformance.FixtureFile) ([]conform
 		files[index].Content = append(encoded, '\n')
 		return files, nil
 	}
-	return nil, fmt.Errorf("Claude conformance MCP config is missing")
+	return nil, fmt.Errorf("conformance MCP config for Claude is missing")
 }
 
 func catalogProjectFiles(

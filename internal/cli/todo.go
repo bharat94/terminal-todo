@@ -125,12 +125,6 @@ func loadStore() *store.TaskStore {
 	return s
 }
 
-func saveStore(s *store.TaskStore) {
-	if err := s.Save(tasksBinPath()); err != nil {
-		fail(ErrStoreCorrupted, "saving store: %v", err)
-	}
-}
-
 func updateStore(mutate func(*store.TaskStore) error) *store.TaskStore {
 	s, err := store.Update(tasksBinPath(), mutate)
 	if err != nil {

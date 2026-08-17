@@ -491,16 +491,24 @@ func (srv *server) ensureInitialized() *rpcError {
 	return nil
 }
 
+// writeResult emits one response frame.
+//
+// A write failure means the peer is gone or the pipe is broken. There is no
+// second channel to report that on — writing an error would fail the same way
+// — so it is recorded on stderr and the read loop is left to notice the closed
+// stream. Silently discarding it would hide a half-delivered response.
 func (srv *server) writeResult(id json.RawMessage, result interface{}) {
-	srv.encoder.Encode(rpcResponse{
+	if err := srv.encoder.Encode(rpcResponse{
 		JSONRPC: "2.0",
 		ID:      id,
 		Result:  result,
-	})
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "terminal-todo: writing response: %v\n", err)
+	}
 }
 
 func (srv *server) writeError(id json.RawMessage, code int, message string, data interface{}) {
-	srv.encoder.Encode(rpcResponse{
+	if err := srv.encoder.Encode(rpcResponse{
 		JSONRPC: "2.0",
 		ID:      id,
 		Error: &rpcError{
@@ -508,7 +516,9 @@ func (srv *server) writeError(id json.RawMessage, code int, message string, data
 			Message: message,
 			Data:    data,
 		},
-	})
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "terminal-todo: writing error response: %v\n", err)
+	}
 }
 
 func cmdServe(args []string) {
@@ -2170,7 +2180,7 @@ func (srv *server) handleUnlink(params json.RawMessage) (interface{}, *rpcError)
 		return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
 	}
 
-	return unlinkResult{Alias: p.Alias}, nil
+	return unlinkResult(p), nil
 }
 
 func (srv *server) handleBackup(params json.RawMessage) (interface{}, *rpcError) {

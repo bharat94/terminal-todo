@@ -2,8 +2,6 @@ package cli
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -328,67 +326,6 @@ func probeConformanceHost(ctx context.Context, name string) conformanceHostProbe
 	return probe
 }
 
-func runLifecycleEvaluation(
-	ctx context.Context,
-	hostName string,
-	options conformanceOptions,
-) (conformance.Report, error) {
-	executable, err := exec.LookPath(hostName)
-	if err != nil {
-		return unavailableHostReport(hostName, "host executable not found"), nil
-	}
-	todoExecutable, err := os.Executable()
-	if err != nil {
-		return conformance.Report{}, fmt.Errorf("locate terminal-todo executable: %w", err)
-	}
-	marker, err := randomConformanceToken()
-	if err != nil {
-		return conformance.Report{}, err
-	}
-	actor := conformanceActorBase + "-" + hostName + "-" + marker
-	requestID := "conformance-" + marker
-	prompt := lifecyclePrompt(actor, requestID, marker)
-	version := probeConformanceHost(ctx, hostName).Version
-	hostOptions := conformance.MachineHostOptions{
-		Executable:         executable,
-		MCPExecutable:      todoExecutable,
-		Version:            version,
-		Model:              options.Model,
-		IntegrationVersion: versionString(),
-		Prompt:             prompt,
-	}
-
-	var host conformance.Host
-	switch hostName {
-	case "codex":
-		host, err = conformance.NewCodexHost(hostOptions)
-	case "claude":
-		host, err = conformance.NewClaudeHost(hostOptions)
-	default:
-		err = fmt.Errorf("unsupported host %q", hostName)
-	}
-	if err != nil {
-		return conformance.Report{}, err
-	}
-	host = applyConformanceModel(host, options.Model)
-
-	fixture, err := lifecycleFixture(todoExecutable)
-	if err != nil {
-		return conformance.Report{}, err
-	}
-	evaluation := conformance.Evaluation{
-		ID:            lifecycleScenarioID,
-		Host:          host,
-		Fixture:       fixture,
-		Limits:        conformance.Limits{Timeout: options.Timeout, MaxOutputBytes: 4 * 1024 * 1024, MaxEventBytes: 256 * 1024},
-		Normalizer:    lifecycleNormalizer(hostName),
-		Assertions:    lifecycleAssertions(actor, marker),
-		MinimumScore:  100,
-		KeepWorkspace: options.KeepWorkspace,
-	}
-	return (conformance.Runner{}).Run(ctx, evaluation)
-}
-
 func lifecycleFixture(todoExecutable string) (conformance.Fixture, error) {
 	staging, err := os.MkdirTemp("", "terminal-todo-conformance-store-*")
 	if err != nil {
@@ -429,16 +366,6 @@ func lifecycleFixture(todoExecutable string) (conformance.Fixture, error) {
 		{Path: conformance.CodexProjectConfigFile, Content: []byte(codexConfig), Mode: 0o600},
 		{Path: conformance.ClaudeProjectMCPConfigFile, Content: claudeConfig, Mode: 0o600},
 	}}, nil
-}
-
-func lifecyclePrompt(actor, requestID, marker string) string {
-	return fmt.Sprintf(
-		"You are one worker joining an existing coordinated project. Use the project's coordination integration only: do not run shell commands or edit files. "+
-			"Resume as actor %q with one bounded bootstrap, then atomically acquire one ready task using request ID %q. "+
-			"On the acquired task persist the structured field conformance_marker=%q, then complete it as its owner. "+
-			"Keep routine coordination hidden and reply with one concise outcome sentence.",
-		actor, requestID, marker,
-	)
 }
 
 func lifecycleNormalizer(hostName string) conformance.Normalizer {
@@ -570,18 +497,6 @@ func extractHostAssistantMessages(hostName string, capture conformance.Capture) 
 		return []string{}
 	}
 	return []string{candidates[len(candidates)-1]}
-}
-
-func randomConformanceToken() (string, error) {
-	var buffer [8]byte
-	if _, err := rand.Read(buffer[:]); err != nil {
-		return "", fmt.Errorf("generate conformance marker: %w", err)
-	}
-	return hex.EncodeToString(buffer[:]), nil
-}
-
-func unavailableHostReport(host, detail string) conformance.Report {
-	return unavailableScenarioReport(host, lifecycleScenarioID, detail)
 }
 
 func unavailableScenarioReport(host, scenarioID, detail string) conformance.Report {

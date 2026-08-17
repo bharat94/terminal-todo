@@ -114,29 +114,6 @@ func exitCode(code ErrorCode) int {
 	}
 }
 
-// isJSONOutput returns true when structured output appears anywhere in os.Args.
-func isJSONOutput() bool {
-	for _, arg := range os.Args {
-		if arg == "--json" || arg == "--receipt" {
-			return true
-		}
-	}
-	return false
-}
-
-// extractFlagValue returns the value for a given flag from an args slice.
-func extractFlagValue(args []string, flag string) string {
-	if args == nil {
-		return ""
-	}
-	for i, arg := range args {
-		if arg == flag && i+1 < len(args) {
-			return args[i+1]
-		}
-	}
-	return ""
-}
-
 // writeJSON writes a JSON-serializable value to stdout.
 func writeJSON(v interface{}) {
 	output, err := json.MarshalIndent(v, "", "  ")

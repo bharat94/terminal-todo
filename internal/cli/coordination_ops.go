@@ -236,7 +236,7 @@ func decomposeTask(
 	d := dag.NewDAG()
 	d.BuildFromTasks(s.Tasks)
 	if err := d.DetectCycle(parent.Depends, parentID); err != nil {
-		return nil, nil, fmt.Errorf("decompose would create a cycle: %v: %w", err, errCycleDetected)
+		return nil, nil, fmt.Errorf("decompose would create a cycle: %w: %w", err, errCycleDetected)
 	}
 
 	parent.Status = store.StatusPending
@@ -470,13 +470,12 @@ func applyDependencyEdits(s *store.TaskStore, task *store.Task, actor string, ad
 	d.BuildFromTasks(s.Tasks)
 	task.Depends = oldDeps
 	if err := d.DetectCycle(nil, task.ID); err != nil {
-		return fmt.Errorf("cannot update dependencies: %v: %w", err, errCycleDetected)
+		return fmt.Errorf("cannot update dependencies: %w: %w", err, errCycleDetected)
 	}
 
-	var oldSet map[string]bool
 	// Compare canonically on both sides so a re-spelled edge is not reported
 	// as one removal plus one addition of the same dependency.
-	oldSet = make(map[string]bool, len(task.Depends))
+	oldSet := make(map[string]bool, len(task.Depends))
 	for _, dep := range task.Depends {
 		canonical, err := canonicalDependency(dep)
 		if err != nil {

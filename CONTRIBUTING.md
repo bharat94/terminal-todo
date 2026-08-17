@@ -86,3 +86,26 @@ GitHub Actions must pass on Linux, macOS, and Windows before merge.
 
 By contributing, you agree that your contribution is licensed under the
 project's [MIT License](LICENSE).
+
+## Quality gates
+
+Beyond `make test-race` and `make lint`, CI enforces three gates that are
+worth running locally before opening a pull request:
+
+```bash
+# Lint. Zero findings is the standard; the rule set is deliberately small so
+# that a finding always means something.
+go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0 run
+
+# Per-package coverage floors. Raise a floor when coverage rises; never lower
+# one to turn a red build green.
+./scripts/coverage.sh
+
+# Fuzz seed corpora, including inputs that previously found defects.
+go test ./... -run Fuzz -count=1
+```
+
+Fuzz targets cover the parsers that read input this process did not produce:
+the `todo://` dependency reference parser, and the JSON-RPC and MCP request
+decoders. When a fuzzer finds a defect, commit the failing input under
+`testdata/fuzz/` along with the fix, so the case is replayed on every run.

@@ -80,7 +80,6 @@ func catalogNormalizer(hostName string, runtime catalogFixtureRuntime) conforman
 func compileCatalogAssertions(scenario conformance.CatalogScenario, runtime catalogFixtureRuntime) ([]conformance.Assertion, error) {
 	assertions := make([]conformance.Assertion, 0, len(scenario.Assertions))
 	for _, fixtureAssertion := range scenario.Assertions {
-		fixtureAssertion := fixtureAssertion
 		if err := validateCatalogExpectation(fixtureAssertion); err != nil {
 			return nil, fmt.Errorf("scenario %q assertion %q: %w", scenario.ID, fixtureAssertion.ID, err)
 		}

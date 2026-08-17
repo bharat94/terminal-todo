@@ -56,7 +56,7 @@ func cmdMy(args []string) {
 		}
 		leaseInfo := ""
 		if t.LeaseExpires > 0 {
-			remaining := int64(t.LeaseExpires) - int64(projectNow().UnixMilli())
+			remaining := int64(t.LeaseExpires) - projectNow().UnixMilli()
 			if remaining > 0 {
 				leaseInfo = fmt.Sprintf(" (lease: %s)", time.Duration(remaining)*time.Millisecond)
 			} else {

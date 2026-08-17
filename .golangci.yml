@@ -1,0 +1,51 @@
+version: "2"
+
+# The linter set is deliberately conservative. Every rule here catches a class
+# of defect this project has actually shipped or would silently tolerate;
+# stylistic rules are left out so a lint failure always means something.
+linters:
+  default: none
+  enable:
+    - errcheck      # an ignored error is how a failed write becomes silent
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - copyloopvar
+    - durationcheck # this project does lease arithmetic on durations
+    - errorlint     # sentinel classification depends on errors.Is, not ==
+    - makezero
+    - nilerr
+    - unconvert
+    - usetesting
+
+  settings:
+    staticcheck:
+      checks:
+        - all
+        # De Morgan's dual of the alias character-class guard in dag reads
+        # worse than the guard itself.
+        - -QF1001
+
+    errcheck:
+      # Output written for a human is best effort; a failed Fprintf must not
+      # turn into noise at every print site.
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      # Fuzz targets and fixtures deliberately construct odd values.
+      - path: _test\.go
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt

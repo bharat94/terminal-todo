@@ -286,7 +286,7 @@ func (s *TaskStore) Save(path string) error {
 	if err := lk.Acquire(lock.Write); err != nil {
 		return err
 	}
-	defer lk.Release()
+	defer releaseLock(lk)
 	return writeStore(path, s)
 }
 
@@ -299,7 +299,7 @@ func Load(path string) (*TaskStore, error) {
 	if err := lk.Acquire(lock.Read); err != nil {
 		return nil, err
 	}
-	defer lk.Release()
+	defer releaseLock(lk)
 	return loadUnlocked(path)
 }
 
@@ -323,7 +323,7 @@ func LoadCurrent(path string) (*TaskStore, error) {
 	if err := lk.Acquire(lock.Write); err != nil {
 		return nil, err
 	}
-	defer lk.Release()
+	defer releaseLock(lk)
 
 	s, err := loadUnlocked(path)
 	if err != nil {
@@ -362,7 +362,7 @@ func Update(path string, mutate func(*TaskStore) error) (*TaskStore, error) {
 	if err := lk.Acquire(lock.Write); err != nil {
 		return nil, err
 	}
-	defer lk.Release()
+	defer releaseLock(lk)
 
 	s, err := loadUnlocked(path)
 	if err != nil {
@@ -372,7 +372,7 @@ func Update(path string, mutate func(*TaskStore) error) (*TaskStore, error) {
 	if err := mutate(s); err != nil {
 		if cleaned > 0 {
 			if writeErr := writeStore(path, s); writeErr != nil {
-				return nil, fmt.Errorf("mutation failed: %v; persisting lease expiration: %w", err, writeErr)
+				return nil, fmt.Errorf("mutation failed: %w; persisting lease expiration: %w", err, writeErr)
 			}
 		}
 		return nil, err
@@ -448,4 +448,15 @@ func writeStore(path string, s *TaskStore) error {
 	}
 
 	return fsutil.SyncDir(filepath.Dir(path))
+}
+
+// releaseLock discards a release error deliberately.
+//
+// Release runs in a defer, after the transaction has already committed or
+// failed, so there is no caller left to act on it and no way to report it
+// without inventing a second error path. The advisory lock is also released by
+// the operating system when the descriptor closes, which is the real backstop.
+// This exists so the discard is explicit rather than implied.
+func releaseLock(lk *lock.FileLock) {
+	_ = lk.Release()
 }

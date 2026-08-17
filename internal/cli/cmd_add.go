@@ -86,7 +86,7 @@ func cmdAdd(args []string) {
 			}
 		}
 		if err := d.DetectCycle(finalDeps, s.NextID); err != nil {
-			return fmt.Errorf("%v: %w", err, errCycleDetected)
+			return fmt.Errorf("%w: %w", err, errCycleDetected)
 		}
 		task := s.AddTask(title, finalDeps)
 		task.Priority = float32(priority)
