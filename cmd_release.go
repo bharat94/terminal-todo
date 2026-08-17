@@ -23,29 +23,10 @@ func cmdRelease(args []string) {
 	released := make([]*store.Task, 0, len(ids))
 	updateStore(func(s *store.TaskStore) error {
 		for _, id := range ids {
-			task, err := requireTask(s, id)
+			task, err := releaseTask(s, id, owner, errorMsg)
 			if err != nil {
 				return err
 			}
-			if err := requireInProgress(task); err != nil {
-				return err
-			}
-			if err := requireOwner(task, owner); err != nil {
-				return err
-			}
-			task.Status = store.StatusPending
-			task.RetryCount++
-			data := map[string]string{}
-			if errorMsg != "" {
-				task.LastError = errorMsg
-				data["error"] = errorMsg
-				s.AddLog(id, owner, fmt.Sprintf("released with error: %s", errorMsg))
-			} else {
-				s.AddLog(id, owner, "released")
-			}
-			s.AddEvent(store.EventTaskReleased, id, owner, data)
-			task.Owner = ""
-			task.LeaseExpires = 0
 			released = append(released, task)
 		}
 		return nil

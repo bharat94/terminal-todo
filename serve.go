@@ -833,22 +833,9 @@ func (srv *server) handleDone(params json.RawMessage) (interface{}, *rpcError) {
 	var completed []uint64
 	_, err = updateStoreSafe(func(s *store.TaskStore) error {
 		for _, id := range p.IDs {
-			task, ok := s.GetTask(id)
-			if !ok {
-				return fmt.Errorf("task %d not found: %w", id, errTaskNotFound)
+			if _, completeErr := completeTask(s, id, p.Actor, resolver, projectNow()); completeErr != nil {
+				return completeErr
 			}
-			if !dag.DependenciesCompleteWithResolver(task, s.Tasks, resolver) {
-				return fmt.Errorf("task %d has incomplete dependencies: %w", id, errDependency)
-			}
-			if task.Owner != "" && task.Owner != p.Actor {
-				return fmt.Errorf("task %d is claimed by %s: %w", id, task.Owner, errNotOwner)
-			}
-			task.Status = store.StatusCompleted
-			task.Completed = uint64(projectNow().UnixMilli())
-			task.Owner = ""
-			task.LeaseExpires = 0
-			task.BlockReason = ""
-			s.AddEvent(store.EventTaskCompleted, id, p.Actor, nil)
 			completed = append(completed, id)
 		}
 		return nil
@@ -1210,30 +1197,10 @@ func (srv *server) handleClaim(params json.RawMessage) (interface{}, *rpcError) 
 
 	var result claimResult
 	_, err = updateStoreSafe(func(s *store.TaskStore) error {
-		task, ok := s.GetTask(p.ID)
-		if !ok {
-			return fmt.Errorf("task %d not found: %w", p.ID, errTaskNotFound)
+		task, claimErr := claimTask(s, p.ID, p.Actor, ttl, resolver, projectNow())
+		if claimErr != nil {
+			return claimErr
 		}
-		if task.Status == store.StatusCompleted {
-			return fmt.Errorf("task %d is already completed: %w", p.ID, errInvalidTransition)
-		}
-		if task.Status == store.StatusBlocked {
-			return fmt.Errorf("task %d is blocked: %w", p.ID, errDependency)
-		}
-		if !dag.DependenciesCompleteWithResolver(task, s.Tasks, resolver) {
-			return fmt.Errorf("task %d has incomplete dependencies: %w", p.ID, errDependency)
-		}
-		now := uint64(projectNow().UnixMilli())
-		if task.Owner != "" && task.Owner != p.Actor && task.LeaseExpires > now {
-			return fmt.Errorf("task %d already claimed by %s: %w", p.ID, task.Owner, errAlreadyClaimed)
-		}
-
-		task.Owner = p.Actor
-		task.Status = store.StatusInProgress
-		task.LeaseExpires = now + uint64(ttl.Milliseconds())
-		s.AddLog(p.ID, p.Actor, "claimed")
-		s.AddEvent(store.EventTaskClaimed, p.ID, p.Actor, map[string]string{"ttl": ttl.String()})
-
 		result = claimResult{
 			ID:         p.ID,
 			Owner:      p.Actor,
@@ -1428,32 +1395,9 @@ func (srv *server) handleRelease(params json.RawMessage) (interface{}, *rpcError
 
 	var released *store.Task
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
-		task, ok := s.GetTask(p.ID)
-		if !ok {
-			return fmt.Errorf("task %d not found: %w", p.ID, errTaskNotFound)
-		}
-		if task.Status != store.StatusInProgress {
-			return fmt.Errorf("task %d is not in progress: %w", p.ID, errLeaseNotActive)
-		}
-		if task.Owner != "" && task.Owner != p.Actor {
-			return fmt.Errorf("task %d is claimed by %s: %w", p.ID, task.Owner, errNotOwner)
-		}
-
-		task.RetryCount++
-		data := map[string]string{}
-		if p.Error != "" {
-			task.LastError = p.Error
-			data["error"] = p.Error
-			s.AddLog(p.ID, p.Actor, fmt.Sprintf("released with error: %s", p.Error))
-		} else {
-			s.AddLog(p.ID, p.Actor, "released")
-		}
-		s.AddEvent(store.EventTaskReleased, p.ID, p.Actor, data)
-		task.Owner = ""
-		task.LeaseExpires = 0
-		task.Status = store.StatusPending
-		released = task
-		return nil
+		var releaseErr error
+		released, releaseErr = releaseTask(s, p.ID, p.Actor, p.Error)
+		return releaseErr
 	})
 	if err != nil {
 		return nil, rpcErrorFromDomain(err)
@@ -1493,18 +1437,7 @@ func (srv *server) handleHandoff(params json.RawMessage) (interface{}, *rpcError
 		return handoffErr
 	})
 	if err != nil {
-		switch {
-		case isPersistedInputFailure(err):
-			return nil, rpcErrorf(rpcInvalidParams, "%v", err)
-		case errors.Is(err, errLeaseTaskNotFound):
-			return nil, rpcErrorf(rpcTaskNotFound, "%v", err)
-		case errors.Is(err, errLeaseNotOwner):
-			return nil, rpcErrorf(rpcNotOwner, "%v", err)
-		case errors.Is(err, errLeaseNotActive):
-			return nil, rpcErrorf(rpcLeaseNotActive, "%v", err)
-		default:
-			return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
-		}
+		return nil, rpcErrorFromDomain(err)
 	}
 
 	if p.Receipt {
@@ -1534,25 +1467,9 @@ func (srv *server) handleBlock(params json.RawMessage) (interface{}, *rpcError) 
 
 	var blocked *store.Task
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
-		task, ok := s.GetTask(p.ID)
-		if !ok {
-			return fmt.Errorf("task %d not found: %w", p.ID, errTaskNotFound)
-		}
-		if task.Status == store.StatusCompleted {
-			return fmt.Errorf("task %d is already completed: %w", p.ID, errInvalidTransition)
-		}
-		if task.Owner != "" && task.Owner != p.Actor {
-			return fmt.Errorf("task %d is claimed by %s: %w", p.ID, task.Owner, errNotOwner)
-		}
-
-		task.Status = store.StatusBlocked
-		task.BlockReason = p.Reason
-		task.Owner = ""
-		task.LeaseExpires = 0
-		s.AddLog(p.ID, p.Actor, fmt.Sprintf("blocked: %s", p.Reason))
-		s.AddEvent(store.EventTaskBlocked, p.ID, p.Actor, map[string]string{"reason": p.Reason})
-		blocked = task
-		return nil
+		var blockErr error
+		blocked, blockErr = blockTask(s, p.ID, p.Actor, p.Reason)
+		return blockErr
 	})
 	if err != nil {
 		return nil, rpcErrorFromDomain(err)
@@ -1582,23 +1499,9 @@ func (srv *server) handleUnblock(params json.RawMessage) (interface{}, *rpcError
 
 	var unblocked *store.Task
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
-		task, ok := s.GetTask(p.ID)
-		if !ok {
-			return fmt.Errorf("task %d not found: %w", p.ID, errTaskNotFound)
-		}
-		if task.Status != store.StatusBlocked {
-			return fmt.Errorf("task %d is not blocked: %w", p.ID, errInvalidTransition)
-		}
-		task.Status = store.StatusPending
-		task.BlockReason = ""
-		// Clear legacy owner fields from stores written before blocking
-		// released the active lease.
-		task.Owner = ""
-		task.LeaseExpires = 0
-		s.AddLog(p.ID, p.Actor, "unblocked")
-		s.AddEvent(store.EventTaskUnblocked, p.ID, p.Actor, nil)
-		unblocked = task
-		return nil
+		var unblockErr error
+		unblocked, unblockErr = unblockTask(s, p.ID, p.Actor)
+		return unblockErr
 	})
 	if err != nil {
 		return nil, rpcErrorFromDomain(err)
@@ -1672,16 +1575,9 @@ func (srv *server) handleLog(params json.RawMessage) (interface{}, *rpcError) {
 
 	var logged *store.Task
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
-		task, ok := s.GetTask(p.ID)
-		if !ok {
-			return fmt.Errorf("task %d not found: %w", p.ID, errTaskNotFound)
-		}
-		if task.Owner != "" && task.Owner != p.Actor {
-			return fmt.Errorf("task %d is claimed by %s: %w", p.ID, task.Owner, errNotOwner)
-		}
-		s.AddLog(p.ID, p.Actor, p.Message)
-		logged = task
-		return nil
+		var logErr error
+		logged, logErr = logTask(s, p.ID, p.Actor, p.Message)
+		return logErr
 	})
 	if err != nil {
 		return nil, rpcErrorFromDomain(err)
