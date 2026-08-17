@@ -38,6 +38,17 @@ type errorEnvelope struct {
 	Error         ErrorResponse `json:"error"`
 }
 
+// exitProcess ends the process with a status. Command handlers report failure
+// by calling fail, which does not return, so the only way to observe a
+// command's failure is to intercept the exit. Tests replace this hook with one
+// that panics and recover it, which is what makes commands runnable in process
+// rather than only through a built binary.
+//
+// The hook must never return in either mode: callers rely on fail being
+// terminal, and several of them would otherwise fall through and report a
+// second, wrong error.
+var exitProcess = func(status int) { os.Exit(status) }
+
 func fail(code ErrorCode, msg string, args ...interface{}) {
 	message := fmt.Sprintf(msg, args...)
 	failDetails(code, message, "")
@@ -75,7 +86,7 @@ func failWithData(code ErrorCode, message, details string, data interface{}) {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", message)
 		}
 	}
-	os.Exit(exitCode(code))
+	exitProcess(exitCode(code))
 }
 
 func exitCode(code ErrorCode) int {
