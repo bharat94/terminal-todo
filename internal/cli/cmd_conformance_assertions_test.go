@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -325,4 +326,62 @@ func catalogAssertionByID(t *testing.T, assertions []conformance.Assertion, id s
 	}
 	t.Fatalf("missing assertion %q", id)
 	return conformance.Assertion{}
+}
+
+// A failing assertion must name what it observed, not only what it wanted.
+// The 2026-08-15 Codex calibration failed handoff and the retained report
+// could not establish which metadata shape the host used, so a paid run
+// produced a failure nobody could diagnose.
+func TestObservedOperationSequenceNamesWhatWasSeen(t *testing.T) {
+	assert.Equal(t, "no matching operations were recorded",
+		observedOperationSequence(nil))
+
+	assert.Equal(t, "observed heartbeat → log → done",
+		observedOperationSequence([]conformance.Operation{
+			{Operation: "heartbeat"}, {Operation: "log"}, {Operation: "done"},
+		}))
+}
+
+func TestObservedOperationSequenceIsBounded(t *testing.T) {
+	operations := make([]conformance.Operation, maxObservedOperations+5)
+	for i := range operations {
+		operations[i] = conformance.Operation{Operation: "heartbeat"}
+	}
+	rendered := observedOperationSequence(operations)
+	assert.Contains(t, rendered, "and 5 more")
+	assert.Equal(t, maxObservedOperations, strings.Count(rendered, "heartbeat"))
+}
+
+func TestObservedTaskExtraNamesTheKeysTheHostChose(t *testing.T) {
+	assert.Equal(t, "task carried no structured context", observedTaskExtra(nil))
+
+	// Deterministic ordering keeps reports comparable across runs.
+	rendered := observedTaskExtra(map[string]string{
+		"note":    "checksum must survive",
+		"finding": "retain the last valid checksum",
+	})
+	assert.Equal(t,
+		`observed finding="retain the last valid checksum", note="checksum must survive"`,
+		rendered)
+}
+
+func TestObservedValuesAreTruncated(t *testing.T) {
+	long := strings.Repeat("x", maxObservedValueBytes+40)
+	rendered := observedTaskExtra(map[string]string{"finding": long})
+	assert.Contains(t, rendered, "…")
+	assert.Less(t, len(rendered), len(long)+40)
+}
+
+func TestObservedUpdateExtraReportsArgumentShape(t *testing.T) {
+	assert.Equal(t, "no update carried structured context",
+		observedUpdateExtra([]conformance.Operation{{Operation: "release"}}))
+
+	rendered := observedUpdateExtra([]conformance.Operation{
+		{Operation: "update", Arguments: map[string]any{
+			"extra": map[string]any{"note": "retain the last valid checksum"},
+		}},
+	})
+	// The point of the report is to reveal that the host chose "note" where
+	// the fixture expected a different key.
+	assert.Equal(t, `observed note="retain the last valid checksum"`, rendered)
 }

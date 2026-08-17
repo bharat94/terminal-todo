@@ -1,6 +1,10 @@
-# Binaries
-todo
-todo_test
+# Binaries.
+#
+# These must be anchored to the repository root. A bare `todo` pattern also
+# matches the cmd/todo package directory, which silently kept the CLI entry
+# point out of every commit.
+/todo
+/todo_test
 
 # Test artifacts
 *.test

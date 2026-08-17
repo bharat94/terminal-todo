@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -245,7 +246,8 @@ func evaluateOperationExpectation(expect map[string]any, scenario conformance.Ca
 			if _, exists := catalogClockCheckpoint(scenario); exists {
 				detail += " after the checkpoint"
 			}
-			return false, fmt.Sprintf("none of the operation alternatives %v were observed %s", alternatives, detail)
+			return false, fmt.Sprintf("none of the operation alternatives %v were observed %s; %s",
+				alternatives, detail, observedOperationSequence(filtered))
 		}
 	}
 	if expected, ok := stringExpectation(expect, "operation"); ok {
@@ -261,7 +263,8 @@ func evaluateOperationExpectation(expect map[string]any, scenario conformance.Ca
 			break
 		}
 		if !matched {
-			return false, fmt.Sprintf("matching %q operation was not observed", expected)
+			return false, fmt.Sprintf("matching %q operation was not observed; %s",
+				expected, observedOperationSequence(filtered))
 		}
 	}
 	if extra, ok := objectExpectation(expect, "update_extra_contains"); ok {
@@ -273,14 +276,16 @@ func evaluateOperationExpectation(expect map[string]any, scenario conformance.Ca
 			}
 		}
 		if !matched {
-			return false, "no update persisted the expected structured handoff"
+			return false, fmt.Sprintf("no update persisted the expected structured handoff %v; %s",
+				extra, observedUpdateExtra(filtered))
 		}
 	}
 	if after, ok := stringExpectation(expect, "after"); ok {
 		index := operationIndex(filtered, after)
 		choices, hasChoices := stringListExpectation(expect, "one_of_operations")
 		if index < 0 || (hasChoices && !anyOperationPresent(filtered[index+1:], choices)) {
-			return false, fmt.Sprintf("no terminal operation followed %q", after)
+			return false, fmt.Sprintf("no terminal operation followed %q; %s",
+				after, observedOperationSequence(filtered))
 		}
 	}
 	return true, ""
@@ -366,7 +371,8 @@ func evaluateTaskExpectation(expect map[string]any, runtime catalogFixtureRuntim
 			}
 		}
 		if !matched {
-			return false, fmt.Sprintf("task %q structured context did not contain %q", reference, expected)
+			return false, fmt.Sprintf("task %q structured context did not contain %q; %s",
+				reference, expected, observedTaskExtra(task.Extra))
 		}
 	}
 	return true, ""
@@ -685,4 +691,95 @@ func intValue(value any) (int, bool) {
 func boolExpectation(expect map[string]any, key string) (bool, bool) {
 	value, ok := expect[key].(bool)
 	return value, ok
+}
+
+// Observed-evidence helpers.
+//
+// A failing assertion used to say only what it wanted. The 2026-08-15 Codex
+// calibration failed the handoff scenario and the report could not establish
+// which metadata shape the host had actually used, because the retained
+// report named the expectation and not the observation, and the disposable
+// workspace was already deleted. A paid run produced a failure nobody could
+// diagnose.
+//
+// These helpers append what was seen to the failure detail. They are bounded,
+// because scenario reports are retained and compared and an unbounded dump
+// would drown the signal.
+
+const (
+	// maxObservedOperations bounds the operation sequence quoted back.
+	maxObservedOperations = 12
+	// maxObservedValueBytes bounds each quoted metadata value.
+	maxObservedValueBytes = 80
+)
+
+// observedOperationSequence renders the operations an assertion actually saw,
+// after its actor and task filters were applied.
+func observedOperationSequence(operations []conformance.Operation) string {
+	if len(operations) == 0 {
+		return "no matching operations were recorded"
+	}
+	names := make([]string, 0, len(operations))
+	for _, operation := range operations {
+		if len(names) == maxObservedOperations {
+			names = append(names, fmt.Sprintf("… and %d more", len(operations)-maxObservedOperations))
+			break
+		}
+		names = append(names, operation.Operation)
+	}
+	return "observed " + strings.Join(names, " → ")
+}
+
+// observedTaskExtra renders the structured metadata a task actually carries,
+// which is what an extra_value_contains failure needs in order to be
+// actionable: it names the keys the host chose.
+func observedTaskExtra(extra map[string]string) string {
+	if len(extra) == 0 {
+		return "task carried no structured context"
+	}
+	keys := make([]string, 0, len(extra))
+	for key := range extra {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	rendered := make([]string, 0, len(keys))
+	for _, key := range keys {
+		rendered = append(rendered, fmt.Sprintf("%s=%q", key, truncateObserved(extra[key])))
+	}
+	return "observed " + strings.Join(rendered, ", ")
+}
+
+// observedUpdateExtra renders the extra arguments seen on update calls.
+func observedUpdateExtra(operations []conformance.Operation) string {
+	var rendered []string
+	for _, operation := range operations {
+		if operation.Operation != "update" {
+			continue
+		}
+		extra, ok := operation.Arguments["extra"].(map[string]any)
+		if !ok || len(extra) == 0 {
+			continue
+		}
+		keys := make([]string, 0, len(extra))
+		for key := range extra {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			rendered = append(rendered, fmt.Sprintf("%s=%q", key, truncateObserved(fmt.Sprint(extra[key]))))
+		}
+	}
+	if len(rendered) == 0 {
+		return "no update carried structured context"
+	}
+	return "observed " + strings.Join(rendered, ", ")
+}
+
+func truncateObserved(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= maxObservedValueBytes {
+		return value
+	}
+	return value[:maxObservedValueBytes] + "…"
 }
