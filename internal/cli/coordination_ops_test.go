@@ -464,3 +464,51 @@ func TestNewAcquirePlanDerivesAStableFingerprint(t *testing.T) {
 	_, err = newAcquirePlan("w1", "-5m", nil)
 	assert.ErrorIs(t, err, errInvalidTTL)
 }
+
+// Dependencies resolve numerically but are compared as strings, so every
+// spelling of one edge must collapse to one stored key. Before this held,
+// `1`, `todo://local/1`, and `todo://local/01` were three edges pointing at
+// the same task: they inflated the dependency count, and removing one left
+// the others, so a task stayed blocked by an edge the user believed deleted.
+func TestDependencyEditsCollapseEverySpellingOfOneEdge(t *testing.T) {
+	s := newOpsStore(t, "Prerequisite", "Dependent")
+
+	task, err := updateTask(s, 2, "", taskUpdate{
+		AddDeps: []string{"1", "todo://local/1", "todo://local/01"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"todo://local/1"}, task.Depends)
+
+	// Any spelling must remove the edge.
+	task, err = updateTask(s, 2, "", taskUpdate{RemoveDeps: []string{"1"}})
+	require.NoError(t, err)
+	assert.Empty(t, task.Depends)
+}
+
+func TestDependencyEditsRepairLegacySpellingsOnTheEditedTask(t *testing.T) {
+	s := newOpsStore(t, "Prerequisite", "Other", "Dependent")
+	// A store written before normalization can hold several spellings of one
+	// edge. Editing the task is where that is repaired.
+	s.Tasks[3].Depends = []string{"1", "todo://local/01", "todo://local/1"}
+
+	task, err := updateTask(s, 3, "", taskUpdate{AddDeps: []string{"2"}})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"todo://local/1", "todo://local/2"}, task.Depends)
+}
+
+func TestCanonicalDependencyRejectsUnparseableReferences(t *testing.T) {
+	for _, reference := range []string{"", "0", "-1", "todo://", "todo:///1", "not a ref"} {
+		_, err := canonicalDependency(reference)
+		assert.Error(t, err, "canonicalDependency(%q) must fail", reference)
+	}
+
+	for reference, want := range map[string]string{
+		"1":                  "todo://local/1",
+		"todo://local/01":    "todo://local/1",
+		"todo://upstream/07": "todo://upstream/7",
+	} {
+		canonical, err := canonicalDependency(reference)
+		require.NoError(t, err, reference)
+		assert.Equal(t, want, canonical)
+	}
+}

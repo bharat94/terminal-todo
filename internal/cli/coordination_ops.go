@@ -411,29 +411,43 @@ func updateTask(s *store.TaskStore, id uint64, actor string, u taskUpdate) (*sto
 // applyDependencyEdits rewrites a task's dependency list and records one event
 // per edge changed.
 func applyDependencyEdits(s *store.TaskStore, task *store.Task, actor string, add, remove []string) error {
+	// Existing edges are canonicalized too. A store written before this
+	// normalization can hold several spellings of one edge, and an edit is the
+	// point at which that is repaired for the task being edited.
 	depSet := make(map[string]bool, len(task.Depends))
 	for _, dep := range task.Depends {
-		depSet[dep] = true
+		canonical, err := canonicalDependency(dep)
+		if err != nil {
+			// Preserve a reference this build cannot interpret rather than
+			// dropping an edge that a newer binary may understand.
+			canonical = dep
+		}
+		depSet[canonical] = true
 	}
 	for _, dep := range remove {
-		if !depSet[dep] {
+		canonical, err := canonicalDependency(dep)
+		if err != nil {
+			return err
+		}
+		if !depSet[canonical] {
 			return fmt.Errorf("dependency %q not found on task %d: %w", dep, task.ID, errTaskNotFound)
 		}
-		delete(depSet, dep)
+		delete(depSet, canonical)
 	}
 	for _, dep := range add {
-		if depSet[dep] {
+		canonical, err := canonicalDependency(dep)
+		if err != nil {
+			return err
+		}
+		if depSet[canonical] {
 			continue
 		}
-		depID, local := dag.ParseLocalID(dep)
-		if local {
+		if depID, local := dag.ParseLocalID(canonical); local {
 			if _, ok := s.Tasks[depID]; !ok {
 				return fmt.Errorf("dependency task %d not found: %w", depID, errTaskNotFound)
 			}
-		} else if _, _, err := dag.ParseTaskURI(dep); err != nil {
-			return err
 		}
-		depSet[dep] = true
+		depSet[canonical] = true
 	}
 	if err := validateProjectedCardinality(
 		"dependencies", len(task.Depends), len(depSet), maxTaskDependencies,
@@ -445,6 +459,7 @@ func applyDependencyEdits(s *store.TaskStore, task *store.Task, actor string, ad
 	for dep := range depSet {
 		newDeps = append(newDeps, dep)
 	}
+	sort.Strings(newDeps)
 
 	// Detect cycles against the projected graph. Building it with the current
 	// edges would report a false positive whenever an edit removes the very
@@ -458,16 +473,23 @@ func applyDependencyEdits(s *store.TaskStore, task *store.Task, actor string, ad
 		return fmt.Errorf("cannot update dependencies: %v: %w", err, errCycleDetected)
 	}
 
-	oldSet := make(map[string]bool, len(task.Depends))
+	var oldSet map[string]bool
+	// Compare canonically on both sides so a re-spelled edge is not reported
+	// as one removal plus one addition of the same dependency.
+	oldSet = make(map[string]bool, len(task.Depends))
 	for _, dep := range task.Depends {
-		oldSet[dep] = true
+		canonical, err := canonicalDependency(dep)
+		if err != nil {
+			canonical = dep
+		}
+		oldSet[canonical] = true
 	}
 	for _, dep := range newDeps {
 		if !oldSet[dep] {
 			s.AddEvent(store.EventDependencyAdded, task.ID, actor, map[string]string{"dep": dep})
 		}
 	}
-	for _, dep := range task.Depends {
+	for dep := range oldSet {
 		if !depSet[dep] {
 			s.AddEvent(store.EventDependencyRemoved, task.ID, actor, map[string]string{"dep": dep})
 		}
@@ -560,4 +582,24 @@ func newlyReadyAfter(s *store.TaskStore, completedIDs []uint64, resolver dag.Dep
 
 	sort.Slice(unblocked, func(i, j int) bool { return unblocked[i].ID < unblocked[j].ID })
 	return unblocked
+}
+
+// canonicalDependency returns the stable stored form of a dependency
+// reference.
+//
+// Dependencies are resolved numerically but compared as strings, so every
+// spelling of one edge has to collapse to one key. Without this, `1`,
+// `todo://local/1`, and `todo://local/01` are three separate edges pointing at
+// the same task: they inflate the dependency count, and removing one leaves
+// the others, so a task stays blocked by an edge the user believes they
+// deleted.
+func canonicalDependency(reference string) (string, error) {
+	if id, local := dag.ParseLocalID(reference); local {
+		return fmt.Sprintf("todo://local/%d", id), nil
+	}
+	alias, id, err := dag.ParseTaskURI(reference)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("todo://%s/%d", alias, id), nil
 }
