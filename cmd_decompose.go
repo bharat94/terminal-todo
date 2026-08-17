@@ -4,16 +4,29 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/bharat94/terminal-todo/dag"
 	"github.com/bharat94/terminal-todo/store"
 	"strings"
 )
 
+// DecomposePayload is the --into document. The CLI spells the capability field
+// "caps" and the JSON-RPC surface spells it "capabilities"; both are published
+// and neither can move, so the CLI shape is converted into the shared one
+// rather than aliased onto it.
 type DecomposePayload struct {
-	Subtasks []struct {
-		Title string   `json:"title"`
-		Caps  []string `json:"caps"`
-	} `json:"subtasks"`
+	Subtasks []decomposePayloadSubtask `json:"subtasks"`
+}
+
+type decomposePayloadSubtask struct {
+	Title string   `json:"title"`
+	Caps  []string `json:"caps"`
+}
+
+func (p DecomposePayload) subtasks() []decomposeSubtask {
+	subtasks := make([]decomposeSubtask, 0, len(p.Subtasks))
+	for _, sub := range p.Subtasks {
+		subtasks = append(subtasks, decomposeSubtask{Title: sub.Title, Capabilities: sub.Caps})
+	}
+	return subtasks
 }
 
 type decomposeEnvelope struct {
@@ -69,38 +82,9 @@ func cmdDecompose(args []string) {
 	var parent *store.Task
 	var added []*store.Task
 	updateLifecycleStore(func(s *store.TaskStore) error {
-		parentTask, ok := s.GetTask(parentID)
-		if !ok {
-			return lifecycleError(ErrTaskNotFound, "parent task %d not found", parentID)
-		}
-		if parentTask.Status == store.StatusCompleted {
-			return lifecycleError(ErrInvalidTransition, "parent task %d is already completed", parentID)
-		}
-		if parentTask.Owner != "" && parentTask.Owner != agent {
-			return lifecycleError(ErrNotOwner, "task %d is claimed by %s (use --as %s to decompose)", parentID, parentTask.Owner, parentTask.Owner)
-		}
-		if err := validateProjectedCardinality("dependencies", len(parentTask.Depends), len(parentTask.Depends)+len(payload.Subtasks), maxTaskDependencies); err != nil {
-			return persistedInputFailure(err)
-		}
-		for _, sub := range payload.Subtasks {
-			subTask := s.AddTask(sub.Title, nil)
-			subTask.Capabilities = sub.Caps
-			subTask.Lineage = fmt.Sprintf("todo://local/%d", parentID)
-			parentTask.Depends = append(parentTask.Depends, fmt.Sprintf("todo://local/%d", subTask.ID))
-			added = append(added, subTask)
-		}
-		d := dag.NewDAG()
-		d.BuildFromTasks(s.Tasks)
-		if err := d.DetectCycle(parentTask.Depends, parentID); err != nil {
-			return lifecycleError(ErrCycleDetected, "decompose would create a cycle: %v", err)
-		}
-		parentTask.Status = store.StatusPending
-		parentTask.Owner = ""
-		parentTask.LeaseExpires = 0
-		parentTask.BlockReason = ""
-		s.AddEvent(store.EventTaskDecomposed, parentID, agent, map[string]string{"count": fmt.Sprintf("%d", len(payload.Subtasks))})
-		parent = parentTask
-		return nil
+		var decomposeErr error
+		parent, added, decomposeErr = decomposeTask(s, parentID, agent, payload.subtasks())
+		return decomposeErr
 	})
 	if receiptRequested(args) {
 		ids := make([]uint64, 0, len(added))

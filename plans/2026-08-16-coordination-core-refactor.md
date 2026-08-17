@@ -1,7 +1,8 @@
 # Coordination core refactor
 
-- Status: in progress
+- Status: in progress — Phase 0 complete, Phase 1 underway
 - Opened: 2026-08-16
+- Last updated: 2026-08-16
 - Baseline commit: `bd88b9f`
 - Owner: maintainer
 
@@ -146,6 +147,8 @@ phase must leave `make test-race` and the full CI matrix green.
 
 ### Phase 0 — Prove the contract, then fix it
 
+**Status: complete.** Landed in `fe31a7a`.
+
 Establish the safety net before moving any logic, so the refactor is provably
 behavior-preserving rather than hopefully so.
 
@@ -168,7 +171,28 @@ exit statuses on both surfaces; zero `strings.Contains(err.Error()` remains in
 `serve.go`; the parity harness covers claim, acquire, done, release, block,
 unblock, handoff, heartbeat, decompose, update, rm.
 
+Outcome: all four Defect 1 reproductions now return their documented code and
+exit status. All 22 substring sites are gone, plus two the original survey
+missed — one in `cmd_bootstrap.go` and one in `handleBootstrap` that used a
+differently named error variable. The guard test that found them matches any
+`strings.Contains|HasPrefix|HasSuffix|Index` against an `*err*.Error()`
+receiver, so the narrower original pattern cannot hide a variant again.
+
+The parity harness covers 18 failure conditions. It also established that
+`claim` and `unblock` are deliberately absent from the MCP surface — atomic
+`acquire` is the supported allocation primitive — which is now pinned by
+`TestMCPOmitsRaceProneAllocation` rather than left implicit.
+
+`INVALID_TRANSITION` (exit 1, JSON-RPC `-32014`) was added rather than
+shoehorning lifecycle-state conflicts into an existing code. Error identifiers
+are append-only protocol values, so adding one is contract-legal; reporting
+"claiming completed work" as `DEPENDENCY_ERROR` or `INVALID_ARGS` would not
+have been honest.
+
 ### Phase 1 — One core per operation
+
+**Status: in progress.** Seven of twelve operations extracted in `6e96d86`
+and the commit following it.
 
 Extract each lifecycle operation into `internal/coord` as a function over
 `*store.TaskStore` that returns a typed result and a typed error, exactly as
@@ -178,6 +202,24 @@ reviewable and bisectable.
 Order, easiest to hardest: `heartbeat` (already done — becomes the reference),
 `release`, `block`, `unblock`, `claim`, `done`, `handoff`, `log`, `rm`,
 `update`, `decompose`, `acquire`.
+
+Extracted so far into `coordination_ops.go`: `claim`, `complete`, `release`,
+`block`, `unblock`, `log`, `decompose`. `heartbeat` and `handoff` already had
+shared cores in `lease.go` and `handoff.go`; `handoff`'s hand-rolled
+classification switch was collapsed into the shared classifier. Remaining:
+`update`, `rm`, `prune`, `acquire`.
+
+Extraction is not always a pure merge. `decompose` publishes two different
+capability field names — `caps` in the CLI `--into` document, `capabilities`
+in the JSON-RPC subtask — and both are documented. Aliasing them onto one type
+silently broke the CLI format; the existing suite caught it, and the CLI shape
+now converts into the shared one explicitly. Divergences that are genuinely
+part of the published contract survive the refactor; only accidental ones are
+removed.
+
+`internal/coord` remains the destination, but the extraction is landing in
+`package main` first. Moving files and deduplicating logic in one step would
+produce a diff nobody can review; the package move is Phase 3's job.
 
 Both surfaces become adapters: parse input, call the core, render output. The
 CLI keeps human formatting and receipts; the RPC layer keeps envelopes and

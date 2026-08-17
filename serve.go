@@ -1791,40 +1791,10 @@ func (srv *server) handleDecompose(params json.RawMessage) (interface{}, *rpcErr
 	var parentProtocol protocolTask
 	var subtaskProtocols []protocolTask
 	_, err := updateStoreSafe(func(s *store.TaskStore) error {
-		parentTask, ok := s.GetTask(p.ID)
-		if !ok {
-			return fmt.Errorf("parent task %d not found: %w", p.ID, errTaskNotFound)
+		parentTask, added, decomposeErr := decomposeTask(s, p.ID, p.Actor, p.Subtasks)
+		if decomposeErr != nil {
+			return decomposeErr
 		}
-		if parentTask.Status == store.StatusCompleted {
-			return fmt.Errorf("parent task %d is already completed: %w", p.ID, errInvalidTransition)
-		}
-		if parentTask.Owner != "" && parentTask.Owner != p.Actor {
-			return fmt.Errorf("task %d is claimed by %s: %w", p.ID, parentTask.Owner, errNotOwner)
-		}
-		if err := validateProjectedCardinality("dependencies", len(parentTask.Depends), len(parentTask.Depends)+len(p.Subtasks), maxTaskDependencies); err != nil {
-			return persistedInputFailure(err)
-		}
-
-		var added []*store.Task
-		for _, sub := range p.Subtasks {
-			subTask := s.AddTask(strings.TrimSpace(sub.Title), nil)
-			subTask.Capabilities = sub.Capabilities
-			subTask.Lineage = fmt.Sprintf("todo://local/%d", p.ID)
-			parentTask.Depends = append(parentTask.Depends, fmt.Sprintf("todo://local/%d", subTask.ID))
-			added = append(added, subTask)
-		}
-
-		d := dag.NewDAG()
-		d.BuildFromTasks(s.Tasks)
-		if err := d.DetectCycle(parentTask.Depends, parentTask.ID); err != nil {
-			return fmt.Errorf("decompose would create a cycle: %v: %w", err, errCycleDetected)
-		}
-
-		parentTask.Status = store.StatusPending
-		parentTask.Owner = ""
-		parentTask.LeaseExpires = 0
-		parentTask.BlockReason = ""
-		s.AddEvent(store.EventTaskDecomposed, p.ID, p.Actor, map[string]string{"count": fmt.Sprintf("%d", len(p.Subtasks))})
 
 		parentProtocol = newProtocolTask(parentTask)
 		subtaskProtocols = make([]protocolTask, 0, len(added))
