@@ -50,7 +50,7 @@ func appendConformanceTrace(path string, record conformance.TraceRecord) error {
 	if err := lk.AcquireWithTimeout(lock.Write, 5*time.Second); err != nil {
 		return err
 	}
-	defer lk.Release()
+	defer func() { _ = lk.Release() }()
 
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {

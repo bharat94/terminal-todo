@@ -93,7 +93,7 @@ func updateAgentRegistry(mutate func(*AgentRegistry) error) error {
 	if err := lk.Acquire(lock.Write); err != nil {
 		return err
 	}
-	defer lk.Release()
+	defer func() { _ = lk.Release() }()
 
 	registry, err := loadAgentRegistry()
 	if err != nil {

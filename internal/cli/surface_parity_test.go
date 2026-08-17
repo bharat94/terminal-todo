@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -272,7 +273,8 @@ func runParityCLI(t *testing.T, todo string, tc parityCase) (ErrorCode, int, par
 	require.NoError(t, json.Unmarshal(output, &envelope), "CLI error output: %s", output)
 
 	var exit int
-	if exitErr, ok := err.(*exec.ExitError); ok {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
 		exit = exitErr.ExitCode()
 	}
 	return envelope.Error.Code, exit, readParityState(t, root)

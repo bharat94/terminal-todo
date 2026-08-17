@@ -96,7 +96,7 @@ func parseEventCLIOptions(args []string) (uint64, *int, error) {
 		}
 		validated, err := eventPageLimit(&parsed)
 		if err != nil {
-			return 0, nil, fmt.Errorf("--%v", err)
+			return 0, nil, fmt.Errorf("--%w", err)
 		}
 		limit = &validated
 	}
