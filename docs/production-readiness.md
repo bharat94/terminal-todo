@@ -37,6 +37,9 @@ release-gate and longitudinal measurement program.
 | Protocols | Versioned CLI JSON and JSON-RPC, additive compact receipts and event pages, MCP 2025-06-18 lifecycle and tool annotations, strict parameter decoding, stable errors | Ready |
 | Agent integration | Bundled MCP-first skill, bounded session bootstrap, compact routine mutations, allocation diagnostics, idempotent Codex and Claude installers, and an opt-in nine-scenario real-agent conformance runner | Catalog execution is deterministic and CI-tested; Codex lifecycle smoke validated; current full-catalog host certification remains beta evidence |
 | Platforms | Native Linux, macOS, and Windows race/build/vet matrix; six release targets | Ready |
+| Quality gates | golangci-lint, per-package coverage floors, fuzz-corpus replay, and short fuzzing of the dependency-reference and JSON-RPC/MCP decoders on every pull request | Ready |
+| Durability evidence | Interrupted write, truncation, byte corruption, missing and stale lock sidecar, failed-mutation rollback, and temporary-file cleanup | Covered for local filesystems; power-loss scenarios remain a 1.0 gate |
+| Distribution | Release archives, checksum-verifying install script, and `go install .../cmd/todo@latest` | Ready; the Homebrew cask is generated but not yet published to a tap |
 | Supply chain | Pinned release tools, checksums, per-archive SPDX SBOMs, provenance attestations, reachable-vulnerability scan | Tagged pipeline and downloaded artifacts validated |
 | Operations | Backup, restore, retention, compaction, compatibility, security, and incident guidance | Ready |
 | Open source | MIT license, contribution and support guides, security policy, conduct policy, issue forms, PR template | Ready |
@@ -85,7 +88,9 @@ These are maturity gates, not reasons to delay a beta:
 
 - observed upgrade and migration history across multiple released versions;
 - sustained use by independent Codex, Claude, human, and scripted workers;
-- fault-injection evidence across more filesystem and power-loss scenarios;
+- fault-injection evidence across more filesystem and power-loss scenarios
+  beyond the interrupted-write, truncation, corruption, and lock-sidecar cases
+  now covered in `store/fault_test.go`;
 - a documented deprecation window informed by real integrations;
 - evidence that diagnostics and onboarding work for users unfamiliar with the
   internal model.
