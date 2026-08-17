@@ -68,12 +68,12 @@ func cmdUpdate(args []string) {
 
 	var updated *store.Task
 	updateStore(func(s *store.TaskStore) error {
-		task, ok := s.GetTask(ids[0])
-		if !ok {
-			return fmt.Errorf("task %d not found", ids[0])
+		task, err := requireTask(s, ids[0])
+		if err != nil {
+			return err
 		}
-		if task.Owner != "" && task.Owner != owner {
-			return fmt.Errorf("task %d is claimed by %s; use --as %s", task.ID, task.Owner, task.Owner)
+		if err := requireOwner(task, owner); err != nil {
+			return err
 		}
 
 		// Apply dependency mutations with cycle validation
@@ -85,7 +85,7 @@ func cmdUpdate(args []string) {
 			}
 			for _, dep := range removeDeps {
 				if !depSet[dep] {
-					return fmt.Errorf("dependency %q not found on task %d", dep, task.ID)
+					return fmt.Errorf("dependency %q not found on task %d: %w", dep, task.ID, errTaskNotFound)
 				}
 				delete(depSet, dep)
 			}
@@ -97,7 +97,7 @@ func cmdUpdate(args []string) {
 				depID, local := dag.ParseLocalID(dep)
 				if local {
 					if _, ok := s.Tasks[depID]; !ok {
-						return fmt.Errorf("dependency task %d not found", depID)
+						return fmt.Errorf("dependency task %d not found: %w", depID, errTaskNotFound)
 					}
 				} else {
 					if _, _, err := dag.ParseTaskURI(dep); err != nil {
@@ -125,7 +125,7 @@ func cmdUpdate(args []string) {
 			task.Depends = oldDeps
 
 			if err := d.DetectCycle(nil, task.ID); err != nil {
-				return fmt.Errorf("cannot update dependencies: %w", err)
+				return fmt.Errorf("cannot update dependencies: %v: %w", err, errCycleDetected)
 			}
 
 			// Track added/removed for events

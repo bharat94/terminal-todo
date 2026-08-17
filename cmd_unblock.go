@@ -24,7 +24,7 @@ func cmdUnblock(args []string) {
 			return lifecycleError(ErrTaskNotFound, "task %d not found", ids[0])
 		}
 		if task.Status != store.StatusBlocked {
-			return lifecycleError(ErrInvalidArgs, "task %d is not blocked", ids[0])
+			return lifecycleError(ErrInvalidTransition, "task %d is not blocked", ids[0])
 		}
 		task.Status = store.StatusPending
 		task.BlockReason = ""

@@ -255,6 +255,9 @@ func updateStore(mutate func(*store.TaskStore) error) *store.TaskStore {
 		if isPersistedInputFailure(err) {
 			fail(ErrInvalidArgs, "%v", err)
 		}
+		if code, ok := classifyCoordinationError(err); ok {
+			fail(code, "%v", err)
+		}
 		fail(ErrStoreCorrupted, "%v", err)
 	}
 	return s

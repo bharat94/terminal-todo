@@ -54,23 +54,20 @@ func cmdClaim(args []string) {
 	var lastError string
 	var claimed *store.Task
 	updateStore(func(s *store.TaskStore) error {
-		task, ok := s.GetTask(id)
-		if !ok {
-			return fmt.Errorf("task %d not found", id)
+		task, err := requireTask(s, id)
+		if err != nil {
+			return err
 		}
-		if task.Status == store.StatusCompleted {
-			return fmt.Errorf("task %d is already completed", id)
+		if err := requireClaimableStatus(task); err != nil {
+			return err
 		}
-		if task.Status == store.StatusBlocked {
-			return fmt.Errorf("task %d is blocked", id)
+		if err := requireDependenciesComplete(task, s.Tasks, resolver); err != nil {
+			return err
 		}
-		if !dag.DependenciesCompleteWithResolver(task, s.Tasks, resolver) {
-			return fmt.Errorf("task %d has incomplete dependencies", id)
+		if err := requireLeaseAvailable(task, owner, projectNow()); err != nil {
+			return err
 		}
 		now := uint64(projectNow().UnixMilli())
-		if task.Owner != "" && task.Owner != owner && task.LeaseExpires > now {
-			return fmt.Errorf("task %d already claimed by %s (expires in %s)", id, task.Owner, time.Duration(task.LeaseExpires-now)*time.Millisecond)
-		}
 		retryCount = task.RetryCount
 		lastError = task.LastError
 		task.Owner = owner

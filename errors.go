@@ -23,6 +23,7 @@ const (
 	ErrAgentAtCapacity     ErrorCode = "AGENT_AT_CAPACITY"
 	ErrIdempotencyConflict ErrorCode = "IDEMPOTENCY_CONFLICT"
 	ErrLeaseNotActive      ErrorCode = "LEASE_NOT_ACTIVE"
+	ErrInvalidTransition   ErrorCode = "INVALID_TRANSITION"
 )
 
 type ErrorResponse struct {
@@ -79,7 +80,7 @@ func failWithData(code ErrorCode, message, details string, data interface{}) {
 
 func exitCode(code ErrorCode) int {
 	switch code {
-	case ErrTaskNotFound, ErrInvalidArgs, ErrNotOwner, ErrDependency:
+	case ErrTaskNotFound, ErrInvalidArgs, ErrNotOwner, ErrDependency, ErrInvalidTransition:
 		return 1
 	case ErrNotInitialized, ErrStoreCorrupted, ErrSchemaVersion:
 		return 2

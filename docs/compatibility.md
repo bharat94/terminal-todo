@@ -87,6 +87,37 @@ MCP exposes a curated coordination surface. Administrative native methods are
 not automatically MCP tools. Tool order is deterministic, but clients should
 select tools by name rather than position.
 
+Error identifiers classify a failure. Error *messages* do not, and clients
+must never parse them. Every surface derives a failure's identifier from the
+error value itself, so message wording can improve between releases without
+changing a documented code.
+
+### Lifecycle error classification, corrected after `v0.1.0-beta.1`
+
+Before this correction, mutating lifecycle commands could not produce most of
+their documented codes. Every domain failure raised inside a store transaction
+was reported as `STORE_CORRUPTED` with exit status 2 on the CLI, and the
+JSON-RPC and MCP surfaces recovered a code by matching substrings of the
+message, which missed conditions nobody had matched on.
+
+Failures now report the documented identifier and exit status on every
+surface: claiming leased work reports `ALREADY_CLAIMED`, mutating another
+agent's work reports `NOT_OWNER`, referencing a missing task reports
+`TASK_NOT_FOUND`, unmet prerequisites report `DEPENDENCY_ERROR`, and yielding
+or renewing work that holds no lease reports `LEASE_NOT_ACTIVE`.
+
+`INVALID_TRANSITION` (exit 1, JSON-RPC `-32014`) is added for lifecycle
+changes a task's current status does not permit, such as claiming completed
+work or unblocking work that is not blocked. It replaces `INVALID_ARGS` on the
+commands that previously reported those conditions as argument errors; both
+exit with status 1, so only the identifier changes.
+
+This is a fix toward the published contract rather than a departure from it:
+no code changes meaning, and codes that were unreachable become reachable.
+Automations that treated exit status 2 as "the store is corrupt" will now see
+the specific lifecycle status instead. `STORE_CORRUPTED` retains its
+documented meaning and is no longer raised for lifecycle outcomes.
+
 ## Verification tiers
 
 Every pull request and push runs:

@@ -40,8 +40,8 @@ func cmdBootstrap(args []string) {
 		EventLimit:   eventLimit,
 	}, capabilitiesExplicit, snapshotDependencyResolver(s.GetAllTasks()))
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			fail(ErrTaskNotFound, "%v", err)
+		if code, ok := classifyCoordinationError(err); ok {
+			fail(code, "%v", err)
 		}
 		fail(ErrInvalidArgs, "%v", err)
 	}

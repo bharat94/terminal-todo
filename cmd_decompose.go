@@ -74,7 +74,7 @@ func cmdDecompose(args []string) {
 			return lifecycleError(ErrTaskNotFound, "parent task %d not found", parentID)
 		}
 		if parentTask.Status == store.StatusCompleted {
-			return lifecycleError(ErrInvalidArgs, "parent task %d is already completed", parentID)
+			return lifecycleError(ErrInvalidTransition, "parent task %d is already completed", parentID)
 		}
 		if parentTask.Owner != "" && parentTask.Owner != agent {
 			return lifecycleError(ErrNotOwner, "task %d is claimed by %s (use --as %s to decompose)", parentID, parentTask.Owner, parentTask.Owner)
