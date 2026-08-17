@@ -1,6 +1,6 @@
 # Coordination core refactor
 
-- Status: in progress — Phase 0 complete, Phase 1 underway
+- Status: in progress — Phases 0 and 1 complete
 - Opened: 2026-08-16
 - Last updated: 2026-08-16
 - Baseline commit: `bd88b9f`
@@ -191,8 +191,7 @@ have been honest.
 
 ### Phase 1 — One core per operation
 
-**Status: in progress.** Seven of twelve operations extracted in `6e96d86`
-and the commit following it.
+**Status: complete.** Landed across `6e96d86`, `e3bc93c`, and `cca0742`.
 
 Extract each lifecycle operation into `internal/coord` as a function over
 `*store.TaskStore` that returns a typed result and a typed error, exactly as
@@ -203,11 +202,19 @@ Order, easiest to hardest: `heartbeat` (already done — becomes the reference),
 `release`, `block`, `unblock`, `claim`, `done`, `handoff`, `log`, `rm`,
 `update`, `decompose`, `acquire`.
 
-Extracted so far into `coordination_ops.go`: `claim`, `complete`, `release`,
-`block`, `unblock`, `log`, `decompose`. `heartbeat` and `handoff` already had
-shared cores in `lease.go` and `handoff.go`; `handoff`'s hand-rolled
-classification switch was collapsed into the shared classifier. Remaining:
-`update`, `rm`, `prune`, `acquire`.
+Extracted into `coordination_ops.go`: `claim`, `complete`, `release`, `block`,
+`unblock`, `log`, `decompose`, `update`, `prune`, and `acquire`'s preparation.
+`heartbeat` and `handoff` already had shared cores in `lease.go` and
+`handoff.go`; both hand-rolled classification switches were collapsed into the
+shared classifier. `rm` is CLI-only and was never duplicated, so it keeps its
+existing shape.
+
+`acquire` was the subtle one. Its mutation core was already shared, but both
+surfaces independently derived the idempotency fingerprint from config TTL,
+explicit TTL, explicit-versus-registered capabilities, and the agent profile.
+That fingerprint is what makes a retried request replay rather than allocate a
+second task, so a divergence there would have broken idempotency across
+transports without any test noticing.
 
 Extraction is not always a pure merge. `decompose` publishes two different
 capability field names — `caps` in the CLI `--into` document, `capabilities`
@@ -228,6 +235,21 @@ receipts. Neither keeps a mutation closure.
 Exit criteria: no lifecycle mutation logic appears in more than one file;
 `serve.go` drops below 1,200 lines; the parity harness passes unchanged;
 `internal/coord` reaches 85% coverage from in-process unit tests.
+
+Outcome: no lifecycle mutation appears twice, and the parity harness passed
+unchanged through every extraction. `serve.go` fell from 2,702 to 2,415 lines
+— short of the 1,200 target, because the remaining bulk is parameter structs,
+envelope types, and read handlers rather than duplicated mutation logic.
+Reaching 1,200 is a Phase 3 file-splitting concern, not a deduplication one,
+and the target moves there.
+
+Root-package coverage rose from 37.2% to 42.9%. The larger jump depends on
+Phase 2 removing `os.Exit` from command handlers; until then the CLI is still
+only reachable through a subprocess and still reports no attributed coverage.
+
+One defect fixed along the way: `todo.done` returned an `unblocked` list
+hardcoded to empty despite the field being documented. It now reports the
+pending tasks whose prerequisites the completion released.
 
 ### Phase 2 — Declarative CLI surface
 
