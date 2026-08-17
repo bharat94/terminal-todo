@@ -58,25 +58,12 @@ func cmdClaim(args []string) {
 		if err != nil {
 			return err
 		}
-		if err := requireClaimableStatus(task); err != nil {
-			return err
-		}
-		if err := requireDependenciesComplete(task, s.Tasks, resolver); err != nil {
-			return err
-		}
-		if err := requireLeaseAvailable(task, owner, projectNow()); err != nil {
-			return err
-		}
-		now := uint64(projectNow().UnixMilli())
+		// Retry history is read before the transition so the operator sees
+		// what the previous attempt left behind.
 		retryCount = task.RetryCount
 		lastError = task.LastError
-		task.Owner = owner
-		task.Status = store.StatusInProgress
-		task.LeaseExpires = now + uint64(ttl.Milliseconds())
-		s.AddLog(id, owner, "claimed")
-		s.AddEvent(store.EventTaskClaimed, id, owner, map[string]string{"ttl": ttl.String()})
-		claimed = task
-		return nil
+		claimed, err = claimTask(s, id, owner, ttl, resolver, projectNow())
+		return err
 	})
 	if receiptRequested(args) {
 		writeJSON(newTaskMutationReceipt("claim", claimed))

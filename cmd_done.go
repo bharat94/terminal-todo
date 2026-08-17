@@ -27,22 +27,10 @@ func cmdDone(args []string) {
 	completed := make([]*store.Task, 0, len(ids))
 	updateStore(func(s *store.TaskStore) error {
 		for _, id := range ids {
-			task, err := requireTask(s, id)
+			task, err := completeTask(s, id, owner, resolver, projectNow())
 			if err != nil {
 				return err
 			}
-			if err := requireDependenciesComplete(task, s.Tasks, resolver); err != nil {
-				return err
-			}
-			if err := requireOwner(task, owner); err != nil {
-				return err
-			}
-			task.Status = store.StatusCompleted
-			task.Completed = uint64(projectNow().UnixMilli())
-			task.Owner = ""
-			task.LeaseExpires = 0
-			task.BlockReason = ""
-			s.AddEvent(store.EventTaskCompleted, id, owner, nil)
 			completed = append(completed, task)
 		}
 		return nil

@@ -19,23 +19,9 @@ func cmdUnblock(args []string) {
 
 	var unblocked *store.Task
 	updateLifecycleStore(func(s *store.TaskStore) error {
-		task, ok := s.GetTask(ids[0])
-		if !ok {
-			return lifecycleError(ErrTaskNotFound, "task %d not found", ids[0])
-		}
-		if task.Status != store.StatusBlocked {
-			return lifecycleError(ErrInvalidTransition, "task %d is not blocked", ids[0])
-		}
-		task.Status = store.StatusPending
-		task.BlockReason = ""
-		// Blocked tasks do not retain ownership. Clear legacy state written by
-		// versions that kept a stale lease while blocked.
-		task.Owner = ""
-		task.LeaseExpires = 0
-		s.AddLog(ids[0], owner, "unblocked")
-		s.AddEvent(store.EventTaskUnblocked, ids[0], owner, nil)
-		unblocked = task
-		return nil
+		var err error
+		unblocked, err = unblockTask(s, ids[0], owner)
+		return err
 	})
 
 	if receiptRequested(args) {

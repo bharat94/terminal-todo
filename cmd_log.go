@@ -24,16 +24,9 @@ func cmdLog(args []string) {
 
 	var logged *store.Task
 	updateLifecycleStore(func(s *store.TaskStore) error {
-		task, ok := s.GetTask(ids[0])
-		if !ok {
-			return lifecycleError(ErrTaskNotFound, "task %d not found", ids[0])
-		}
-		if task.Owner != "" && task.Owner != owner {
-			return lifecycleError(ErrNotOwner, "task %d is claimed by %s; use --as %s", ids[0], task.Owner, task.Owner)
-		}
-		s.AddLog(ids[0], owner, message)
-		logged = task
-		return nil
+		var err error
+		logged, err = logTask(s, ids[0], owner, message)
+		return err
 	})
 
 	if receiptRequested(args) {
