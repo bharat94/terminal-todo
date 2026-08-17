@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -307,4 +309,158 @@ func TestDecomposeTaskRejectsACompletedParent(t *testing.T) {
 
 	_, _, err = decomposeTask(s, 1, "planner", []decomposeSubtask{{Title: "Child"}})
 	assert.ErrorIs(t, err, errInvalidTransition)
+}
+
+func TestUpdateTaskDetectsCyclesAgainstTheProjectedGraph(t *testing.T) {
+	s := newOpsStore(t, "First", "Second")
+	// 2 depends on 1.
+	_, err := updateTask(s, 2, "", taskUpdate{AddDeps: []string{"todo://local/1"}})
+	require.NoError(t, err)
+
+	// Closing the loop must be refused.
+	_, err = updateTask(s, 1, "", taskUpdate{AddDeps: []string{"todo://local/2"}})
+	assert.ErrorIs(t, err, errCycleDetected)
+
+	// Removing an edge must not be reported as a cycle. Building the graph
+	// from current rather than projected edges would produce a false positive
+	// here.
+	_, err = updateTask(s, 2, "", taskUpdate{RemoveDeps: []string{"todo://local/1"}})
+	assert.NoError(t, err)
+	assert.Empty(t, s.Tasks[2].Depends)
+}
+
+func TestUpdateTaskRejectsUnknownDependencyEdits(t *testing.T) {
+	s := newOpsStore(t, "First")
+
+	_, err := updateTask(s, 1, "", taskUpdate{AddDeps: []string{"todo://local/99"}})
+	assert.ErrorIs(t, err, errTaskNotFound)
+
+	_, err = updateTask(s, 1, "", taskUpdate{RemoveDeps: []string{"todo://local/99"}})
+	assert.ErrorIs(t, err, errTaskNotFound)
+}
+
+// Absent and empty are different. A nil field leaves the value alone;
+// SetCapabilities with an empty slice deliberately clears the requirement.
+func TestUpdateTaskDistinguishesAbsentFromEmpty(t *testing.T) {
+	s := newOpsStore(t, "First")
+	_, err := updateTask(s, 1, "", taskUpdate{
+		SetCapabilities: true,
+		Capabilities:    []string{"go", "testing"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"go", "testing"}, s.Tasks[1].Capabilities)
+
+	title := "Renamed"
+	_, err = updateTask(s, 1, "", taskUpdate{Title: &title})
+	require.NoError(t, err)
+	assert.Equal(t, "Renamed", s.Tasks[1].Title)
+	assert.Equal(t, []string{"go", "testing"}, s.Tasks[1].Capabilities, "absent means unchanged")
+
+	_, err = updateTask(s, 1, "", taskUpdate{SetCapabilities: true, Capabilities: []string{}})
+	require.NoError(t, err)
+	assert.Empty(t, s.Tasks[1].Capabilities, "empty means cleared")
+}
+
+func TestUpdateTaskRejectsInvalidValues(t *testing.T) {
+	s := newOpsStore(t, "First")
+
+	blank := "   "
+	_, err := updateTask(s, 1, "", taskUpdate{Title: &blank})
+	require.Error(t, err)
+	code, ok := classifyCoordinationError(err)
+	require.True(t, ok)
+	assert.Equal(t, ErrInvalidArgs, code)
+
+	tooHigh := float32(1.5)
+	_, err = updateTask(s, 1, "", taskUpdate{Priority: &tooHigh})
+	require.Error(t, err)
+}
+
+func TestPruneCompletedTasksDropsDanglingLocalEdges(t *testing.T) {
+	s := newOpsStore(t, "Prerequisite", "Dependent")
+	_, err := updateTask(s, 2, "", taskUpdate{AddDeps: []string{"todo://local/1"}})
+	require.NoError(t, err)
+	_, err = completeTask(s, 1, "", nil, opsNow)
+	require.NoError(t, err)
+
+	removed := pruneCompletedTasks(s)
+	require.Len(t, removed, 1)
+	assert.Equal(t, uint64(1), removed[0].ID)
+
+	// A surviving task that still listed the removed prerequisite could never
+	// become ready again.
+	require.Contains(t, s.Tasks, uint64(2))
+	assert.Empty(t, s.Tasks[2].Depends)
+}
+
+func TestPruneCompletedTasksLeavesCrossRepositoryEdgesAlone(t *testing.T) {
+	s := newOpsStore(t, "Local prerequisite", "Dependent")
+	_, err := updateTask(s, 2, "", taskUpdate{
+		AddDeps: []string{"todo://local/1", "todo://upstream/7"},
+	})
+	require.NoError(t, err)
+	_, err = completeTask(s, 1, "", nil, opsNow)
+	require.NoError(t, err)
+
+	pruneCompletedTasks(s)
+
+	// The remote edge resolves against another store; its absence here means
+	// nothing and must not be treated as dangling.
+	assert.Equal(t, []string{"todo://upstream/7"}, s.Tasks[2].Depends)
+}
+
+func TestNewlyReadyAfterReportsOnlyWorkTheCompletionReleased(t *testing.T) {
+	s := newOpsStore(t, "Prerequisite", "Dependent", "Independent", "Still blocked")
+	_, err := updateTask(s, 2, "", taskUpdate{AddDeps: []string{"todo://local/1"}})
+	require.NoError(t, err)
+	_, err = updateTask(s, 4, "", taskUpdate{AddDeps: []string{"todo://local/1", "todo://local/3"}})
+	require.NoError(t, err)
+	_, err = completeTask(s, 1, "", nil, opsNow)
+	require.NoError(t, err)
+
+	unblocked := newlyReadyAfter(s, []uint64{1}, nil)
+	require.Len(t, unblocked, 1)
+	// 2 was released. 3 was already ready, so it is not news. 4 still waits on 3.
+	assert.Equal(t, uint64(2), unblocked[0].ID)
+}
+
+func TestNewlyReadyAfterIsEmptyWithoutCompletions(t *testing.T) {
+	s := newOpsStore(t, "First")
+	assert.Empty(t, newlyReadyAfter(s, nil, nil))
+}
+
+func TestNewAcquirePlanDerivesAStableFingerprint(t *testing.T) {
+	root := t.TempDir()
+	previous := projectRoot
+	projectRoot = root
+	defer func() { projectRoot = previous }()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".terminal-todo"), 0o700))
+	require.NoError(t, store.NewTaskStore().Save(tasksBinPath()))
+
+	// The fingerprint is what makes a retried acquire replay instead of
+	// allocating a second task, so identical requests must agree on it and
+	// different requests must not.
+	first, err := newAcquirePlan("w1", "30m", []string{"go"})
+	require.NoError(t, err)
+	second, err := newAcquirePlan("w1", "30m", []string{"go"})
+	require.NoError(t, err)
+	assert.Equal(t, first.Fingerprint, second.Fingerprint)
+	assert.Equal(t, 30*time.Minute, first.TTL)
+
+	other, err := newAcquirePlan("w1", "45m", []string{"go"})
+	require.NoError(t, err)
+	assert.NotEqual(t, first.Fingerprint, other.Fingerprint)
+
+	// Registered capabilities and an explicit empty list are different
+	// requests, not the same one.
+	registered, err := newAcquirePlan("w1", "30m", nil)
+	require.NoError(t, err)
+	explicitlyNone, err := newAcquirePlan("w1", "30m", []string{})
+	require.NoError(t, err)
+	assert.NotEqual(t, registered.Fingerprint, explicitlyNone.Fingerprint)
+
+	_, err = newAcquirePlan("w1", "not-a-duration", nil)
+	assert.ErrorIs(t, err, errInvalidTTL)
+	_, err = newAcquirePlan("w1", "-5m", nil)
+	assert.ErrorIs(t, err, errInvalidTTL)
 }

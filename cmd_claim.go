@@ -1,11 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/bharat94/terminal-todo/dag"
 	"github.com/bharat94/terminal-todo/store"
-	"time"
 )
 
 func cmdClaim(args []string) {
@@ -14,24 +14,13 @@ func cmdClaim(args []string) {
 		fail(ErrInvalidArgs, "task ID required")
 	}
 
-	var owner string
-	cfg, err := loadConfig()
+	owner := optionValue(args, "--as")
+	ttl, err := parseLeaseTTL(optionValue(args, "--ttl"))
 	if err != nil {
-		fail(ErrStoreCorrupted, "loading config: %v", err)
-	}
-	ttl := parseDefaultTTL(cfg)
-
-	for i, arg := range args {
-		if arg == "--as" && i+1 < len(args) {
-			owner = args[i+1]
+		if errors.Is(err, errInvalidTTL) {
+			fail(ErrInvalidArgs, "--ttl %v", err)
 		}
-		if arg == "--ttl" && i+1 < len(args) {
-			t, err := time.ParseDuration(args[i+1])
-			if err != nil || t <= 0 {
-				fail(ErrInvalidArgs, "--ttl must be a positive duration")
-			}
-			ttl = t
-		}
+		fail(ErrStoreCorrupted, "%v", err)
 	}
 
 	if owner == "" {

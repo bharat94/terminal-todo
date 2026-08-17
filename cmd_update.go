@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bharat94/terminal-todo/dag"
-
 	"github.com/bharat94/terminal-todo/store"
 )
 
@@ -66,111 +64,29 @@ func cmdUpdate(args []string) {
 		}
 	}
 
+	var titlePointer *string
+	if hasTitle {
+		titlePointer = &title
+	}
+	var priorityPointer *float32
+	if hasPriority {
+		p32 := float32(priority)
+		priorityPointer = &p32
+	}
+
 	var updated *store.Task
 	updateStore(func(s *store.TaskStore) error {
-		task, err := requireTask(s, ids[0])
-		if err != nil {
-			return err
-		}
-		if err := requireOwner(task, owner); err != nil {
-			return err
-		}
-
-		// Apply dependency mutations with cycle validation
-		if len(addDeps) > 0 || len(removeDeps) > 0 {
-			// Build new dependency list
-			depSet := make(map[string]bool)
-			for _, dep := range task.Depends {
-				depSet[dep] = true
-			}
-			for _, dep := range removeDeps {
-				if !depSet[dep] {
-					return fmt.Errorf("dependency %q not found on task %d: %w", dep, task.ID, errTaskNotFound)
-				}
-				delete(depSet, dep)
-			}
-			for _, dep := range addDeps {
-				if depSet[dep] {
-					continue
-				}
-				// Validate the new dependency
-				depID, local := dag.ParseLocalID(dep)
-				if local {
-					if _, ok := s.Tasks[depID]; !ok {
-						return fmt.Errorf("dependency task %d not found: %w", depID, errTaskNotFound)
-					}
-				} else {
-					if _, _, err := dag.ParseTaskURI(dep); err != nil {
-						return err
-					}
-				}
-				depSet[dep] = true
-			}
-			if err := validateProjectedCardinality("dependencies", len(task.Depends), len(depSet), maxTaskDependencies); err != nil {
-				return persistedInputFailure(err)
-			}
-
-			// Build new deps and detect cycles
-			newDeps := make([]string, 0, len(depSet))
-			for dep := range depSet {
-				newDeps = append(newDeps, dep)
-			}
-
-			// Build DAG with the task's updated deps to avoid false-positive
-			// cycle detection when removing deps.
-			d := dag.NewDAG()
-			oldDeps := task.Depends
-			task.Depends = newDeps
-			d.BuildFromTasks(s.Tasks)
-			task.Depends = oldDeps
-
-			if err := d.DetectCycle(nil, task.ID); err != nil {
-				return fmt.Errorf("cannot update dependencies: %v: %w", err, errCycleDetected)
-			}
-
-			// Track added/removed for events
-			oldSet := make(map[string]bool)
-			for _, dep := range task.Depends {
-				oldSet[dep] = true
-			}
-			for _, dep := range newDeps {
-				if !oldSet[dep] {
-					s.AddEvent(store.EventDependencyAdded, task.ID, owner, map[string]string{"dep": dep})
-				}
-			}
-			for _, dep := range task.Depends {
-				if !depSet[dep] {
-					s.AddEvent(store.EventDependencyRemoved, task.ID, owner, map[string]string{"dep": dep})
-				}
-			}
-
-			task.Depends = newDeps
-		}
-
-		if hasTitle {
-			task.Title = title
-		}
-		if hasPriority {
-			task.Priority = float32(priority)
-		}
-		if hasCapabilities {
-			task.Capabilities = capabilities
-		}
-		if task.Extra == nil {
-			task.Extra = make(map[string]string)
-		}
-		if err := validateProjectedCardinality("extra", len(task.Extra), projectedExtraCount(task.Extra, extra), maxTaskExtraEntries); err != nil {
-			return persistedInputFailure(err)
-		}
-		for key, value := range extra {
-			task.Extra[key] = value
-		}
-		if hasTitle || hasPriority || hasCapabilities || len(extra) > 0 {
-			s.AddEvent(store.EventTaskUpdated, task.ID, owner, nil)
-		}
-
-		updated = task
-		return nil
+		var updateErr error
+		updated, updateErr = updateTask(s, ids[0], owner, taskUpdate{
+			Title:           titlePointer,
+			Priority:        priorityPointer,
+			SetCapabilities: hasCapabilities,
+			Capabilities:    capabilities,
+			Extra:           extra,
+			AddDeps:         addDeps,
+			RemoveDeps:      removeDeps,
+		})
+		return updateErr
 	})
 
 	if receiptRequested(args) {

@@ -112,6 +112,12 @@ work or unblocking work that is not blocked. It replaces `INVALID_ARGS` on the
 commands that previously reported those conditions as argument errors; both
 exit with status 1, so only the identifier changes.
 
+`todo.done` previously returned an `unblocked` list that was hardcoded empty
+even though `docs/agent-protocol.md` documented the field. It now reports the
+pending tasks whose prerequisites the completion released. Callers that
+treated the field as always empty will begin to see entries; the field's
+documented name and meaning are unchanged.
+
 This is a fix toward the published contract rather than a departure from it:
 no code changes meaning, and codes that were unreachable become reachable.
 Automations that treated exit status 2 as "the store is corrupt" will now see

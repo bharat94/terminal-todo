@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/bharat94/terminal-todo/store"
 )
@@ -21,16 +20,12 @@ func cmdHeartbeat(args []string) {
 		fail(ErrInvalidArgs, "%v", err)
 	}
 
-	cfg, err := loadConfig()
+	ttl, err := parseLeaseTTL(optionValue(args, "--ttl"))
 	if err != nil {
-		fail(ErrStoreCorrupted, "loading config: %v", err)
-	}
-	ttl := parseDefaultTTL(cfg)
-	if value := optionValue(args, "--ttl"); value != "" {
-		ttl, err = time.ParseDuration(value)
-		if err != nil || ttl <= 0 {
-			fail(ErrInvalidArgs, "--ttl must be a positive duration")
+		if errors.Is(err, errInvalidTTL) {
+			fail(ErrInvalidArgs, "--ttl %v", err)
 		}
+		fail(ErrStoreCorrupted, "%v", err)
 	}
 	if err := touchAgent(actor); err != nil {
 		fail(ErrStoreCorrupted, "registering agent %s: %v", actor, err)

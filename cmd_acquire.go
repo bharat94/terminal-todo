@@ -20,23 +20,11 @@ func cmdAcquire(args []string) {
 	if err := validateAcquireRequestID(requestID); err != nil {
 		fail(ErrInvalidArgs, "--request-id: %v", err)
 	}
-	cfg, err := loadConfig()
-	if err != nil {
-		fail(ErrStoreCorrupted, "loading config: %v", err)
-	}
-	ttl := parseDefaultTTL(cfg)
-	ttlMode := "default"
-	if value := optionValue(args, "--ttl"); value != "" {
-		ttl, err = time.ParseDuration(value)
-		if err != nil || ttl <= 0 {
-			fail(ErrInvalidArgs, "--ttl must be a positive duration")
-		}
-		ttlMode = "explicit:" + ttl.String()
-	}
 	var wait time.Duration
 	if value := optionValue(args, "--wait"); value != "" {
-		wait, err = time.ParseDuration(value)
-		if err != nil || wait <= 0 {
+		var waitErr error
+		wait, waitErr = time.ParseDuration(value)
+		if waitErr != nil || wait <= 0 {
 			fail(ErrInvalidArgs, "--wait must be a positive duration")
 		}
 	}
@@ -45,22 +33,19 @@ func cmdAcquire(args []string) {
 	}
 
 	var explicitCapabilities []string
-	capabilitiesMode := "registered"
 	if hasFlag(args, "--capabilities") {
 		explicitCapabilities = normalizeCapabilities(optionValue(args, "--capabilities"))
 		if explicitCapabilities == nil {
 			explicitCapabilities = []string{}
 		}
-		capabilitiesMode = "explicit"
 	}
-	if err := validateCapabilities(explicitCapabilities); err != nil {
-		fail(ErrInvalidArgs, "%v", err)
-	}
-	capabilities, maxLoad, err := agentAllocationProfile(actor, explicitCapabilities)
+	plan, err := newAcquirePlan(actor, optionValue(args, "--ttl"), explicitCapabilities)
 	if err != nil {
-		fail(ErrStoreCorrupted, "loading agent profile: %v", err)
+		if errors.Is(err, errInvalidTTL) {
+			fail(ErrInvalidArgs, "--ttl %v", err)
+		}
+		fail(ErrStoreCorrupted, "%v", err)
 	}
-	fingerprint := acquireFingerprint(actor, ttlMode, capabilitiesMode, explicitCapabilities)
 	deadline := time.Now().Add(wait)
 
 	var acquired *store.Task
@@ -70,7 +55,7 @@ func cmdAcquire(args []string) {
 		resolver := snapshotDependencyResolver(preflight.GetAllTasks())
 		_, err = store.Update(tasksBinPath(), func(s *store.TaskStore) error {
 			var acquireErr error
-			acquired, replayed, acquireErr = acquireFromStore(s, actor, requestID, fingerprint, ttl, capabilities, maxLoad, resolver)
+			acquired, replayed, acquireErr = acquireFromStore(s, plan.Actor, requestID, plan.Fingerprint, plan.TTL, plan.Capabilities, plan.MaxLoad, resolver)
 			return acquireErr
 		})
 		if err == nil {
@@ -87,18 +72,7 @@ func cmdAcquire(args []string) {
 				continue
 			}
 		}
-		switch {
-		case errors.Is(err, errNoReadyTasks):
-			diagnostics, _ := allocationDiagnosticsFromError(err)
-			failData(ErrNoWork, err.Error(), diagnostics)
-		case errors.Is(err, errAgentAtCapacity):
-			diagnostics, _ := allocationDiagnosticsFromError(err)
-			failData(ErrAgentAtCapacity, err.Error(), diagnostics)
-		case errors.Is(err, errAcquireRequestConflict):
-			fail(ErrIdempotencyConflict, "%v", err)
-		default:
-			fail(ErrStoreCorrupted, "acquiring task: %v", err)
-		}
+		failCoordination(err, ErrStoreCorrupted)
 	}
 
 	if receiptRequested(args) {
