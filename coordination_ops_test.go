@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -255,4 +256,55 @@ func TestFailedLifecycleOperationsRecordNothing(t *testing.T) {
 			assert.Len(t, s.Events, events, "a rejected operation must not append an event")
 		})
 	}
+}
+
+// The CLI --into document spells the capability field "caps" and the JSON-RPC
+// subtask spells it "capabilities". Both are published and neither can move,
+// so the CLI shape converts into the shared one rather than aliasing onto it.
+func TestDecomposePayloadPreservesTheCLICapabilitySpelling(t *testing.T) {
+	var payload DecomposePayload
+	require.NoError(t, json.Unmarshal(
+		[]byte(`{"subtasks":[{"title":"Reproduce the race","caps":["go","testing"]}]}`),
+		&payload,
+	))
+
+	subtasks := payload.subtasks()
+	require.Len(t, subtasks, 1)
+	assert.Equal(t, "Reproduce the race", subtasks[0].Title)
+	assert.Equal(t, []string{"go", "testing"}, subtasks[0].Capabilities)
+}
+
+func TestDecomposeTaskYieldsTheParentLeaseToItsChildren(t *testing.T) {
+	s := newOpsStore(t, "Fix the race")
+	_, err := claimTask(s, 1, "planner", time.Hour, nil, opsNow)
+	require.NoError(t, err)
+
+	parent, children, err := decomposeTask(s, 1, "planner", []decomposeSubtask{
+		{Title: "Reproduce", Capabilities: []string{"go"}},
+		{Title: "Fix", Capabilities: []string{"go", "concurrency"}},
+	})
+	require.NoError(t, err)
+	require.Len(t, children, 2)
+
+	// The parent cannot finish until its children do, so holding the lease
+	// would block the graph it just created.
+	assert.Equal(t, store.StatusPending, parent.Status)
+	assert.Empty(t, parent.Owner)
+	assert.Zero(t, parent.LeaseExpires)
+	assert.Len(t, parent.Depends, 2)
+
+	for _, child := range children {
+		assert.Equal(t, "todo://local/1", child.Lineage)
+		// Siblings are parallel unless dependencies are added explicitly.
+		assert.Empty(t, child.Depends)
+	}
+}
+
+func TestDecomposeTaskRejectsACompletedParent(t *testing.T) {
+	s := newOpsStore(t, "Already shipped")
+	_, err := completeTask(s, 1, "", nil, opsNow)
+	require.NoError(t, err)
+
+	_, _, err = decomposeTask(s, 1, "planner", []decomposeSubtask{{Title: "Child"}})
+	assert.ErrorIs(t, err, errInvalidTransition)
 }

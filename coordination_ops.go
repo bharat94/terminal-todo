@@ -188,3 +188,60 @@ func logTask(s *store.TaskStore, id uint64, actor, message string) (*store.Task,
 	s.AddLog(id, actor, message)
 	return task, nil
 }
+
+// decomposeTask injects child work under a parent and makes the parent depend
+// on it.
+//
+// The parent returns to pending and yields its lease: its own completion now
+// depends on children that a different worker may pick up, so holding the
+// lease would block the graph it just created. Sibling children are parallel
+// unless dependencies are added between them explicitly.
+func decomposeTask(
+	s *store.TaskStore,
+	parentID uint64,
+	actor string,
+	subtasks []decomposeSubtask,
+) (*store.Task, []*store.Task, error) {
+	parent, err := requireTask(s, parentID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parent task %d not found: %w", parentID, errTaskNotFound)
+	}
+	if parent.Status == store.StatusCompleted {
+		return nil, nil, fmt.Errorf("parent task %d is already completed: %w", parentID, errInvalidTransition)
+	}
+	if err := requireOwner(parent, actor); err != nil {
+		return nil, nil, err
+	}
+	if err := validateProjectedCardinality(
+		"dependencies",
+		len(parent.Depends),
+		len(parent.Depends)+len(subtasks),
+		maxTaskDependencies,
+	); err != nil {
+		return nil, nil, persistedInputFailure(err)
+	}
+
+	added := make([]*store.Task, 0, len(subtasks))
+	for _, sub := range subtasks {
+		child := s.AddTask(sub.Title, nil)
+		child.Capabilities = sub.Capabilities
+		child.Lineage = fmt.Sprintf("todo://local/%d", parentID)
+		parent.Depends = append(parent.Depends, fmt.Sprintf("todo://local/%d", child.ID))
+		added = append(added, child)
+	}
+
+	d := dag.NewDAG()
+	d.BuildFromTasks(s.Tasks)
+	if err := d.DetectCycle(parent.Depends, parentID); err != nil {
+		return nil, nil, fmt.Errorf("decompose would create a cycle: %v: %w", err, errCycleDetected)
+	}
+
+	parent.Status = store.StatusPending
+	parent.Owner = ""
+	parent.LeaseExpires = 0
+	parent.BlockReason = ""
+	s.AddEvent(store.EventTaskDecomposed, parentID, actor, map[string]string{
+		"count": fmt.Sprintf("%d", len(subtasks)),
+	})
+	return parent, added, nil
+}
