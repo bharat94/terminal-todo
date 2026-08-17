@@ -95,7 +95,7 @@ worth running locally before opening a pull request:
 ```bash
 # Lint. Zero findings is the standard; the rule set is deliberately small so
 # that a finding always means something.
-go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0 run
+go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run
 
 # Per-package coverage floors. Raise a floor when coverage rises; never lower
 # one to turn a red build green.
