@@ -106,11 +106,22 @@ make build
 sudo install -m 755 todo /usr/local/bin/todo
 ```
 
+With a Go toolchain, one command installs the binary onto your `PATH`:
+
+```bash
+go install github.com/bharat94/terminal-todo/cmd/todo@latest
+```
+
+That places `todo` in `$(go env GOPATH)/bin`. Install a specific release by
+replacing `@latest` with a tag such as `@v0.1.0-beta.1`. The binary reports the
+module version it was built from, so `todo --version` still identifies the
+build.
+
 To install without writing to `/usr/local/bin`, build the binary and copy it
 somewhere already on your `PATH`:
 
 ```bash
-go build -o todo .
+go build -o todo ./cmd/todo
 mkdir -p "$HOME/.local/bin"
 install -m 755 todo "$HOME/.local/bin/todo"
 ```
@@ -119,9 +130,10 @@ The release workflow is configured for Linux, macOS, and Windows on amd64 and
 arm64, with SHA-256 checksums, SPDX SBOMs, and GitHub provenance attestations.
 See [Releasing](docs/releasing.md) for the validation status, verification,
 and maintainer procedures.
-Release archives are the canonical binary distribution for the beta. The Go
-module has a public import path, but a supported `go install .../cmd/todo`
-layout is future work.
+Release archives remain the canonical distribution: they carry checksums,
+SBOMs, and provenance attestations that `go install` does not provide. Use
+`go install` when a Go toolchain is already present and those supply-chain
+artifacts are not required.
 
 Confirm the binary you will use:
 
