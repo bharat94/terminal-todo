@@ -98,6 +98,35 @@ Install to `/usr/local/bin` with `sudo make install`, or choose another prefix:
 make install PREFIX="$HOME/.local"
 ```
 
+## Install with the script
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bharat94/terminal-todo/master/install.sh | sh
+```
+
+The script detects your platform, downloads the matching archive, and verifies
+it against the release's `checksums.txt` before installing. A mismatch is a
+hard failure: the download is discarded and nothing is installed.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VERSION` | latest release | Install a specific tag, such as `v0.1.0-beta.1` |
+| `PREFIX` | `$HOME/.local` | Install into `$PREFIX/bin` |
+| `BINDIR` | `$PREFIX/bin` | Install into an exact directory |
+
+Piping a script from the network into a shell means trusting this repository
+and the transport. Download and read it first if you would rather not:
+
+```bash
+curl -fsSL -O https://raw.githubusercontent.com/bharat94/terminal-todo/master/install.sh
+less install.sh
+sh install.sh
+```
+
+The script verifies checksums but does not verify SBOMs or provenance
+attestations. Use a release archive directly when those matter. Windows is not
+covered; use the archive instructions above.
+
 ## Install with the Go toolchain
 
 ```bash

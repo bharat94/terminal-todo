@@ -8,7 +8,6 @@ before:
 builds:
   - id: todo
     main: ./cmd/todo
-    binary: todo
     flags:
       - -trimpath
     ldflags:
@@ -53,6 +52,23 @@ checksum:
 sboms:
   - id: archives
     artifacts: archive
+
+homebrew_casks:
+  - name: terminal-todo
+    ids:
+      - todo
+    # The tap repository is created and configured by the maintainer. Until
+    # then the cask is generated as a release artifact and nothing is pushed,
+    # so a missing tap cannot fail a release. Set skip_upload to false once
+    # bharat94/homebrew-tap exists and the release token can write to it.
+    skip_upload: true
+    repository:
+      owner: bharat94
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/bharat94/terminal-todo
+    description: A durable coordination layer for humans and AI agents
+    license: MIT
 
 changelog:
   sort: asc

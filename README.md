@@ -106,6 +106,17 @@ make build
 sudo install -m 755 todo /usr/local/bin/todo
 ```
 
+On Linux or macOS, the install script downloads the right archive and verifies
+it against the release's published checksums before installing:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bharat94/terminal-todo/master/install.sh | sh
+```
+
+It installs into `~/.local/bin` by default; set `PREFIX` to choose another
+location and `VERSION` to pin a release. A download whose checksum does not
+match is discarded rather than installed.
+
 With a Go toolchain, one command installs the binary onto your `PATH`:
 
 ```bash
