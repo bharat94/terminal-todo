@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,8 +12,10 @@ import (
 	"time"
 
 	"github.com/bharat94/terminal-todo/conformance"
+	"github.com/bharat94/terminal-todo/fsutil"
 	"github.com/bharat94/terminal-todo/internal/projectclock"
 	"github.com/bharat94/terminal-todo/store"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 type catalogFixtureRuntime struct {
@@ -181,6 +184,30 @@ func catalogProjectFiles(
 	storePath := filepath.Join(staging, "tasks.bin")
 	if err := taskStore.Save(storePath); err != nil {
 		return conformance.FixtureFile{}, conformance.FixtureFile{}, nil, fmt.Errorf("save catalog task store: %w", err)
+	}
+	// Save overwrites LastModified with wall time for durability; rewrite to
+	// the deterministic fixture time so two fixtures with the same scenario
+	// produce byte-identical stores.
+	if staged, err := os.ReadFile(storePath); err == nil {
+		var patched store.TaskStore
+		if err := msgpack.Unmarshal(staged, &patched); err == nil {
+			patched.LastModified = createdAt
+			if data, err := msgpack.Marshal(&patched); err == nil {
+				tmp, err := os.CreateTemp(filepath.Dir(storePath), ".tasks-*.tmp")
+				if err == nil {
+					tmpPath := tmp.Name()
+					if _, err := tmp.ReadFrom(bytes.NewReader(data)); err == nil {
+						_ = tmp.Sync()
+						_ = tmp.Close()
+						_ = os.Rename(tmpPath, storePath)
+						_ = fsutil.SyncDir(filepath.Dir(storePath))
+					} else {
+						_ = tmp.Close()
+					}
+					_ = os.Remove(tmpPath)
+				}
+			}
+		}
 	}
 	storeBytes, err := os.ReadFile(storePath)
 	if err != nil {

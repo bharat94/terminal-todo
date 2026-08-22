@@ -45,7 +45,7 @@ func cmdAdd(args []string) {
 			if i+1 >= len(args) {
 				fail(ErrInvalidArgs, "--tag requires a comma-separated value")
 			}
-			tags = normalizeCapabilities(args[i+1])
+			tags = append(tags, normalizeCapabilities(args[i+1])...)
 		}
 	}
 
@@ -59,6 +59,7 @@ func cmdAdd(args []string) {
 	if capabilities == nil && cfg != nil && cfg.DefaultCapCaps != "" {
 		capabilities = normalizeCapabilities(cfg.DefaultCapCaps)
 	}
+	tags = normalizePersistedValues(tags)
 	if err := validateCapabilities(capabilities); err != nil {
 		fail(ErrInvalidArgs, "%v", err)
 	}
@@ -80,7 +81,7 @@ func cmdAdd(args []string) {
 				finalDeps = append(finalDeps, fmt.Sprintf("todo://local/%d", depID))
 			} else {
 				if _, _, err := dag.ParseTaskURI(dep); err != nil {
-					return err
+					return persistedInputFailure(err)
 				}
 				finalDeps = append(finalDeps, dep)
 			}

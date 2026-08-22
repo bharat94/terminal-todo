@@ -783,7 +783,7 @@ func (srv *server) handleAdd(params json.RawMessage) (interface{}, *rpcError) {
 				finalDeps = append(finalDeps, fmt.Sprintf("todo://local/%d", depID))
 			} else {
 				if _, _, err := dag.ParseTaskURI(dep); err != nil {
-					return err
+					return persistedInputFailure(err)
 				}
 				finalDeps = append(finalDeps, dep)
 			}
@@ -837,13 +837,7 @@ func (srv *server) handleDone(params json.RawMessage) (interface{}, *rpcError) {
 	if err != nil {
 		return nil, rpcErrorf(rpcStoreCorrupted, "loading store: %v", err)
 	}
-	remoteTasks := make([]*store.Task, 0, len(p.IDs))
-	for _, id := range p.IDs {
-		if task, ok := preflight.GetTask(id); ok {
-			remoteTasks = append(remoteTasks, task)
-		}
-	}
-	resolver := snapshotDependencyResolver(remoteTasks)
+	resolver := snapshotDependencyResolver(preflight.GetAllTasks())
 
 	var completed []uint64
 	var unblocked []uint64
@@ -1252,16 +1246,7 @@ func (srv *server) handleHeartbeat(params json.RawMessage) (interface{}, *rpcErr
 		return renewErr
 	})
 	if err != nil {
-		switch {
-		case errors.Is(err, errLeaseTaskNotFound):
-			return nil, rpcErrorf(rpcTaskNotFound, "%v", err)
-		case errors.Is(err, errLeaseNotOwner):
-			return nil, rpcErrorf(rpcNotOwner, "%v", err)
-		case errors.Is(err, errLeaseNotActive):
-			return nil, rpcErrorf(rpcLeaseNotActive, "%v", err)
-		default:
-			return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
-		}
+		return nil, rpcErrorFromDomain(err)
 	}
 	if p.Receipt {
 		return newTaskMutationReceipt("heartbeat", renewed), nil

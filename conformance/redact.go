@@ -104,11 +104,31 @@ func (r redactor) jsonValue(value any) any {
 }
 
 func sensitiveJSONKey(key string) bool {
-	normalized := strings.ToLower(strings.ReplaceAll(key, "-", "_"))
+	normalized := camelToSnake(key)
+	normalized = strings.ToLower(strings.ReplaceAll(normalized, "-", "_"))
 	switch normalized {
-	case "api_key", "access_token", "authorization", "session_id", "thread_id":
+	case "api_key", "access_token", "authorization", "session_id", "thread_id", "token", "secret", "password":
 		return true
 	default:
 		return false
 	}
+}
+
+func camelToSnake(value string) string {
+	var builder strings.Builder
+	builder.Grow(len(value) + 8)
+	for i, r := range value {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				prev := value[i-1]
+				if prev != '_' && prev != '-' && (prev < 'A' || prev > 'Z') {
+					builder.WriteByte('_')
+				}
+			}
+			builder.WriteRune(r + ('a' - 'A'))
+		} else {
+			builder.WriteRune(r)
+		}
+	}
+	return builder.String()
 }

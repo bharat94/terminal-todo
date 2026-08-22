@@ -112,6 +112,8 @@ func conformanceDomainErrorCode(code int) string {
 		return string(ErrIdempotencyConflict)
 	case rpcLeaseNotActive:
 		return string(ErrLeaseNotActive)
+	case rpcInvalidTransition:
+		return string(ErrInvalidTransition)
 	default:
 		return string(ErrInvalidArgs)
 	}

@@ -201,6 +201,7 @@ func mcpErrorName(code int) string {
 		rpcAgentCapacity:       ErrAgentAtCapacity,
 		rpcIdempotencyConflict: ErrIdempotencyConflict,
 		rpcLeaseNotActive:      ErrLeaseNotActive,
+		rpcInvalidTransition:   ErrInvalidTransition,
 	}
 	return string(names[code])
 }

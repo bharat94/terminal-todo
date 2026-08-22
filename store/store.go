@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/bharat94/terminal-todo/fsutil"
 	"github.com/bharat94/terminal-todo/internal/projectclock"
@@ -122,7 +123,19 @@ var migrations = map[uint32]migrationFunc{
 		if s.Events == nil {
 			s.Events = []Event{}
 		}
-		s.NextEventID = 1
+		if s.NextEventID == 0 {
+			if len(s.Events) > 0 {
+				var max uint64
+				for _, e := range s.Events {
+					if e.ID > max {
+						max = e.ID
+					}
+				}
+				s.NextEventID = max + 1
+			} else {
+				s.NextEventID = 1
+			}
+		}
 		s.SchemaVersion = 2
 		return nil
 	},
@@ -131,7 +144,9 @@ var migrations = map[uint32]migrationFunc{
 		return nil
 	},
 	3: func(s *TaskStore) error {
-		s.Acquisitions = make(map[string]AcquisitionReceipt)
+		if s.Acquisitions == nil {
+			s.Acquisitions = make(map[string]AcquisitionReceipt)
+		}
 		s.SchemaVersion = 4
 		return nil
 	},
@@ -239,6 +254,11 @@ func (s *TaskStore) RemoveTask(id uint64) bool {
 		return false
 	}
 	delete(s.Tasks, id)
+	for requestID, receipt := range s.Acquisitions {
+		if receipt.Task.ID == id {
+			delete(s.Acquisitions, requestID)
+		}
+	}
 	s.LastModified = uint64(projectclock.Now().UnixMilli())
 	return true
 }
@@ -251,20 +271,31 @@ func (s *TaskStore) GetAllTasks() []*Task {
 	return tasks
 }
 
+// leaseIsExpired reports whether a lease has expired at now.
+func leaseIsExpired(expiry, now uint64) bool {
+	return expiry != 0 && expiry <= now
+}
+
 // CleanExpiredLeases scans all tasks and resets any whose lease has expired.
 // Returns the number of leases cleaned. Must be called under a write lock.
 func (s *TaskStore) CleanExpiredLeases() int {
 	now := uint64(projectclock.Now().UnixMilli())
-	cleaned := 0
+	expired := make([]uint64, 0)
 	for _, task := range s.Tasks {
-		if task.Status == StatusInProgress && task.LeaseExpires > 0 && task.LeaseExpires < now {
-			owner := task.Owner
-			task.Status = StatusPending
-			task.Owner = ""
-			task.LeaseExpires = 0
-			s.AddEvent(EventLeaseExpired, task.ID, owner, map[string]string{"owner": owner})
-			cleaned++
+		if task.Status == StatusInProgress && leaseIsExpired(task.LeaseExpires, now) {
+			expired = append(expired, task.ID)
 		}
+	}
+	sort.Slice(expired, func(i, j int) bool { return expired[i] < expired[j] })
+	cleaned := 0
+	for _, id := range expired {
+		task := s.Tasks[id]
+		owner := task.Owner
+		task.Status = StatusPending
+		task.Owner = ""
+		task.LeaseExpires = 0
+		s.AddEvent(EventLeaseExpired, task.ID, owner, map[string]string{"owner": owner})
+		cleaned++
 	}
 	if cleaned > 0 {
 		s.LastModified = uint64(projectclock.Now().UnixMilli())
@@ -340,7 +371,7 @@ func LoadCurrent(path string) (*TaskStore, error) {
 func (s *TaskStore) HasExpiredLeases() bool {
 	now := uint64(projectclock.Now().UnixMilli())
 	for _, task := range s.Tasks {
-		if task.Status == StatusInProgress && task.LeaseExpires > 0 && task.LeaseExpires < now {
+		if task.Status == StatusInProgress && leaseIsExpired(task.LeaseExpires, now) {
 			return true
 		}
 	}

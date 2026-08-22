@@ -68,12 +68,11 @@ func TestAcquireReceiptSurvivesTaskRemoval(t *testing.T) {
 	assert.NoError(t, err)
 	assert.False(t, replayed)
 	assert.True(t, s.RemoveTask(acquired.ID))
+	assert.Empty(t, s.Acquisitions)
 
-	replayedTask, replayed, err := acquireFromStore(s, "agent", "request-1", fingerprint, time.Hour, nil, 0, nil)
-	assert.NoError(t, err)
-	assert.True(t, replayed)
-	assert.Equal(t, acquired.ID, replayedTask.ID)
-	assert.Equal(t, "Transient", replayedTask.Title)
+	_, replayed, err = acquireFromStore(s, "agent", "request-1", fingerprint, time.Hour, nil, 0, nil)
+	assert.True(t, errors.Is(err, errNoReadyTasks))
+	assert.False(t, replayed)
 	assert.Empty(t, s.Tasks)
 }
 
