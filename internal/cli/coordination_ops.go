@@ -544,13 +544,17 @@ func pruneCompletedTasks(s *store.TaskStore) []*store.Task {
 		if _, willRemove := completed[task.ID]; willRemove {
 			continue
 		}
-		kept := task.Depends[:0]
+		kept := make([]string, 0, len(task.Depends))
 		for _, dependency := range task.Depends {
-			dependencyID, local := dag.ParseLocalID(dependency)
+			canonical, err := canonicalDependency(dependency)
+			if err != nil {
+				canonical = dependency
+			}
+			dependencyID, local := dag.ParseLocalID(canonical)
 			if _, pruned := completed[dependencyID]; local && pruned {
 				continue
 			}
-			kept = append(kept, dependency)
+			kept = append(kept, canonical)
 		}
 		task.Depends = kept
 	}
