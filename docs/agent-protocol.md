@@ -919,9 +919,9 @@ non-blocking so a serial stdio session can continue processing heartbeats and
 other coordination messages.
 
 `todo.ping` is available before project initialization and advertises these
-protocol capabilities: `dag`, `leases`, `lease_heartbeat`, `atomic_acquire`,
-`idempotent_acquire`, `session_bootstrap`, `compact_receipts`, `events`,
-`event_pages`, and `cross_repository_dependencies`. Clients should use
+protocol capabilities: `dag`, `leases`, `lease_heartbeat`, `atomic_handoff`,
+`atomic_acquire`, `idempotent_acquire`, `session_bootstrap`, `compact_receipts`,
+`events`, `event_pages`, and `cross_repository_dependencies`. Clients should use
 `protocol_version` and this list for feature negotiation; `version` identifies
 the binary build and can change independently.
 
@@ -931,8 +931,10 @@ fingerprint and immutable result in `tasks.bin` in the same transaction as the
 claim. Repeating the same actor, TTL mode, and capability mode returns that
 original task with `replayed: true` without extending its lease or emitting a
 second claim event. Reusing the ID with different parameters returns
-`IDEMPOTENCY_CONFLICT`. Failed attempts do not consume the ID, and task removal
-or pruning does not remove a successful receipt.
+`IDEMPOTENCY_CONFLICT`. Failed attempts do not consume the ID. Removing or
+pruning a task also removes the acquisition receipt for that task, so a
+replayed request for a pruned ID is a miss and the allocator selects fresh
+ready work.
 
 Heartbeats renew a lease to `now + ttl`; they do not add time to the previous
 expiry. Only the current owner can renew a lease, and a pending task or an

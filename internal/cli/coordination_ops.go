@@ -77,6 +77,9 @@ func completeTask(
 	if err != nil {
 		return nil, err
 	}
+	if task.Status == store.StatusCompleted {
+		return nil, fmt.Errorf("task %d is already completed: %w", id, errInvalidTransition)
+	}
 	if err := requireDependenciesComplete(task, s.Tasks, resolver); err != nil {
 		return nil, err
 	}
@@ -215,13 +218,38 @@ func decomposeTask(
 	if err := requireOwner(parent, actor); err != nil {
 		return nil, nil, err
 	}
+	// Stage validation before mutation: detect cycles and cardinality on the
+	// projected graph so a failure leaves no partial children in the store.
+	parentDepSet := make(map[string]struct{}, len(parent.Depends))
+	for _, dep := range parent.Depends {
+		canonical, err := canonicalDependency(dep)
+		if err != nil {
+			canonical = dep
+		}
+		parentDepSet[canonical] = struct{}{}
+	}
+	projectedDeps := make([]string, 0, len(parentDepSet)+len(subtasks))
+	for dep := range parentDepSet {
+		projectedDeps = append(projectedDeps, dep)
+	}
+	// Reserve child IDs without mutating NextID.
+	nextID := s.NextID
+	for range subtasks {
+		projectedDeps = append(projectedDeps, fmt.Sprintf("todo://local/%d", nextID))
+		nextID++
+	}
 	if err := validateProjectedCardinality(
 		"dependencies",
-		len(parent.Depends),
-		len(parent.Depends)+len(subtasks),
+		len(parentDepSet),
+		len(projectedDeps),
 		maxTaskDependencies,
 	); err != nil {
 		return nil, nil, persistedInputFailure(err)
+	}
+	d := dag.NewDAG()
+	d.BuildFromTasks(s.Tasks)
+	if err := d.DetectCycle(projectedDeps, parentID); err != nil {
+		return nil, nil, fmt.Errorf("decompose would create a cycle: %w: %w", err, errCycleDetected)
 	}
 
 	added := make([]*store.Task, 0, len(subtasks))
@@ -231,12 +259,6 @@ func decomposeTask(
 		child.Lineage = fmt.Sprintf("todo://local/%d", parentID)
 		parent.Depends = append(parent.Depends, fmt.Sprintf("todo://local/%d", child.ID))
 		added = append(added, child)
-	}
-
-	d := dag.NewDAG()
-	d.BuildFromTasks(s.Tasks)
-	if err := d.DetectCycle(parent.Depends, parentID); err != nil {
-		return nil, nil, fmt.Errorf("decompose would create a cycle: %w: %w", err, errCycleDetected)
 	}
 
 	parent.Status = store.StatusPending
@@ -424,11 +446,16 @@ func applyDependencyEdits(s *store.TaskStore, task *store.Task, actor string, ad
 		}
 		depSet[canonical] = true
 	}
+	seenRemove := make(map[string]struct{}, len(remove))
 	for _, dep := range remove {
 		canonical, err := canonicalDependency(dep)
 		if err != nil {
-			return err
+			return persistedInputFailure(err)
 		}
+		if _, seen := seenRemove[canonical]; seen {
+			continue
+		}
+		seenRemove[canonical] = struct{}{}
 		if !depSet[canonical] {
 			return fmt.Errorf("dependency %q not found on task %d: %w", dep, task.ID, errTaskNotFound)
 		}
@@ -437,7 +464,7 @@ func applyDependencyEdits(s *store.TaskStore, task *store.Task, actor string, ad
 	for _, dep := range add {
 		canonical, err := canonicalDependency(dep)
 		if err != nil {
-			return err
+			return persistedInputFailure(err)
 		}
 		if depSet[canonical] {
 			continue
@@ -522,13 +549,17 @@ func pruneCompletedTasks(s *store.TaskStore) []*store.Task {
 		if _, willRemove := completed[task.ID]; willRemove {
 			continue
 		}
-		kept := task.Depends[:0]
+		kept := make([]string, 0, len(task.Depends))
 		for _, dependency := range task.Depends {
-			dependencyID, local := dag.ParseLocalID(dependency)
+			canonical, err := canonicalDependency(dependency)
+			if err != nil {
+				canonical = dependency
+			}
+			dependencyID, local := dag.ParseLocalID(canonical)
 			if _, pruned := completed[dependencyID]; local && pruned {
 				continue
 			}
-			kept = append(kept, dependency)
+			kept = append(kept, canonical)
 		}
 		task.Depends = kept
 	}
