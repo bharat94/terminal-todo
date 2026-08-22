@@ -16,13 +16,7 @@ func cmdDone(args []string) {
 		fail(ErrInvalidArgs, "%v", err)
 	}
 	preflight := loadStore()
-	remoteTasks := make([]*store.Task, 0, len(ids))
-	for _, id := range ids {
-		if task, ok := preflight.GetTask(id); ok {
-			remoteTasks = append(remoteTasks, task)
-		}
-	}
-	resolver := snapshotDependencyResolver(remoteTasks)
+	resolver := snapshotDependencyResolver(preflight.GetAllTasks())
 
 	completed := make([]*store.Task, 0, len(ids))
 	updateStore(func(s *store.TaskStore) error {

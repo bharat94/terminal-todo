@@ -837,13 +837,7 @@ func (srv *server) handleDone(params json.RawMessage) (interface{}, *rpcError) {
 	if err != nil {
 		return nil, rpcErrorf(rpcStoreCorrupted, "loading store: %v", err)
 	}
-	remoteTasks := make([]*store.Task, 0, len(p.IDs))
-	for _, id := range p.IDs {
-		if task, ok := preflight.GetTask(id); ok {
-			remoteTasks = append(remoteTasks, task)
-		}
-	}
-	resolver := snapshotDependencyResolver(remoteTasks)
+	resolver := snapshotDependencyResolver(preflight.GetAllTasks())
 
 	var completed []uint64
 	var unblocked []uint64
