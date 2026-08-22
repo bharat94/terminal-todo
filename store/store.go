@@ -254,6 +254,11 @@ func (s *TaskStore) RemoveTask(id uint64) bool {
 		return false
 	}
 	delete(s.Tasks, id)
+	for requestID, receipt := range s.Acquisitions {
+		if receipt.Task.ID == id {
+			delete(s.Acquisitions, requestID)
+		}
+	}
 	s.LastModified = uint64(projectclock.Now().UnixMilli())
 	return true
 }

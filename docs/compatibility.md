@@ -130,6 +130,13 @@ emitting a duplicate `completed` event. Automations that retry `todo done`
 after a lost response should treat `INVALID_TRANSITION` for a completed task
 as success.
 
+Acquisition receipts for a task that is removed (`todo rm`) or pruned
+(`todo prune`) are now garbage-collected with the task. Previously a receipt
+survived removal and a replayed `acquire` with the same request ID returned a
+ghost task that no longer exists in the store. A replay after the task is gone
+now misses and the allocator selects fresh ready work (or returns `NO_WORK` if
+none is ready). Update any code that assumed receipts outlive tasks.
+
 ## Verification tiers
 
 Every pull request and push runs:
