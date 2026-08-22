@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/bharat94/terminal-todo/fsutil"
 	"github.com/bharat94/terminal-todo/internal/projectclock"
@@ -274,16 +275,22 @@ func leaseIsExpired(expiry, now uint64) bool {
 // Returns the number of leases cleaned. Must be called under a write lock.
 func (s *TaskStore) CleanExpiredLeases() int {
 	now := uint64(projectclock.Now().UnixMilli())
-	cleaned := 0
+	expired := make([]uint64, 0)
 	for _, task := range s.Tasks {
 		if task.Status == StatusInProgress && leaseIsExpired(task.LeaseExpires, now) {
-			owner := task.Owner
-			task.Status = StatusPending
-			task.Owner = ""
-			task.LeaseExpires = 0
-			s.AddEvent(EventLeaseExpired, task.ID, owner, map[string]string{"owner": owner})
-			cleaned++
+			expired = append(expired, task.ID)
 		}
+	}
+	sort.Slice(expired, func(i, j int) bool { return expired[i] < expired[j] })
+	cleaned := 0
+	for _, id := range expired {
+		task := s.Tasks[id]
+		owner := task.Owner
+		task.Status = StatusPending
+		task.Owner = ""
+		task.LeaseExpires = 0
+		s.AddEvent(EventLeaseExpired, task.ID, owner, map[string]string{"owner": owner})
+		cleaned++
 	}
 	if cleaned > 0 {
 		s.LastModified = uint64(projectclock.Now().UnixMilli())
