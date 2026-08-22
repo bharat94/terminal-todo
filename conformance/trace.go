@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
+
+	"github.com/bharat94/terminal-todo/lock"
 )
 
 const (
@@ -29,6 +32,11 @@ type TraceRecord struct {
 // error evidence in recorded call order.
 func ReadTrace(workspace string) ([]Operation, []DomainError, error) {
 	path := filepath.Join(workspace, filepath.FromSlash(ConformanceTraceFile))
+	lk, err := lock.Open(path)
+	if err == nil {
+		_ = lk.AcquireWithTimeout(lock.Read, 5*time.Second)
+		defer func() { _ = lk.Release(); _ = lk.Close() }()
+	}
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return []Operation{}, []DomainError{}, nil

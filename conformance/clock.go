@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/bharat94/terminal-todo/fsutil"
 	"github.com/bharat94/terminal-todo/internal/projectclock"
 )
 
@@ -74,6 +75,9 @@ func AdvanceClock(workspace string, by time.Duration) (time.Time, error) {
 	}
 	if err := os.Rename(temporaryPath, path); err != nil {
 		return time.Time{}, fmt.Errorf("replace conformance clock: %w", err)
+	}
+	if err := fsutil.SyncDir(filepath.Dir(path)); err != nil {
+		return time.Time{}, fmt.Errorf("sync conformance clock dir: %w", err)
 	}
 	return next, nil
 }
