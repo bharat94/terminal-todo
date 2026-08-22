@@ -931,8 +931,10 @@ fingerprint and immutable result in `tasks.bin` in the same transaction as the
 claim. Repeating the same actor, TTL mode, and capability mode returns that
 original task with `replayed: true` without extending its lease or emitting a
 second claim event. Reusing the ID with different parameters returns
-`IDEMPOTENCY_CONFLICT`. Failed attempts do not consume the ID, and task removal
-or pruning does not remove a successful receipt.
+`IDEMPOTENCY_CONFLICT`. Failed attempts do not consume the ID. Removing or
+pruning a task also removes the acquisition receipt for that task, so a
+replayed request for a pruned ID is a miss and the allocator selects fresh
+ready work.
 
 Heartbeats renew a lease to `now + ttl`; they do not add time to the previous
 expiry. Only the current owner can renew a lease, and a pending task or an
