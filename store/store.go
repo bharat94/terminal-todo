@@ -265,13 +265,18 @@ func (s *TaskStore) GetAllTasks() []*Task {
 	return tasks
 }
 
+// leaseIsExpired reports whether a lease has expired at now.
+func leaseIsExpired(expiry, now uint64) bool {
+	return expiry != 0 && expiry <= now
+}
+
 // CleanExpiredLeases scans all tasks and resets any whose lease has expired.
 // Returns the number of leases cleaned. Must be called under a write lock.
 func (s *TaskStore) CleanExpiredLeases() int {
 	now := uint64(projectclock.Now().UnixMilli())
 	cleaned := 0
 	for _, task := range s.Tasks {
-		if task.Status == StatusInProgress && task.LeaseExpires > 0 && task.LeaseExpires < now {
+		if task.Status == StatusInProgress && leaseIsExpired(task.LeaseExpires, now) {
 			owner := task.Owner
 			task.Status = StatusPending
 			task.Owner = ""
@@ -354,7 +359,7 @@ func LoadCurrent(path string) (*TaskStore, error) {
 func (s *TaskStore) HasExpiredLeases() bool {
 	now := uint64(projectclock.Now().UnixMilli())
 	for _, task := range s.Tasks {
-		if task.Status == StatusInProgress && task.LeaseExpires > 0 && task.LeaseExpires < now {
+		if task.Status == StatusInProgress && leaseIsExpired(task.LeaseExpires, now) {
 			return true
 		}
 	}
