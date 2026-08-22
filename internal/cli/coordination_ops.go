@@ -218,13 +218,38 @@ func decomposeTask(
 	if err := requireOwner(parent, actor); err != nil {
 		return nil, nil, err
 	}
+	// Stage validation before mutation: detect cycles and cardinality on the
+	// projected graph so a failure leaves no partial children in the store.
+	parentDepSet := make(map[string]struct{}, len(parent.Depends))
+	for _, dep := range parent.Depends {
+		canonical, err := canonicalDependency(dep)
+		if err != nil {
+			canonical = dep
+		}
+		parentDepSet[canonical] = struct{}{}
+	}
+	projectedDeps := make([]string, 0, len(parentDepSet)+len(subtasks))
+	for dep := range parentDepSet {
+		projectedDeps = append(projectedDeps, dep)
+	}
+	// Reserve child IDs without mutating NextID.
+	nextID := s.NextID
+	for range subtasks {
+		projectedDeps = append(projectedDeps, fmt.Sprintf("todo://local/%d", nextID))
+		nextID++
+	}
 	if err := validateProjectedCardinality(
 		"dependencies",
-		len(parent.Depends),
-		len(parent.Depends)+len(subtasks),
+		len(parentDepSet),
+		len(projectedDeps),
 		maxTaskDependencies,
 	); err != nil {
 		return nil, nil, persistedInputFailure(err)
+	}
+	d := dag.NewDAG()
+	d.BuildFromTasks(s.Tasks)
+	if err := d.DetectCycle(projectedDeps, parentID); err != nil {
+		return nil, nil, fmt.Errorf("decompose would create a cycle: %w: %w", err, errCycleDetected)
 	}
 
 	added := make([]*store.Task, 0, len(subtasks))
@@ -234,12 +259,6 @@ func decomposeTask(
 		child.Lineage = fmt.Sprintf("todo://local/%d", parentID)
 		parent.Depends = append(parent.Depends, fmt.Sprintf("todo://local/%d", child.ID))
 		added = append(added, child)
-	}
-
-	d := dag.NewDAG()
-	d.BuildFromTasks(s.Tasks)
-	if err := d.DetectCycle(parent.Depends, parentID); err != nil {
-		return nil, nil, fmt.Errorf("decompose would create a cycle: %w: %w", err, errCycleDetected)
 	}
 
 	parent.Status = store.StatusPending
