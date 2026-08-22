@@ -237,10 +237,14 @@ func watchDashboard(interval time.Duration, useAltScreen bool) {
 
 	for {
 		s := loadStore()
-		if lastModified != 0 && s.LastModified == lastModified {
-			if cursor != 0 && len(s.EventsSince(cursor)) == 0 {
-				time.Sleep(interval)
-				continue
+		hasLease := hasActiveLease(s)
+		// Lease countdown must tick in alt-screen even without store change.
+		if !hasLease || !useAltScreen {
+			if lastModified != 0 && s.LastModified == lastModified {
+				if cursor != 0 && len(s.EventsSince(cursor)) == 0 {
+					time.Sleep(interval)
+					continue
+				}
 			}
 		}
 		if s.NextEventID > 0 {
@@ -251,12 +255,250 @@ func watchDashboard(interval time.Duration, useAltScreen bool) {
 		if useAltScreen {
 			clearScreen()
 		}
-		cmdStatus([]string{})
-		if useAltScreen {
-			fmt.Println("\n" + colorGray + "watch: 1s poll · q/Ctrl-C to quit · --plain to disable alt-screen" + colorReset)
-		}
+		renderWatchDashboard(s, useAltScreen)
 		time.Sleep(interval)
 	}
+}
+
+func hasActiveLease(s *store.TaskStore) bool {
+	for _, t := range s.Tasks {
+		if t.Status == store.StatusInProgress && t.LeaseExpires != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func renderWatchDashboard(s *store.TaskStore, useAltScreen bool) {
+	tasks := s.GetAllTasks()
+	sort.Slice(tasks, func(i, j int) bool { return tasks[i].ID < tasks[j].ID })
+
+	grouped := map[store.TaskStatus][]*store.Task{
+		store.StatusInProgress: {},
+		store.StatusPending:    {},
+		store.StatusBlocked:    {},
+		store.StatusCompleted:  {},
+	}
+	for _, t := range tasks {
+		grouped[t.Status] = append(grouped[t.Status], t)
+	}
+	resolver := dependencyResolver()
+	ready := rankedReadyTasks(s, resolver, nil, false)
+	diagnostics := diagnoseAllocation(s, resolver, "", nil, false, 0)
+
+	// Header
+	now := time.Now().Format("15:04:05")
+	fmt.Printf("%s◉ terminal-todo — live dashboard%s  %s%s%s\n", colorCyan, colorReset, colorGray, now, colorReset)
+	// Summary
+	total := len(tasks)
+	if total > 0 {
+		summary := ""
+		for _, st := range []store.TaskStatus{store.StatusInProgress, store.StatusPending, store.StatusBlocked, store.StatusCompleted} {
+			count := len(grouped[st])
+			if count == 0 {
+				continue
+			}
+			if summary != "" {
+				summary += ", "
+			}
+			summary += fmt.Sprintf("%d %s", count, statusName(st))
+		}
+		fmt.Printf("%sTasks: %s%s", colorCyan, summary, colorReset)
+		if len(ready) > 0 {
+			fmt.Printf("  %sReady: %d%s", colorGreen, len(ready), colorReset)
+		} else if total > 0 {
+			fmt.Printf("  %sReady: 0 (%s)%s", colorGray, allocationReasonMessage(diagnostics.Reason), colorReset)
+		}
+		fmt.Println()
+		// Progress bar
+		completed := len(grouped[store.StatusCompleted])
+		if total > 0 {
+			pct := float64(completed) / float64(total) * 100
+			fmt.Printf("%sProgress: %d/%d %.0f%% %s", colorGray, completed, total, pct, colorReset)
+			barW := 20
+			filled := int(float64(barW) * float64(completed) / float64(total))
+			bar := strings.Repeat("█", filled) + strings.Repeat("░", barW-filled)
+			fmt.Printf(" %s%s%s\n", colorGreen, bar, colorReset)
+		}
+	} else {
+		fmt.Printf("%sNo tasks yet — add one with: todo add \"Title\"%s\n", colorGray, colorReset)
+	}
+
+	// Ready queue (top 5)
+	if len(ready) > 0 {
+		fmt.Printf("\n%s▶ Ready queue%s (priority → id)\n", colorGreen, colorReset)
+		limit := 5
+		if len(ready) < limit {
+			limit = len(ready)
+		}
+		for i := 0; i < limit; i++ {
+			t := ready[i]
+			caps := ""
+			if len(t.Capabilities) > 0 {
+				caps = fmt.Sprintf(" [%s]", strings.Join(t.Capabilities, ","))
+			}
+			tags := ""
+			if len(t.Tags) > 0 {
+				tags = fmt.Sprintf(" %s[%s]%s", colorGray, strings.Join(t.Tags, " "), colorReset)
+			}
+			fmt.Printf("  %s●%s %d %-36s prio %.2f%s%s\n", colorGreen, colorReset, t.ID, truncateWatchTitle(t.Title, 36), t.Priority, caps, tags)
+		}
+		if len(ready) > limit {
+			fmt.Printf("  %s… and %d more%s\n", colorGray, len(ready)-limit, colorReset)
+		}
+	}
+
+	// In Progress with lease countdown
+	if len(grouped[store.StatusInProgress]) > 0 {
+		fmt.Printf("\n%s◐ In Progress%s\n", colorYellow, colorReset)
+		for _, t := range grouped[store.StatusInProgress] {
+			lease := ""
+			if t.LeaseExpires != 0 {
+				if useAltScreen {
+					remaining := time.Until(time.UnixMilli(int64(t.LeaseExpires)))
+					if remaining > 0 {
+						lease = fmt.Sprintf(" lease %s", formatWatchDuration(remaining))
+					} else {
+						lease = " lease expired"
+					}
+				} else {
+					lease = fmt.Sprintf(" lease %s", formatTimestamp(t.LeaseExpires))
+				}
+			}
+			caps := ""
+			if len(t.Capabilities) > 0 {
+				caps = fmt.Sprintf(" [%s]", strings.Join(t.Capabilities, ","))
+			}
+			fmt.Printf("  %s◐%s %d %-36s %s%s%s%s\n", colorYellow, colorReset, t.ID, truncateWatchTitle(t.Title, 36), colorYellow+t.Owner+colorReset, colorGray+lease+colorReset, caps, tagStrWatch(t.Tags))
+		}
+	}
+	// Pending — split ready vs waiting
+	if len(grouped[store.StatusPending]) > 0 {
+		// Figure which pending are actually ready vs dependency blocked.
+		readySet := make(map[uint64]struct{}, len(ready))
+		for _, t := range ready {
+			readySet[t.ID] = struct{}{}
+		}
+		var pendingReady []*store.Task
+		var pendingWaiting []*store.Task
+		for _, t := range grouped[store.StatusPending] {
+			if _, ok := readySet[t.ID]; ok {
+				pendingReady = append(pendingReady, t)
+			} else {
+				pendingWaiting = append(pendingWaiting, t)
+			}
+		}
+		if len(pendingReady) > 0 {
+			fmt.Printf("\n%s○ Pending — ready%s\n", colorCyan, colorReset)
+			for _, t := range pendingReady {
+				fmt.Printf("   ○ %d %-36s prio %.2f%s%s\n", t.ID, truncateWatchTitle(t.Title, 36), t.Priority, capsStrWatch(t.Capabilities), tagStrWatch(t.Tags))
+			}
+		}
+		if len(pendingWaiting) > 0 {
+			fmt.Printf("\n%s○ Pending — waiting%s\n", colorGray, colorReset)
+			for _, t := range pendingWaiting {
+				blockers := dependencyBlockersForWatch(t, s, resolver)
+				depStr := ""
+				if len(blockers) > 0 {
+					depStr = fmt.Sprintf(" → %s", strings.Join(blockers, ", "))
+				}
+				fmt.Printf("   ○ %d %-30s%s%s%s\n", t.ID, truncateWatchTitle(t.Title, 30), colorGray+depStr+colorReset, capsStrWatch(t.Capabilities), tagStrWatch(t.Tags))
+			}
+		}
+	}
+	if len(grouped[store.StatusBlocked]) > 0 {
+		fmt.Printf("\n%s⊗ Blocked%s\n", colorRed, colorReset)
+		for _, t := range grouped[store.StatusBlocked] {
+			reason := t.BlockReason
+			if reason == "" {
+				reason = "blocked"
+			}
+			fmt.Printf("  %s⊗%s %d %-36s %s%s\n", colorRed, colorReset, t.ID, truncateWatchTitle(t.Title, 36), colorRed+reason+colorReset, tagStrWatch(t.Tags))
+		}
+	}
+	if len(grouped[store.StatusCompleted]) > 0 {
+		// Show last 5 completed to keep dashboard compact; full list via `todo status`.
+		fmt.Printf("\n%s● Completed%s", colorGreen, colorReset)
+		if len(grouped[store.StatusCompleted]) > 5 {
+			fmt.Printf(" %s(last 5 of %d)%s", colorGray, len(grouped[store.StatusCompleted]), colorReset)
+		}
+		fmt.Println()
+		start := 0
+		if len(grouped[store.StatusCompleted]) > 5 {
+			start = len(grouped[store.StatusCompleted]) - 5
+		}
+		for _, t := range grouped[store.StatusCompleted][start:] {
+			fmt.Printf("  %s●%s %d %-36s%s\n", colorGreen, colorReset, t.ID, truncateWatchTitle(t.Title, 36), tagStrWatch(t.Tags))
+		}
+	}
+	// Recent events tail
+	events := s.EventsSince(0)
+	if len(events) > 0 {
+		fmt.Printf("\n%sRecent events%s\n", colorCyan, colorReset)
+		start := 0
+		if len(events) > 5 {
+			start = len(events) - 5
+		}
+		for _, e := range events[start:] {
+			actor := e.Actor
+			if actor == "" {
+				actor = "—"
+			}
+			title := ""
+			if t, ok := s.GetTask(e.TaskID); ok {
+				title = truncateWatchTitle(t.Title, 28)
+			}
+			fmt.Printf("  #%d %s %s #%d %s by %s\n", e.ID, formatTimestamp(e.Timestamp), e.Type, e.TaskID, title, actor)
+		}
+	}
+	if useAltScreen {
+		fmt.Printf("\n%s watch: 1s poll · q/Ctrl-C to quit · --plain to disable alt-screen · `todo help watch`%s\n", colorGray, colorReset)
+	}
+}
+
+func truncateWatchTitle(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	if max <= 3 {
+		return s[:max]
+	}
+	return s[:max-3] + "..."
+}
+
+func tagStrWatch(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" %s[%s]%s", colorGray, strings.Join(tags, " "), colorReset)
+}
+
+func capsStrWatch(caps []string) string {
+	if len(caps) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" [%s]", strings.Join(caps, ","))
+}
+
+func dependencyBlockersForWatch(task *store.Task, s *store.TaskStore, resolver dag.DependencyResolver) []string {
+	var blockers []string
+	for _, dep := range task.Depends {
+		depID, local := dag.ParseLocalID(dep)
+		if local {
+			if t, ok := s.GetTask(depID); ok {
+				if t.Status != store.StatusCompleted {
+					blockers = append(blockers, fmt.Sprintf("%d", depID))
+				}
+			} else {
+				blockers = append(blockers, fmt.Sprintf("%d?", depID))
+			}
+		} else {
+			if !resolver(dep) {
+				blockers = append(blockers, dep)
+			}
+		}
+	}
+	return blockers
 }
 
 func isTerminal(f *os.File) bool {
