@@ -77,6 +77,9 @@ func completeTask(
 	if err != nil {
 		return nil, err
 	}
+	if task.Status == store.StatusCompleted {
+		return nil, fmt.Errorf("task %d is already completed: %w", id, errInvalidTransition)
+	}
 	if err := requireDependenciesComplete(task, s.Tasks, resolver); err != nil {
 		return nil, err
 	}
