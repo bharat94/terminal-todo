@@ -1,7 +1,8 @@
 # Deep bugfix and hardening
 
-- Status: proposed
+- Status: in progress — Phase 1 complete; Phase 2 in progress
 - Opened: 2026-08-22
+- Last updated: 2026-08-22
 - Baseline commit: `947e827`
 - Owner: maintainer (via Muse Spark)
 
