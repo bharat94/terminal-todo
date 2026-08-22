@@ -108,7 +108,15 @@ func validatePersistedList(field, itemName string, values []string, maxItems, ma
 }
 
 func validateCapabilities(values []string) error {
-	return validatePersistedList("capabilities", "capability", values, maxTaskCapabilities, maxCapabilityBytes)
+	if err := validatePersistedList("capabilities", "capability", values, maxTaskCapabilities, maxCapabilityBytes); err != nil {
+		return err
+	}
+	for _, value := range values {
+		if strings.Contains(value, ",") {
+			return fmt.Errorf("capability %q cannot contain ','", value)
+		}
+	}
+	return nil
 }
 
 func validateTags(values []string) error {
