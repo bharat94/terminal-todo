@@ -1,8 +1,9 @@
 # Watch upgrade — live dashboard
 
-- Status: proposed
+- Status: complete
 - Opened: 2026-08-22
 - Baseline: `43c2215`
+- Completed: 2026-08-22 — `19d5127` (4 commits)
 - Owner: maintainer
 
 ## Summary
