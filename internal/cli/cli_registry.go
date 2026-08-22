@@ -353,6 +353,9 @@ func newCommandRegistry() []*command {
 			Flags: []flagSpec{
 				{"--poll", flagValue, "Refresh interval (e.g. 500ms, 2s)"},
 				{"--plain", flagBoolean, "Disable alt-screen and ANSI chrome (for pipes/tests)"},
+				{"--tag", flagValue, "Filter by tag"},
+				{"--as", flagValue, "Filter by owner"},
+				{"--all", flagBoolean, "Include linked repositories"},
 			},
 			Run: cmdWatch,
 		},

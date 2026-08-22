@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
@@ -17,6 +18,9 @@ func cmdWatch(args []string) {
 	ids := parseIDs(args)
 	interval := parseWatchInterval(args)
 	plain := hasFlag(args, "--plain")
+	filterTag := optionValue(args, "--tag")
+	filterAs := optionValue(args, "--as")
+	filterAll := hasFlag(args, "--all")
 	useAltScreen := !plain && isTerminal(os.Stdout)
 
 	var restore func()
@@ -39,7 +43,7 @@ func cmdWatch(args []string) {
 	if len(ids) > 0 {
 		watchTask(ids[0], interval, useAltScreen)
 	} else {
-		watchDashboard(interval, useAltScreen)
+		watchDashboard(interval, useAltScreen, filterTag, filterAs, filterAll)
 	}
 }
 
@@ -231,14 +235,37 @@ func renderWatchTask(s *store.TaskStore, task *store.Task, statusStr string, use
 	}
 }
 
-func watchDashboard(interval time.Duration, useAltScreen bool) {
+func watchDashboard(interval time.Duration, useAltScreen bool, filterTag, filterAs string, filterAll bool) {
 	var lastModified uint64
 	var cursor uint64
+
+	if filterAll {
+		// Linked-repo mode: poll aggregated LastModified across projects.
+		for {
+			projects := collectWatchProjects(filterTag, filterAs)
+			aggModified, aggCursor := aggregateWatchCursor(projects)
+			hasLease := hasActiveLeaseAggregated(projects)
+			if !hasLease || !useAltScreen {
+				if lastModified != 0 && aggModified == lastModified {
+					if cursor != 0 && aggCursor == cursor {
+						time.Sleep(interval)
+						continue
+					}
+				}
+			}
+			lastModified = aggModified
+			cursor = aggCursor
+			if useAltScreen {
+				clearScreen()
+			}
+			renderWatchDashboardAll(projects, useAltScreen, filterTag, filterAs)
+			time.Sleep(interval)
+		}
+	}
 
 	for {
 		s := loadStore()
 		hasLease := hasActiveLease(s)
-		// Lease countdown must tick in alt-screen even without store change.
 		if !hasLease || !useAltScreen {
 			if lastModified != 0 && s.LastModified == lastModified {
 				if cursor != 0 && len(s.EventsSince(cursor)) == 0 {
@@ -255,7 +282,7 @@ func watchDashboard(interval time.Duration, useAltScreen bool) {
 		if useAltScreen {
 			clearScreen()
 		}
-		renderWatchDashboard(s, useAltScreen)
+		renderWatchDashboard(s, useAltScreen, filterTag, filterAs)
 		time.Sleep(interval)
 	}
 }
@@ -269,9 +296,93 @@ func hasActiveLease(s *store.TaskStore) bool {
 	return false
 }
 
-func renderWatchDashboard(s *store.TaskStore, useAltScreen bool) {
+type watchProject struct {
+	Alias     string
+	Path      string
+	Available bool
+	Error     string
+	Store     *store.TaskStore
+}
+
+func collectWatchProjects(filterTag, filterAs string) []watchProject {
+	localStore := loadStore()
+	projects := []watchProject{{Alias: "local", Path: ".", Available: true, Store: localStore}}
+	registry, err := loadRepositoryRegistry()
+	if err != nil {
+		return projects
+	}
+	aliases := make([]string, 0, len(registry.Repositories))
+	for alias := range registry.Repositories {
+		aliases = append(aliases, alias)
+	}
+	sort.Strings(aliases)
+	for _, alias := range aliases {
+		path := registry.Repositories[alias]
+		resolvedPath := path
+		if !filepath.IsAbs(resolvedPath) {
+			resolvedPath = filepath.Join(projectRoot, resolvedPath)
+		}
+		s, err := store.LoadCurrent(filepath.Join(filepath.Clean(resolvedPath), ".terminal-todo", "tasks.bin"))
+		if err != nil {
+			projects = append(projects, watchProject{Alias: alias, Path: path, Available: false, Error: err.Error()})
+			continue
+		}
+		projects = append(projects, watchProject{Alias: alias, Path: path, Available: true, Store: s})
+	}
+	return projects
+}
+
+func aggregateWatchCursor(projects []watchProject) (uint64, uint64) {
+	var aggModified uint64
+	var aggCursor uint64
+	for _, p := range projects {
+		if !p.Available {
+			continue
+		}
+		aggModified += p.Store.LastModified
+		if p.Store.NextEventID > 0 {
+			aggCursor += p.Store.NextEventID
+		}
+	}
+	return aggModified, aggCursor
+}
+
+func hasActiveLeaseAggregated(projects []watchProject) bool {
+	for _, p := range projects {
+		if p.Available && hasActiveLease(p.Store) {
+			return true
+		}
+	}
+	return false
+}
+
+func renderWatchDashboardAll(projects []watchProject, useAltScreen bool, filterTag, filterAs string) {
+	for i, p := range projects {
+		if i > 0 {
+			fmt.Println()
+		}
+		fmt.Printf("%s[%s] %s%s\n", colorCyan, p.Alias, p.Path, colorReset)
+		if !p.Available {
+			fmt.Printf("  %sunavailable: %s%s\n", colorRed, p.Error, colorReset)
+			continue
+		}
+		renderWatchDashboard(p.Store, useAltScreen, filterTag, filterAs)
+	}
+}
+
+func renderWatchDashboard(s *store.TaskStore, useAltScreen bool, filterTag, filterAs string) {
 	tasks := s.GetAllTasks()
 	sort.Slice(tasks, func(i, j int) bool { return tasks[i].ID < tasks[j].ID })
+
+	passesFilter := func(t *store.Task) bool {
+		if filterTag != "" && !hasTag(t.Tags, filterTag) {
+			return false
+		}
+		if filterAs != "" && t.Owner != filterAs {
+			return false
+		}
+		return true
+	}
 
 	grouped := map[store.TaskStatus][]*store.Task{
 		store.StatusInProgress: {},
@@ -280,18 +391,28 @@ func renderWatchDashboard(s *store.TaskStore, useAltScreen bool) {
 		store.StatusCompleted:  {},
 	}
 	for _, t := range tasks {
+		if !passesFilter(t) {
+			continue
+		}
 		grouped[t.Status] = append(grouped[t.Status], t)
 	}
 	resolver := dependencyResolver()
-	ready := rankedReadyTasks(s, resolver, nil, false)
+	readyAll := rankedReadyTasks(s, resolver, nil, false)
+	var ready []*store.Task
+	for _, t := range readyAll {
+		if passesFilter(t) {
+			ready = append(ready, t)
+		}
+	}
 	diagnostics := diagnoseAllocation(s, resolver, "", nil, false, 0)
 
 	// Header
 	now := time.Now().Format("15:04:05")
 	fmt.Printf("%s◉ terminal-todo — live dashboard%s  %s%s%s\n", colorCyan, colorReset, colorGray, now, colorReset)
-	// Summary
+	// Summary (filtered)
+	filteredTotal := len(grouped[store.StatusInProgress]) + len(grouped[store.StatusPending]) + len(grouped[store.StatusBlocked]) + len(grouped[store.StatusCompleted])
 	total := len(tasks)
-	if total > 0 {
+	if filteredTotal > 0 {
 		summary := ""
 		for _, st := range []store.TaskStatus{store.StatusInProgress, store.StatusPending, store.StatusBlocked, store.StatusCompleted} {
 			count := len(grouped[st])
@@ -306,22 +427,46 @@ func renderWatchDashboard(s *store.TaskStore, useAltScreen bool) {
 		fmt.Printf("%sTasks: %s%s", colorCyan, summary, colorReset)
 		if len(ready) > 0 {
 			fmt.Printf("  %sReady: %d%s", colorGreen, len(ready), colorReset)
-		} else if total > 0 {
+		} else if filteredTotal > 0 {
 			fmt.Printf("  %sReady: 0 (%s)%s", colorGray, allocationReasonMessage(diagnostics.Reason), colorReset)
 		}
 		fmt.Println()
 		// Progress bar
 		completed := len(grouped[store.StatusCompleted])
-		if total > 0 {
-			pct := float64(completed) / float64(total) * 100
-			fmt.Printf("%sProgress: %d/%d %.0f%% %s", colorGray, completed, total, pct, colorReset)
+		if filteredTotal > 0 {
+			pct := float64(completed) / float64(filteredTotal) * 100
+			fmt.Printf("%sProgress: %d/%d %.0f%% %s", colorGray, completed, filteredTotal, pct, colorReset)
 			barW := 20
-			filled := int(float64(barW) * float64(completed) / float64(total))
+			filled := int(float64(barW) * float64(completed) / float64(filteredTotal))
 			bar := strings.Repeat("█", filled) + strings.Repeat("░", barW-filled)
 			fmt.Printf(" %s%s%s\n", colorGreen, bar, colorReset)
 		}
+		if filterTag != "" || filterAs != "" {
+			fmt.Printf("%sFiltered by:%s%s%s%s\n", colorGray, colorReset,
+				func() string {
+					s := ""
+					if filterTag != "" {
+						s += " tag=" + filterTag
+					}
+					if filterAs != "" {
+						s += " as=" + filterAs
+					}
+					return s
+				}(), colorReset, "")
+		}
 	} else {
-		fmt.Printf("%sNo tasks yet — add one with: todo add \"Title\"%s\n", colorGray, colorReset)
+		if total == 0 {
+			fmt.Printf("%sNo tasks yet — add one with: todo add \"Title\"%s\n", colorGray, colorReset)
+		} else {
+			fmt.Printf("%sNo tasks match filter%s", colorGray, colorReset)
+			if filterTag != "" {
+				fmt.Printf(" tag=%s", filterTag)
+			}
+			if filterAs != "" {
+				fmt.Printf(" as=%s", filterAs)
+			}
+			fmt.Println()
+		}
 	}
 
 	// Ready queue (top 5)
