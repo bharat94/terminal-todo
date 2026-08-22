@@ -1252,16 +1252,7 @@ func (srv *server) handleHeartbeat(params json.RawMessage) (interface{}, *rpcErr
 		return renewErr
 	})
 	if err != nil {
-		switch {
-		case errors.Is(err, errLeaseTaskNotFound):
-			return nil, rpcErrorf(rpcTaskNotFound, "%v", err)
-		case errors.Is(err, errLeaseNotOwner):
-			return nil, rpcErrorf(rpcNotOwner, "%v", err)
-		case errors.Is(err, errLeaseNotActive):
-			return nil, rpcErrorf(rpcLeaseNotActive, "%v", err)
-		default:
-			return nil, rpcErrorf(rpcStoreCorrupted, "%v", err)
-		}
+		return nil, rpcErrorFromDomain(err)
 	}
 	if p.Receipt {
 		return newTaskMutationReceipt("heartbeat", renewed), nil
