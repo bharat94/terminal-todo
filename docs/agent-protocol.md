@@ -919,9 +919,9 @@ non-blocking so a serial stdio session can continue processing heartbeats and
 other coordination messages.
 
 `todo.ping` is available before project initialization and advertises these
-protocol capabilities: `dag`, `leases`, `lease_heartbeat`, `atomic_acquire`,
-`idempotent_acquire`, `session_bootstrap`, `compact_receipts`, `events`,
-`event_pages`, and `cross_repository_dependencies`. Clients should use
+protocol capabilities: `dag`, `leases`, `lease_heartbeat`, `atomic_handoff`,
+`atomic_acquire`, `idempotent_acquire`, `session_bootstrap`, `compact_receipts`,
+`events`, `event_pages`, and `cross_repository_dependencies`. Clients should use
 `protocol_version` and this list for feature negotiation; `version` identifies
 the binary build and can change independently.
 
