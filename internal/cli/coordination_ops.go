@@ -446,11 +446,16 @@ func applyDependencyEdits(s *store.TaskStore, task *store.Task, actor string, ad
 		}
 		depSet[canonical] = true
 	}
+	seenRemove := make(map[string]struct{}, len(remove))
 	for _, dep := range remove {
 		canonical, err := canonicalDependency(dep)
 		if err != nil {
 			return err
 		}
+		if _, seen := seenRemove[canonical]; seen {
+			continue
+		}
+		seenRemove[canonical] = struct{}{}
 		if !depSet[canonical] {
 			return fmt.Errorf("dependency %q not found on task %d: %w", dep, task.ID, errTaskNotFound)
 		}
