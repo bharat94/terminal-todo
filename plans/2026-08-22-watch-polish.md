@@ -1,8 +1,9 @@
 # Watch polish — quit and width
 
-- Status: proposed
+- Status: complete
 - Opened: 2026-08-22
 - Baseline: `65a2bde`
+- Completed: 2026-08-22 — `6690393` (2 commits)
 - Owner: maintainer
 
 ## Summary

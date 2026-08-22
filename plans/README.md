@@ -25,4 +25,4 @@ references.
 | [Coordination core refactor](2026-08-16-coordination-core-refactor.md) | In progress | Collapse the duplicated CLI and JSON-RPC implementations onto one typed coordination core, repair the broken error contract, and unlock a testable, installable package layout. |
 | [Deep bugfix and hardening](2026-08-22-deep-bugfix-and-hardening.md) | Proposed | Harden the store, lifecycle, and harness after four parallel bug hunts (38 defects): migrations, lease boundaries, atomicity, ghost receipts, redaction, and determinism. |
 | [Watch upgrade](2026-08-22-watch-upgrade.md) | Complete | Upgrade `todo watch` from flickering `status` loop to flicker-free live dashboard with lease countdowns, ready queue, and event tail. |
-| [Watch polish](2026-08-22-watch-polish.md) | Proposed | Add single-key `q` quit via raw mode and width-aware truncation to `todo watch`. |
+| [Watch polish](2026-08-22-watch-polish.md) | Complete | Add single-key `q` quit via raw mode and width-aware truncation to `todo watch`. |
