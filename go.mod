@@ -6,6 +6,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	golang.org/x/sys v0.47.0
+	golang.org/x/term v0.45.0
 )
 
 require (

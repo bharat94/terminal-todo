@@ -12,6 +12,7 @@ import (
 
 	"github.com/bharat94/terminal-todo/dag"
 	"github.com/bharat94/terminal-todo/store"
+	"golang.org/x/term"
 )
 
 func cmdWatch(args []string) {
@@ -40,10 +41,15 @@ func cmdWatch(args []string) {
 		defer signal.Stop(sigCh)
 	}
 
+	quit, restoreRaw := watchQuitChannel(useAltScreen)
+	if restoreRaw != nil {
+		defer restoreRaw()
+	}
+
 	if len(ids) > 0 {
-		watchTask(ids[0], interval, useAltScreen)
+		watchTask(ids[0], interval, useAltScreen, quit)
 	} else {
-		watchDashboard(interval, useAltScreen, filterTag, filterAs, filterAll)
+		watchDashboard(interval, useAltScreen, filterTag, filterAs, filterAll, quit)
 	}
 }
 
@@ -59,13 +65,18 @@ func parseWatchInterval(args []string) time.Duration {
 	return d
 }
 
-func watchTask(id uint64, interval time.Duration, useAltScreen bool) {
+func watchTask(id uint64, interval time.Duration, useAltScreen bool, quit <-chan struct{}) {
 	lastStatus := ""
 	lastLogCount := 0
 	var lastModified uint64
 	var cursor uint64
 
 	for {
+		select {
+		case <-quit:
+			return
+		default:
+		}
 		s := loadStore()
 		task, ok := s.GetTask(id)
 		if !ok {
@@ -81,7 +92,9 @@ func watchTask(id uint64, interval time.Duration, useAltScreen bool) {
 			statusStr := statusName(task.Status)
 			if statusStr == lastStatus && len(task.Log) == lastLogCount {
 				if cursor != 0 && len(s.EventsSince(cursor)) == 0 {
-					time.Sleep(interval)
+					if sleepOrQuit(interval, quit) {
+						return
+					}
 					continue
 				}
 			}
@@ -111,11 +124,15 @@ func watchTask(id uint64, interval time.Duration, useAltScreen bool) {
 			if !useAltScreen {
 				return
 			}
-			waitForQuit(interval)
+			if waitForQuitQuit(interval, quit) {
+				return
+			}
 			return
 		}
 
-		time.Sleep(interval)
+		if sleepOrQuit(interval, quit) {
+			return
+		}
 	}
 }
 
@@ -235,20 +252,26 @@ func renderWatchTask(s *store.TaskStore, task *store.Task, statusStr string, use
 	}
 }
 
-func watchDashboard(interval time.Duration, useAltScreen bool, filterTag, filterAs string, filterAll bool) {
+func watchDashboard(interval time.Duration, useAltScreen bool, filterTag, filterAs string, filterAll bool, quit <-chan struct{}) {
 	var lastModified uint64
 	var cursor uint64
 
 	if filterAll {
-		// Linked-repo mode: poll aggregated LastModified across projects.
 		for {
+			select {
+			case <-quit:
+				return
+			default:
+			}
 			projects := collectWatchProjects(filterTag, filterAs)
 			aggModified, aggCursor := aggregateWatchCursor(projects)
 			hasLease := hasActiveLeaseAggregated(projects)
 			if !hasLease || !useAltScreen {
 				if lastModified != 0 && aggModified == lastModified {
 					if cursor != 0 && aggCursor == cursor {
-						time.Sleep(interval)
+						if sleepOrQuit(interval, quit) {
+							return
+						}
 						continue
 					}
 				}
@@ -259,17 +282,26 @@ func watchDashboard(interval time.Duration, useAltScreen bool, filterTag, filter
 				clearScreen()
 			}
 			renderWatchDashboardAll(projects, useAltScreen, filterTag, filterAs)
-			time.Sleep(interval)
+			if sleepOrQuit(interval, quit) {
+				return
+			}
 		}
 	}
 
 	for {
+		select {
+		case <-quit:
+			return
+		default:
+		}
 		s := loadStore()
 		hasLease := hasActiveLease(s)
 		if !hasLease || !useAltScreen {
 			if lastModified != 0 && s.LastModified == lastModified {
 				if cursor != 0 && len(s.EventsSince(cursor)) == 0 {
-					time.Sleep(interval)
+					if sleepOrQuit(interval, quit) {
+						return
+					}
 					continue
 				}
 			}
@@ -283,7 +315,9 @@ func watchDashboard(interval time.Duration, useAltScreen bool, filterTag, filter
 			clearScreen()
 		}
 		renderWatchDashboard(s, useAltScreen, filterTag, filterAs)
-		time.Sleep(interval)
+		if sleepOrQuit(interval, quit) {
+			return
+		}
 	}
 }
 
@@ -644,6 +678,49 @@ func dependencyBlockersForWatch(task *store.Task, s *store.TaskStore, resolver d
 		}
 	}
 	return blockers
+}
+
+func watchQuitChannel(useAltScreen bool) (<-chan struct{}, func()) {
+	quit := make(chan struct{})
+	if !useAltScreen || !term.IsTerminal(int(os.Stdin.Fd())) {
+		return quit, nil
+	}
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		return quit, nil
+	}
+	restore := func() { _ = term.Restore(int(os.Stdin.Fd()), oldState) }
+	go func() {
+		buf := make([]byte, 1)
+		for {
+			n, err := os.Stdin.Read(buf)
+			if err != nil || n == 0 {
+				return
+			}
+			if buf[0] == 'q' || buf[0] == 'Q' || buf[0] == 3 || buf[0] == 27 {
+				select {
+				case <-quit:
+				default:
+					close(quit)
+				}
+				return
+			}
+		}
+	}()
+	return quit, restore
+}
+
+func sleepOrQuit(d time.Duration, quit <-chan struct{}) bool {
+	select {
+	case <-quit:
+		return true
+	case <-time.After(d):
+		return false
+	}
+}
+
+func waitForQuitQuit(d time.Duration, quit <-chan struct{}) bool {
+	return sleepOrQuit(2*d, quit)
 }
 
 func isTerminal(f *os.File) bool {
