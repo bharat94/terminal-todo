@@ -450,7 +450,7 @@ func applyDependencyEdits(s *store.TaskStore, task *store.Task, actor string, ad
 	for _, dep := range remove {
 		canonical, err := canonicalDependency(dep)
 		if err != nil {
-			return err
+			return persistedInputFailure(err)
 		}
 		if _, seen := seenRemove[canonical]; seen {
 			continue
@@ -464,7 +464,7 @@ func applyDependencyEdits(s *store.TaskStore, task *store.Task, actor string, ad
 	for _, dep := range add {
 		canonical, err := canonicalDependency(dep)
 		if err != nil {
-			return err
+			return persistedInputFailure(err)
 		}
 		if depSet[canonical] {
 			continue

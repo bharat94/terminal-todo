@@ -137,6 +137,11 @@ ghost task that no longer exists in the store. A replay after the task is gone
 now misses and the allocator selects fresh ready work (or returns `NO_WORK` if
 none is ready). Update any code that assumed receipts outlive tasks.
 
+Invalid dependency URIs supplied to `add`, `update`, or `decompose` now return
+`INVALID_ARGS` (exit 1, JSON-RPC `-32602`) rather than `STORE_CORRUPTED`.
+Persisted corrupted edges that already exist in `tasks.bin` remain readable and
+are canonicalized on the next edit of the owning task.
+
 ## Verification tiers
 
 Every pull request and push runs:
