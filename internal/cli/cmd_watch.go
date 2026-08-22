@@ -137,8 +137,16 @@ func watchTask(id uint64, interval time.Duration, useAltScreen bool, quit <-chan
 }
 
 func renderWatchTask(s *store.TaskStore, task *store.Task, statusStr string, useAltScreen bool) {
-	fmt.Printf("Watching task %d — %s\n", task.ID, task.Title)
-	fmt.Println(strings.Repeat("─", 50))
+	w := watchWidth()
+	titleMax := w - 22
+	if titleMax < 20 {
+		titleMax = 20
+	}
+	if titleMax > 80 {
+		titleMax = 80
+	}
+	fmt.Printf("Watching task %d — %s\n", task.ID, truncateWatchTitle(task.Title, titleMax))
+	fmt.Println(strings.Repeat("─", w/2))
 	// Status line with priority/caps/tags/lineage
 	meta := fmt.Sprintf("Status: %s", statusStr)
 	if task.Priority != 0 {
@@ -439,6 +447,18 @@ func renderWatchDashboard(s *store.TaskStore, useAltScreen bool, filterTag, filt
 		}
 	}
 	diagnostics := diagnoseAllocation(s, resolver, "", nil, false, 0)
+	titleMax := watchDashboardTitleMax()
+	smallMax := titleMax - 6
+	if smallMax < 15 {
+		smallMax = 15
+	}
+	eventTitleMax := watchWidth() - 52
+	if eventTitleMax < 15 {
+		eventTitleMax = 15
+	}
+	if eventTitleMax > 40 {
+		eventTitleMax = 40
+	}
 
 	// Header
 	now := time.Now().Format("15:04:05")
@@ -520,7 +540,7 @@ func renderWatchDashboard(s *store.TaskStore, useAltScreen bool, filterTag, filt
 			if len(t.Tags) > 0 {
 				tags = fmt.Sprintf(" %s[%s]%s", colorGray, strings.Join(t.Tags, " "), colorReset)
 			}
-			fmt.Printf("  %s●%s %d %-36s prio %.2f%s%s\n", colorGreen, colorReset, t.ID, truncateWatchTitle(t.Title, 36), t.Priority, caps, tags)
+			fmt.Printf("  %s●%s %d %-*s prio %.2f%s%s\n", colorGreen, colorReset, t.ID, titleMax, truncateWatchTitle(t.Title, titleMax), t.Priority, caps, tags)
 		}
 		if len(ready) > limit {
 			fmt.Printf("  %s… and %d more%s\n", colorGray, len(ready)-limit, colorReset)
@@ -548,7 +568,7 @@ func renderWatchDashboard(s *store.TaskStore, useAltScreen bool, filterTag, filt
 			if len(t.Capabilities) > 0 {
 				caps = fmt.Sprintf(" [%s]", strings.Join(t.Capabilities, ","))
 			}
-			fmt.Printf("  %s◐%s %d %-36s %s%s%s%s\n", colorYellow, colorReset, t.ID, truncateWatchTitle(t.Title, 36), colorYellow+t.Owner+colorReset, colorGray+lease+colorReset, caps, tagStrWatch(t.Tags))
+			fmt.Printf("  %s◐%s %d %-*s %s%s%s%s\n", colorYellow, colorReset, t.ID, titleMax, truncateWatchTitle(t.Title, titleMax), colorYellow+t.Owner+colorReset, colorGray+lease+colorReset, caps, tagStrWatch(t.Tags))
 		}
 	}
 	// Pending — split ready vs waiting
@@ -570,7 +590,7 @@ func renderWatchDashboard(s *store.TaskStore, useAltScreen bool, filterTag, filt
 		if len(pendingReady) > 0 {
 			fmt.Printf("\n%s○ Pending — ready%s\n", colorCyan, colorReset)
 			for _, t := range pendingReady {
-				fmt.Printf("   ○ %d %-36s prio %.2f%s%s\n", t.ID, truncateWatchTitle(t.Title, 36), t.Priority, capsStrWatch(t.Capabilities), tagStrWatch(t.Tags))
+				fmt.Printf("   ○ %d %-*s prio %.2f%s%s\n", t.ID, titleMax, truncateWatchTitle(t.Title, titleMax), t.Priority, capsStrWatch(t.Capabilities), tagStrWatch(t.Tags))
 			}
 		}
 		if len(pendingWaiting) > 0 {
@@ -581,7 +601,7 @@ func renderWatchDashboard(s *store.TaskStore, useAltScreen bool, filterTag, filt
 				if len(blockers) > 0 {
 					depStr = fmt.Sprintf(" → %s", strings.Join(blockers, ", "))
 				}
-				fmt.Printf("   ○ %d %-30s%s%s%s\n", t.ID, truncateWatchTitle(t.Title, 30), colorGray+depStr+colorReset, capsStrWatch(t.Capabilities), tagStrWatch(t.Tags))
+				fmt.Printf("   ○ %d %-*s%s%s%s\n", t.ID, smallMax, truncateWatchTitle(t.Title, smallMax), colorGray+depStr+colorReset, capsStrWatch(t.Capabilities), tagStrWatch(t.Tags))
 			}
 		}
 	}
@@ -592,11 +612,10 @@ func renderWatchDashboard(s *store.TaskStore, useAltScreen bool, filterTag, filt
 			if reason == "" {
 				reason = "blocked"
 			}
-			fmt.Printf("  %s⊗%s %d %-36s %s%s\n", colorRed, colorReset, t.ID, truncateWatchTitle(t.Title, 36), colorRed+reason+colorReset, tagStrWatch(t.Tags))
+			fmt.Printf("  %s⊗%s %d %-*s %s%s\n", colorRed, colorReset, t.ID, titleMax, truncateWatchTitle(t.Title, titleMax), colorRed+reason+colorReset, tagStrWatch(t.Tags))
 		}
 	}
 	if len(grouped[store.StatusCompleted]) > 0 {
-		// Show last 5 completed to keep dashboard compact; full list via `todo status`.
 		fmt.Printf("\n%s● Completed%s", colorGreen, colorReset)
 		if len(grouped[store.StatusCompleted]) > 5 {
 			fmt.Printf(" %s(last 5 of %d)%s", colorGray, len(grouped[store.StatusCompleted]), colorReset)
@@ -607,7 +626,7 @@ func renderWatchDashboard(s *store.TaskStore, useAltScreen bool, filterTag, filt
 			start = len(grouped[store.StatusCompleted]) - 5
 		}
 		for _, t := range grouped[store.StatusCompleted][start:] {
-			fmt.Printf("  %s●%s %d %-36s%s\n", colorGreen, colorReset, t.ID, truncateWatchTitle(t.Title, 36), tagStrWatch(t.Tags))
+			fmt.Printf("  %s●%s %d %-*s%s\n", colorGreen, colorReset, t.ID, titleMax, truncateWatchTitle(t.Title, titleMax), tagStrWatch(t.Tags))
 		}
 	}
 	// Recent events tail
@@ -625,7 +644,7 @@ func renderWatchDashboard(s *store.TaskStore, useAltScreen bool, filterTag, filt
 			}
 			title := ""
 			if t, ok := s.GetTask(e.TaskID); ok {
-				title = truncateWatchTitle(t.Title, 28)
+				title = truncateWatchTitle(t.Title, eventTitleMax)
 			}
 			fmt.Printf("  #%d %s %s #%d %s by %s\n", e.ID, formatTimestamp(e.Timestamp), e.Type, e.TaskID, title, actor)
 		}
@@ -729,6 +748,33 @@ func isTerminal(f *os.File) bool {
 		return false
 	}
 	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+func watchWidth() int {
+	if term.IsTerminal(int(os.Stdout.Fd())) {
+		if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w >= 40 && w <= 500 {
+			return w
+		}
+	}
+	if c := os.Getenv("COLUMNS"); c != "" {
+		var w int
+		if _, err := fmt.Sscanf(c, "%d", &w); err == nil && w >= 40 && w <= 500 {
+			return w
+		}
+	}
+	return 80
+}
+
+func watchDashboardTitleMax() int {
+	w := watchWidth()
+	m := w - 44
+	if m < 20 {
+		m = 20
+	}
+	if m > 60 {
+		m = 60
+	}
+	return m
 }
 
 func enterWatchScreen() func() {
