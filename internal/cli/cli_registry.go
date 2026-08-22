@@ -350,8 +350,11 @@ func newCommandRegistry() []*command {
 		{
 			Name: "watch", Usage: "watch [<id>]", Group: "Reactivity",
 			Summary: "Live-refresh the task dashboard",
-			Flags:   []flagSpec{{"--poll", flagValue, "Refresh interval"}},
-			Run:     cmdWatch,
+			Flags: []flagSpec{
+				{"--poll", flagValue, "Refresh interval (e.g. 500ms, 2s)"},
+				{"--plain", flagBoolean, "Disable alt-screen and ANSI chrome (for pipes/tests)"},
+			},
+			Run: cmdWatch,
 		},
 		{
 			Name: "events", Usage: "events [<since>]", Group: "Reactivity",
