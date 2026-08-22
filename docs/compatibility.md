@@ -124,6 +124,12 @@ Automations that treated exit status 2 as "the store is corrupt" will now see
 the specific lifecycle status instead. `STORE_CORRUPTED` retains its
 documented meaning and is no longer raised for lifecycle outcomes.
 
+A second completion of an already completed task now returns `INVALID_TRANSITION`
+(exit 1, JSON-RPC `-32014`) rather than silently re-stamping `Completed` and
+emitting a duplicate `completed` event. Automations that retry `todo done`
+after a lost response should treat `INVALID_TRANSITION` for a completed task
+as success.
+
 ## Verification tiers
 
 Every pull request and push runs:
