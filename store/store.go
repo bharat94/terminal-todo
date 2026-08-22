@@ -122,7 +122,19 @@ var migrations = map[uint32]migrationFunc{
 		if s.Events == nil {
 			s.Events = []Event{}
 		}
-		s.NextEventID = 1
+		if s.NextEventID == 0 {
+			if len(s.Events) > 0 {
+				var max uint64
+				for _, e := range s.Events {
+					if e.ID > max {
+						max = e.ID
+					}
+				}
+				s.NextEventID = max + 1
+			} else {
+				s.NextEventID = 1
+			}
+		}
 		s.SchemaVersion = 2
 		return nil
 	},
@@ -131,7 +143,9 @@ var migrations = map[uint32]migrationFunc{
 		return nil
 	},
 	3: func(s *TaskStore) error {
-		s.Acquisitions = make(map[string]AcquisitionReceipt)
+		if s.Acquisitions == nil {
+			s.Acquisitions = make(map[string]AcquisitionReceipt)
+		}
 		s.SchemaVersion = 4
 		return nil
 	},
